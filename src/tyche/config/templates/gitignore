@@ -1,0 +1,15 @@
+# This workspace is a private git repository (ADR-0008). Config, research, proposals
+# and reports are committed. Secrets and anything Tyche regenerates are not.
+
+# Secrets
+.env
+
+# Market data cache: large, and can be fetched again
+data/
+
+# Operational state and logs: back these up, but do not commit them
+state/
+logs/
+
+# Kill-switch flag: a runtime switch, not configuration
+KILL

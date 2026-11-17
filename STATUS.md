@@ -9,8 +9,9 @@
 - Phase 0 is merged.
 - PR 1 (domain types) is merged.
 - PR 2 (event envelope and bus) is merged.
-- PR 3 (clock and calendar) is approved by Pablo (2026-11-17), including the two configuration changes to the checks; it merges once CI passes.
-- Next: PR 4, workspace and config. Not started; waiting for Pablo's go-ahead.
+- PR 3 (clock and calendar) is merged.
+- PR 4 (workspace and config) is open for review. ADR-0017 in it is proposed and needs Pablo's decision.
+- Next: PR 5, data port and Parquet cache, when Pablo says to start.
 
 ## What works today
 
@@ -20,9 +21,10 @@
 - CI runs the same checks on every pull request and on `main`.
 - Domain types (PR 1): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
 - Event bus (PR 2): `Event`, `Envelope`, `EventBus`. No concrete events yet.
-- Clock and calendar (PR 3, approved): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
+- Clock and calendar (PR 3): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
+- Workspace and config (PR 4, in review): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
 
-There is no trading, data or backtesting code yet. Apart from `cli`, `core.domain`, `core.events`, `core.ports`, `core.sim` and `adapters.calendars`, every package under `src/tyche/` contains only a docstring saying what will live there.
+There is no trading, data or backtesting code yet. Apart from `cli`, `config`, `core.domain`, `core.events`, `core.ports`, `core.sim` and `adapters.calendars`, every package under `src/tyche/` contains only a docstring saying what will live there.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -46,8 +48,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 1 | Domain types (**merged**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
 | 2 | Event envelope and bus (**merged**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
-| 3 | Clock and calendar (**approved**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). |
-| 4 | Workspace and config | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic` and Typer. Decided 2026-11-17: Typer for the CLI; workspace at `~/tyche-workspace` |
+| 3 | Clock and calendar (**merged**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). |
+| 4 | Workspace and config (**in review**) | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic` and Typer. Decided 2026-11-17: Typer for the CLI; workspace at `~/tyche-workspace` |
 
 **B. Data**
 
@@ -137,5 +139,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo merges PR 3.
-2. Phase 1, PR 4: workspace and config, when Pablo says to start. Both of its decisions are made: Typer for the CLI, and the workspace at `~/tyche-workspace`.
+1. Pablo reviews PR 4 and decides on ADR-0017.
+2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`.
+3. Phase 1, PR 5: data port and Parquet cache, when Pablo says to start.

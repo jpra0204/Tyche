@@ -1,0 +1,10 @@
+# Tyche workspace configuration.
+#
+# Every key is validated when Tyche starts. An unknown key, a missing key or a value of
+# the wrong type stops Tyche with a message naming this file and the key.
+
+# Version of this file's format. Tyche refuses a version it does not understand.
+schema_version = 1
+
+# The market profile to trade and backtest. It must match a file in config/markets/.
+market_profile = "US"

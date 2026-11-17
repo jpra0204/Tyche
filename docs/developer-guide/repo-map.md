@@ -55,7 +55,8 @@ src/tyche/
 │   ├── llm/                claude-code (later ollama, anthropic-api)
 │   ├── storage/            SQLite repositories
 │   └── reports/            report rendering
-├── config/               loads and validates workspace config
+├── config/               the workspace, config file schemas, loading, config hash
+│   └── templates/          files `tyche init` copies into a new workspace
 ├── runtime/              composition root: chooses adapters and builds the engine
 └── cli/                  the `tyche` command
 ```

@@ -12,9 +12,16 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `Clock` and `Calendar` ports, the `Session` value object, `SimClock`, and a calendar adapter backed by `exchange_calendars` (Phase 1, PR 3).
 - Learning note on time as a port.
 - First runtime dependency: `exchange_calendars` (Apache-2.0).
+- `tyche init`: creates a private workspace from packaged templates, refusing unsafe locations and never overwriting (Phase 1, PR 4).
+- `tyche config check`: validates the workspace configuration and prints its fingerprint.
+- Workspace configuration: `config/tyche.toml` and the `US` market profile, validated by pydantic file schemas and the new `MarketProfile` domain object, with a config hash.
+- ADR-0016 (Typer) and ADR-0017 (config schemas at the boundary, proposed).
+- User guide: installation and your workspace. Learning note: config at the boundary.
+- Runtime dependencies: `pydantic` (MIT) and `typer` (MIT).
 
 ### Changed
 
+- The CLI is built with Typer instead of `argparse`. Running `tyche` with no arguments now prints help and exits with code 2.
 - pytest now treats every warning as an error. One known warning raised inside `exchange_calendars` is ignored, with the reason and the condition for removing it in `pyproject.toml`.
 
 ## [0.0.1] - 2026-11-16

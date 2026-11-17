@@ -26,6 +26,9 @@ Further rules checked in review:
 - **Handlers only publish.** A handler never calls another component and never drains the bus.
 - A new or changed event updates the [event catalog](../architecture/event-catalog.md) in the same PR.
 - **Ports are `typing.Protocol` classes.** Adapters do not inherit from core classes.
+- **CLI commands are thin** ([ADR-0016](../adr/0016-typer-for-the-cli.md)). A command parses options, calls one function outside `tyche.cli`, and turns the result into text and an exit code. Errors go to standard error as `Error: <message>`, exit code 1.
+- **Config has two layers** ([ADR-0017](../adr/0017-config-schemas-at-the-boundary.md)). A pydantic file schema in `tyche.config` checks keys and types; a domain object in the core checks meaning. The core never imports pydantic. Integer and string fields are `StrictInt` and `StrictStr`.
+- **A new config setting changes three places together:** the file schema, the domain object and the template in `src/tyche/config/templates/`.
 - **Fail closed.** When something unexpected happens in the trading path, stop and alert. Do not guess and continue.
 - **No secrets in code, logs or tests.** Log an account id or URL only in a masked form.
 - **Comments explain why,** not what. Public modules, classes and functions have a docstring.

@@ -26,6 +26,8 @@ make check
 uv run tyche --version
 ```
 
+To create your private workspace, follow the [installation guide](docs/user-guide/01-installation.md).
+
 ## Documentation
 
 | | |

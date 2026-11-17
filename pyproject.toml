@@ -9,6 +9,8 @@ requires-python = ">=3.14"
 # lockfile only ever contains what the code actually imports. See ADR-0002.
 dependencies = [
     "exchange-calendars>=4.13.3",
+    "pydantic>=2.14.3",
+    "typer>=0.29.1",
 ]
 
 [project.scripts]

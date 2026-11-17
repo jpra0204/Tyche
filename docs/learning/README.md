@@ -13,6 +13,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Backtest, paper and live parity](backtest-paper-live-parity.md) | One engine, with the clock, feed and broker swapped |
 | [The gated agent loop](gated-agent-loop.md) | LLMs propose, code tests, a human decides |
 | [Value objects](value-objects.md) | Small immutable types that cannot hold an invalid value |
+| [Config at the boundary](config-at-the-boundary.md) | Check all configuration once, as it enters, and turn it into types that cannot be wrong |
 | [Time as a port](time-as-a-port.md) | The core asks a clock and a calendar for the time; it never reads the system clock |
 
 ## Planned
