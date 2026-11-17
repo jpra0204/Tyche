@@ -1,5 +1,12 @@
 """Stage 8, journal: record every decision with its reasons.
 
-Planned (Phase 1 in memory, Phase 2 persisted): subscribes to every event and appends
-it to the journal. The journal feeds reports and the weekly review.
+Available now: ``InMemoryJournal``, which subscribes to every event and can follow any
+event back to the input that caused it.
+
+Planned (Phase 2): a journal persisted in SQLite, read by reports, the Discord summary
+and the weekly review.
 """
+
+from tyche.core.pipeline.journal.memory import InMemoryJournal
+
+__all__ = ["InMemoryJournal"]

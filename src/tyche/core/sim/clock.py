@@ -32,3 +32,7 @@ class SimClock:
                 f"asked to move to {moment.isoformat()}"
             )
         self._now = moment
+
+    def wait_until(self, moment: datetime) -> None:
+        """Jump to ``moment``. This is what makes ``SimClock`` a ``PacedClock``."""
+        self.advance_to(moment)

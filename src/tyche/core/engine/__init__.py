@@ -1,5 +1,12 @@
-"""The run loop that wires pipeline stages to the event bus.
+"""The run loop that feeds inputs to the event bus.
 
-Planned (Phase 1): one engine for backtest, paper and live. It receives a clock, a
-data feed and a broker and does not know which mode it is in (ADR-0005).
+Available now: ``Engine`` and ``RunResult``. One engine serves backtest, paper and live;
+it receives a clock and a feed and does not know which mode it is in (ADR-0005).
+
+Planned (Phase 1 onward): the wiring that subscribes the pipeline stages in a fixed,
+documented order.
 """
+
+from tyche.core.engine.engine import Engine, FeedOrderError, RunResult
+
+__all__ = ["Engine", "FeedOrderError", "RunResult"]
