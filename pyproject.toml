@@ -7,7 +7,9 @@ authors = [{ name = "jpra0204" }]
 requires-python = ">=3.14"
 # Runtime dependencies are added in the phase that first uses them, so the
 # lockfile only ever contains what the code actually imports. See ADR-0002.
-dependencies = []
+dependencies = [
+    "exchange-calendars>=4.13.3",
+]
 
 [project.scripts]
 tyche = "tyche.cli:main"
@@ -56,6 +58,12 @@ python_version = "3.14"
 strict = true
 warn_unreachable = true
 files = ["src", "tests"]
+
+# exchange_calendars ships no type information. Its values are typed as Any, and the
+# adapter converts every one of them to our own types before it leaves the module.
+[[tool.mypy.overrides]]
+module = ["exchange_calendars", "exchange_calendars.*"]
+ignore_missing_imports = true
 
 # --- pytest -------------------------------------------------------------------
 [tool.pytest.ini_options]

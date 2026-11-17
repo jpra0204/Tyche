@@ -44,7 +44,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 1 | Domain types (**merged**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
 | 2 | Event envelope and bus (**in review**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
-| 3 | Clock and calendar | `Clock` and `Calendar` ports, `SimClock`, NYSE calendar adapter, `SessionEvent` | Adds `exchange_calendars` |
+| 3 | Clock and calendar (**in review**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). Still owed: the learning note on the clock as a port |
 | 4 | Workspace and config | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic`. Decide: CLI framework; where your workspace lives |
 
 **B. Data**

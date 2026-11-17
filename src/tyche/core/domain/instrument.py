@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from tyche.core.domain.currency import Currency
+from tyche.core.domain.validation import require_mic
 
-# ISO 10383 market identifier code: four upper-case letters or digits, e.g. XNYS.
-_MIC = re.compile(r"[A-Z0-9]{4}")
 # Upper-case letters and digits, with single dots or hyphens inside (BRK.B, BRK-B).
 _SYMBOL = re.compile(r"[A-Z0-9]+(?:[.\-][A-Z0-9]+)*")
 
@@ -53,10 +52,8 @@ class Instrument:
                 f"invalid symbol {self.symbol!r}: expected upper-case letters and digits, "
                 "optionally separated by single dots or hyphens"
             )
-        if not _MIC.fullmatch(self.exchange):
-            raise ValueError(f"invalid exchange {self.exchange!r}: expected a 4-character MIC")
-        if not _MIC.fullmatch(self.calendar):
-            raise ValueError(f"invalid calendar {self.calendar!r}: expected a 4-character MIC")
+        require_mic(self.exchange, "exchange")
+        require_mic(self.calendar, "calendar")
 
     def __str__(self) -> str:
         return f"{self.symbol}@{self.exchange}"
