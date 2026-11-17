@@ -9,6 +9,7 @@ requires-python = ">=3.14"
 # lockfile only ever contains what the code actually imports. See ADR-0002.
 dependencies = [
     "exchange-calendars>=4.13.3",
+    "pyarrow>=26.0.1",
     "pydantic>=2.14.3",
     "typer>=0.29.1",
 ]
@@ -24,6 +25,7 @@ build-backend = "uv_build"
 dev = [
     "import-linter>=2.16",
     "mypy>=2.4.1",
+    "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.5",

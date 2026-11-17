@@ -10,8 +10,9 @@
 - PR 1 (domain types) is merged.
 - PR 2 (event envelope and bus) is merged.
 - PR 3 (clock and calendar) is merged.
-- PR 4 (workspace and config) is open for review. ADR-0017 in it is proposed and needs Pablo's decision.
-- Next: PR 5, data port and Parquet cache, when Pablo says to start.
+- PR 4 (workspace and config) is merged; ADR-0017 accepted.
+- PR 5 (data port and Parquet cache) is open for review; ADR-0018 in it is accepted.
+- Next: PR 6, the yfinance source, when Pablo says to start. It needs a decision on adjusted prices first (see the PR 6 row).
 
 ## What works today
 
@@ -22,9 +23,10 @@
 - Domain types (PR 1): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
 - Event bus (PR 2): `Event`, `Envelope`, `EventBus`. No concrete events yet.
 - Clock and calendar (PR 3): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
-- Workspace and config (PR 4, in review): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
+- Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
+- Data layer (PR 5, in review): `DataProvider` port, data-quality audit, Parquet cache and read-through provider. No real data source yet.
 
-There is no trading, data or backtesting code yet. Apart from `cli`, `config`, `core.domain`, `core.events`, `core.ports`, `core.sim` and `adapters.calendars`, every package under `src/tyche/` contains only a docstring saying what will live there.
+There is no trading or backtesting code yet, and no real data source. Apart from `cli`, `config`, `core.domain`, `core.events`, `core.ports`, `core.sim`, `adapters.calendars` and `adapters.data`, every package under `src/tyche/` contains only a docstring saying what will live there.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -49,14 +51,14 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 | 1 | Domain types (**merged**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
 | 2 | Event envelope and bus (**merged**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
 | 3 | Clock and calendar (**merged**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). |
-| 4 | Workspace and config (**in review**) | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic` and Typer. Decided 2026-11-17: Typer for the CLI; workspace at `~/tyche-workspace` |
+| 4 | Workspace and config (**merged**) | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic` and Typer. Decided 2026-11-17: Typer for the CLI; workspace at `~/tyche-workspace` |
 
 **B. Data**
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 5 | Data port and Parquet cache | `DataProvider` port, cache that records when data was fetched, quality checks, gap detection against the calendar | Adds `pandas`, `pyarrow` |
-| 6 | yfinance adapter | Daily bars with retries and adjusted prices, `tyche data fetch` | Adds `yfinance`. Verify: its limits and terms |
+| 5 | Data port and Parquet cache (**in review**) | `DataProvider` port, cache that records when data was fetched, quality checks, gap detection against the calendar | Adds `pyarrow` only; pandas waits until code imports it |
+| 6 | yfinance adapter | Daily bars with retries and adjusted prices, `tyche data fetch` | Adds `yfinance`. Verify: its limits and terms. Decide: how to keep cached adjusted prices consistent (store unadjusted prices plus dividends and splits, or refetch full history) |
 
 **C. Engine and simulation**
 
@@ -139,6 +141,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews PR 4 and decides on ADR-0017.
-2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`.
-3. Phase 1, PR 5: data port and Parquet cache, when Pablo says to start.
+1. Pablo reviews and merges PR 5.
+2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, before PR 6 fetches real data.
+3. Phase 1, PR 6: the yfinance source, when Pablo says to start.

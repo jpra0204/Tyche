@@ -27,7 +27,8 @@ One short record per significant decision: the context, the decision, the altern
 | [0014](0014-git-workflow-and-ci.md) | Branch and pull request workflow with CI | Accepted (Pablo, 2026-11-16) |
 | [0015](0015-daily-loss-limit.md) | The daily loss limit is measured close to close | Accepted (Pablo, 2026-11-16) |
 | [0016](0016-typer-for-the-cli.md) | Typer for the command-line interface | Accepted (Pablo, 2026-11-17) |
-| [0017](0017-config-schemas-at-the-boundary.md) | Config file schemas live in `tyche.config`; the core receives domain objects | Proposed |
+| [0017](0017-config-schemas-at-the-boundary.md) | Config file schemas live in `tyche.config`; the core receives domain objects | Accepted (Pablo, 2026-11-17) |
+| [0018](0018-audit-market-data.md) | Market data is audited against the calendar, not trusted or rejected | Accepted (Pablo, 2026-11-17) |
 
 ## Template
 

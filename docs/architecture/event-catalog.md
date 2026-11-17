@@ -55,7 +55,7 @@ From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.cor
 | `SessionEvent` | Engine (from `Clock` and `Calendar`) | Broker, risk, scheduler | `calendar`, `session_date`, `kind` (open or close), `is_half_day` | 1 |
 | `BarEvent` | Data feed | Broker (to fill waiting orders and check stops), market-data store | `instrument`, `timeframe`, `open`, `high`, `low`, `close`, `volume`, `is_adjusted` | 1 |
 | `DataReadyEvent` | Data feed | Universe (starts a decision cycle) | `timeframe`, `as_of`, `instruments`, `missing` | 1 |
-| `DataQualityEvent` | Data feed, data adapters | Journal, notifier | `instrument`, `kind` (gap, stale, suspect value, fetch failed), `detail` | 1 |
+| `DataQualityEvent` | Data feed (from each `DataIssue` in a `BarHistory`) | Journal, notifier, universe | `instrument`, `kind` (the `DataIssueKind`: missing session, off session, duplicate, conflict, wrong series, mixed adjustment, suspect move; plus fetch failed), `session_day`, `detail` | 1 (PR 7) |
 
 ### Decision cycle (pipeline stages 1 to 5)
 
