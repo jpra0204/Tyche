@@ -13,7 +13,8 @@ from datetime import date, datetime
 from enum import StrEnum
 from itertools import pairwise
 
-from tyche.core.domain.bar import Bar
+from tyche.core.domain.bar import Bar, PriceAdjustment
+from tyche.core.domain.corporate_actions import CashDistribution, Split
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.session import Session
 from tyche.core.domain.timeframe import Timeframe
@@ -46,7 +47,10 @@ class DataIssueKind(StrEnum):
     """A bar belongs to another instrument or timeframe. Dropped."""
 
     MIXED_ADJUSTMENT = "mixed_adjustment"
-    """A bar is adjusted when the others are not, or the reverse. Dropped."""
+    """A bar's prices are adjusted on a different basis from the others. Dropped."""
+
+    INVALID_BAR = "invalid_bar"
+    """The source sent prices that cannot be real, such as a high below the close. Dropped."""
 
     SUSPECT_MOVE = "suspect_move"
     """The close moved more than the threshold since the previous bar. Kept, flagged."""
@@ -85,6 +89,10 @@ class BarHistory:
         instrument: Whose bars these are.
         bars: The bars that passed the audit, oldest first.
         issues: Every problem found, in session order.
+        distributions: Cash paid per share with an ex-date in the window, oldest first.
+            Prices are not adjusted for these (ADR-0019).
+        splits: Splits with an ex-date in the window, oldest first. Prices before each
+            one are already divided by its ratio.
         fetched: Oldest and newest time any of these bars was fetched from its source,
             in UTC, or ``None`` if unknown. A backtest report states it, because free
             data sources revise history.
@@ -93,6 +101,8 @@ class BarHistory:
     instrument: Instrument
     bars: tuple[Bar, ...]
     issues: tuple[DataIssue, ...] = ()
+    distributions: tuple[CashDistribution, ...] = ()
+    splits: tuple[Split, ...] = ()
     fetched: tuple[datetime, datetime] | None = None
 
     def __post_init__(self) -> None:
@@ -104,9 +114,19 @@ class BarHistory:
             if previous is not None:
                 if bar.timestamp <= previous.timestamp:
                     raise ValueError(f"{label}: bars must be strictly increasing in time")
-                if bar.is_adjusted != previous.is_adjusted:
-                    raise ValueError(f"{label}: bars mix adjusted and unadjusted prices")
+                if bar.adjustment is not previous.adjustment:
+                    raise ValueError(f"{label}: bars mix price adjustments")
             previous = bar
+        actions: list[CashDistribution | Split] = [*self.distributions, *self.splits]
+        for action in actions:
+            if action.instrument != self.instrument:
+                raise ValueError(f"{label} holds a corporate action of {action.instrument}")
+        distribution_keys = [(d.ex_date, d.kind) for d in self.distributions]
+        if distribution_keys != sorted(set(distribution_keys)):
+            raise ValueError(f"{label}: distributions must be in date order, one per kind and date")
+        split_dates = [s.ex_date for s in self.splits]
+        if split_dates != sorted(set(split_dates)):
+            raise ValueError(f"{label}: splits must be in date order, one per date")
         if self.fetched is not None:
             oldest, newest = self.fetched
             require_utc(oldest, "BarHistory fetched (oldest)")
@@ -127,7 +147,7 @@ def audit_daily_bars(
     bars: Iterable[Bar],
     sessions: Sequence[Session],
     *,
-    adjusted: bool,
+    adjustment: PriceAdjustment,
     max_move: float = DEFAULT_MAX_DAILY_MOVE,
 ) -> BarHistory:
     """Check daily bars against the sessions they should cover.
@@ -138,7 +158,7 @@ def audit_daily_bars(
         sessions: The sessions expected to have a bar, oldest first. They define the
             window: bars stamped before the first session's open or after the last
             session's close are outside it and ignored without an issue.
-        adjusted: Whether the bars should be adjusted for splits and dividends.
+        adjustment: The price adjustment every bar should have.
         max_move: Close-to-close change beyond which a bar is flagged as suspect.
 
     Returns:
@@ -169,13 +189,13 @@ def audit_daily_bars(
                 f"dropped a {bar.timeframe} bar of {bar.instrument} at {bar.timestamp.isoformat()}",
             )
             continue
-        if bar.is_adjusted != adjusted:
-            expected = "adjusted" if adjusted else "unadjusted"
+        if bar.adjustment is not adjustment:
             report(
                 DataIssueKind.MIXED_ADJUSTMENT,
                 bar.timestamp,
                 None,
-                f"dropped a bar at {bar.timestamp.isoformat()} that is not {expected}",
+                f"dropped a bar at {bar.timestamp.isoformat()} adjusted for "
+                f"'{bar.adjustment}', expected '{adjustment}'",
             )
             continue
         if bar.timestamp not in by_close:

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from tyche.core.domain import AssetClass, Bar, Currency, Instrument, Timeframe
+from tyche.core.domain import AssetClass, Bar, Currency, Instrument, PriceAdjustment, Timeframe
 
 SPY = Instrument("SPY", "ARCX", Currency.USD, "XNYS", AssetClass.ETF)
 
@@ -22,7 +22,7 @@ GOOD = Bar(
     low=99.0,
     close=104.0,
     volume=1_000_000.0,
-    is_adjusted=True,
+    adjustment=PriceAdjustment.SPLITS_AND_DIVIDENDS,
 )
 
 
@@ -32,7 +32,7 @@ def test_holds_its_fields() -> None:
     assert GOOD.timestamp == HALF_DAY_CLOSE
     assert (GOOD.open, GOOD.high, GOOD.low, GOOD.close) == (100.0, 105.0, 99.0, 104.0)
     assert GOOD.volume == 1_000_000.0
-    assert GOOD.is_adjusted
+    assert GOOD.adjustment is PriceAdjustment.SPLITS_AND_DIVIDENDS
 
 
 def test_is_immutable() -> None:

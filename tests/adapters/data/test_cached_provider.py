@@ -1,15 +1,24 @@
 """The read-through cached provider: fetch only what is missing, audit every answer."""
 
-from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from tests.support.market import JANUARY_2024, SPY, bar, close_of
+from tests.support.market import JANUARY_2024, SPY, bar, close_of, dividend, split
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
-from tyche.adapters.data import CachedDataProvider, ParquetBarCache
-from tyche.core.domain import AssetClass, Bar, Currency, DataIssueKind, Instrument
+from tyche.adapters.data import BarSource, CachedDataProvider, ParquetBarCache, SourceData
+from tyche.core.domain import (
+    AssetClass,
+    Bar,
+    CashDistribution,
+    Currency,
+    DataIssue,
+    DataIssueKind,
+    Instrument,
+    PriceAdjustment,
+    Split,
+)
 from tyche.core.ports import Calendar, DataError, DataProvider
 from tyche.core.sim import SimClock
 
@@ -21,23 +30,33 @@ class FakeSource:
 
     name = "test"
 
-    def __init__(self, closes: dict[date, float], *, adjusted: bool = True) -> None:
+    def __init__(
+        self, closes: dict[date, float], *, adjustment: PriceAdjustment = PriceAdjustment.SPLITS
+    ) -> None:
         self.closes = dict(closes)
-        self.adjusted = adjusted
+        self.adjustment = adjustment
         self.extra: list[Bar] = []
+        self.distributions: list[CashDistribution] = []
+        self.splits: list[Split] = []
+        self.issues: list[DataIssue] = []
         self.failure: DataError | None = None
         self.requests: list[tuple[date, date]] = []
 
-    def fetch_daily(self, instrument: Instrument, first: date, last: date) -> Sequence[Bar]:
+    def fetch_daily(self, instrument: Instrument, first: date, last: date) -> SourceData:
         self.requests.append((first, last))
         if self.failure is not None:
             raise self.failure
         found = [
-            bar(day, close, adjusted=self.adjusted)
+            bar(day, close, adjustment=self.adjustment)
             for day, close in self.closes.items()
             if first <= day <= last
         ]
-        return [*found, *self.extra]
+        return SourceData(
+            bars=(*found, *self.extra),
+            distributions=tuple(d for d in self.distributions if first <= d.ex_date <= last),
+            splits=tuple(s for s in self.splits if first <= s.ex_date <= last),
+            issues=tuple(self.issues),
+        )
 
 
 @pytest.fixture(scope="module")
@@ -60,7 +79,7 @@ def every_session(close: float = 100.0) -> dict[date, float]:
 
 
 def provider(
-    source: FakeSource, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    source: BarSource, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
 ) -> CachedDataProvider:
     return CachedDataProvider(source, cache, {"XNYS": nyse}, clock)
 
@@ -255,7 +274,7 @@ class TestBadSourceData:
         provider(FakeSource(every_session()), cache, nyse, clock).daily_bars(
             SPY, date(2024, 1, 2), date(2024, 1, 5)
         )
-        unadjusted = FakeSource(every_session(), adjusted=False)
+        unadjusted = FakeSource(every_session(), adjustment=PriceAdjustment.NONE)
 
         with pytest.raises(DataError, match="refusing to mix"):
             provider(unadjusted, cache, nyse, clock).daily_bars(
@@ -290,3 +309,139 @@ class TestConfiguration:
         port: DataProvider = provider(FakeSource(every_session()), cache, nyse, clock)
 
         assert len(port.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 5)).bars) == 4
+
+
+class TestCorporateActions:
+    def test_distributions_and_splits_in_the_window_are_returned(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource(every_session())
+        source.distributions = [
+            dividend(date(2024, 1, 4), "1.5"),
+            dividend(date(2024, 1, 11), "0.5"),
+        ]
+        data = provider(source, cache, nyse, clock)
+
+        whole = data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+        part = data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 5))
+
+        assert [d.ex_date for d in whole.distributions] == [date(2024, 1, 4), date(2024, 1, 11)]
+        assert [d.ex_date for d in part.distributions] == [date(2024, 1, 4)]
+        assert len(source.requests) == 1  # the second answer came from the cache, actions included
+
+    def test_issues_the_source_found_are_passed_on(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource(every_session())
+        source.issues = [
+            DataIssue(DataIssueKind.INVALID_BAR, SPY, date(2024, 1, 9), "high below close")
+        ]
+
+        history = provider(source, cache, nyse, clock).daily_bars(
+            SPY, date(2024, 1, 2), date(2024, 1, 16)
+        )
+
+        assert [i.kind for i in history.issues] == [DataIssueKind.INVALID_BAR]
+
+
+class TestNewSplit:
+    """A split rewrites every earlier price, so older cached bars must be fetched again."""
+
+    def test_a_new_split_refetches_the_whole_history(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource(every_session(100.0))
+        data = provider(source, cache, nyse, clock)
+        data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 5))
+        # A 2-for-1 split on 9 January: the source now reports every price halved.
+        source.closes = every_session(50.0)
+        source.splits = [split(date(2024, 1, 9), "2")]
+
+        history = data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+
+        assert source.requests == [
+            (date(2024, 1, 2), date(2024, 1, 5)),
+            (date(2024, 1, 8), date(2024, 1, 16)),
+            (date(2024, 1, 2), date(2024, 1, 16)),
+        ]
+        assert {b.close for b in history.bars} == {50.0}
+        assert history.splits == (split(date(2024, 1, 9), "2"),)
+        assert not history.has_issues
+        assert {row.bar.close for row in cache.load(SPY, history.bars[0].timeframe).rows} == {50.0}
+
+    def test_a_split_already_known_does_not_refetch(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        # The source announces a split on the 12th before publishing that day's bar, so the
+        # 12th stays uncovered and is asked for again, and the same split comes back.
+        source = FakeSource({day: 100.0 for day in JANUARY_2024 if day <= date(2024, 1, 11)})
+        source.splits = [split(date(2024, 1, 12), "2")]
+        data = provider(source, cache, nyse, clock)
+        data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+        source.closes = every_session(100.0)
+
+        history = data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+
+        assert source.requests == [
+            (date(2024, 1, 2), date(2024, 1, 16)),
+            (date(2024, 1, 12), date(2024, 1, 16)),
+        ]
+        assert not history.has_issues
+
+    def test_a_split_before_every_cached_bar_does_not_refetch(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource(every_session())
+        data = provider(source, cache, nyse, clock)
+        data.daily_bars(SPY, date(2024, 1, 10), date(2024, 1, 16))
+        source.splits = [split(date(2024, 1, 3), "2")]  # older than anything cached
+
+        data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+
+        assert source.requests == [
+            (date(2024, 1, 10), date(2024, 1, 16)),
+            (date(2024, 1, 2), date(2024, 1, 9)),
+        ]
+
+    def test_a_split_dated_on_a_closed_day_still_triggers_a_refetch(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource(every_session(100.0))
+        data = provider(source, cache, nyse, clock)
+        data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 5))
+        source.closes = every_session(50.0)
+        source.splits = [split(date(2024, 1, 13), "2")]  # a Saturday, inside the new range
+
+        history = data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 16))
+
+        assert source.requests[-1] == (date(2024, 1, 2), date(2024, 1, 16))
+        assert {b.close for b in history.bars} == {50.0}
+
+    def test_a_refetch_that_returns_nothing_is_an_error(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        provider(FakeSource(every_session()), cache, nyse, clock).daily_bars(
+            SPY, date(2024, 1, 2), date(2024, 1, 5)
+        )
+        scripted = ScriptedSource(
+            SourceData(bars=(bar(date(2024, 1, 9), 50.0),), splits=(split(date(2024, 1, 9), "2"),)),
+            SourceData(),  # the full-history request comes back empty
+        )
+
+        with pytest.raises(DataError, match="new split, but the source returned no bars"):
+            provider(scripted, cache, nyse, clock).daily_bars(
+                SPY, date(2024, 1, 2), date(2024, 1, 16)
+            )
+
+
+class ScriptedSource:
+    """Returns prepared answers in order, one per request."""
+
+    name = "test"
+    adjustment = PriceAdjustment.SPLITS
+
+    def __init__(self, *answers: SourceData) -> None:
+        self.answers = list(answers)
+
+    def fetch_daily(self, instrument: Instrument, first: date, last: date) -> SourceData:
+        return self.answers.pop(0)

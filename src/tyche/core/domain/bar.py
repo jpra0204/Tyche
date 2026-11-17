@@ -3,10 +3,29 @@
 import math
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.timeframe import Timeframe
 from tyche.core.domain.validation import require_utc
+
+
+class PriceAdjustment(StrEnum):
+    """Which corporate actions a bar's prices and volume have been adjusted for.
+
+    Adjusting rewrites past prices so they line up with today's: after a 10-for-1
+    split, earlier prices are divided by 10. Sources differ in what they adjust for,
+    and mixing bases in one series produces fake jumps, so every bar says which it is.
+    """
+
+    NONE = "none"
+    """Prices as traded on the day."""
+
+    SPLITS = "splits"
+    """Adjusted for splits only. Dividends are separate cash events (ADR-0019)."""
+
+    SPLITS_AND_DIVIDENDS = "splits_and_dividends"
+    """Adjusted for splits and dividends. Changes every time a dividend is paid."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +48,7 @@ class Bar:
             this yet?". A daily bar is stamped at its session's close, not at midnight.
         open, high, low, close: Prices in the instrument's currency.
         volume: Units traded during the period.
-        is_adjusted: True if prices are adjusted for splits and dividends.
+        adjustment: Which corporate actions the prices and volume are adjusted for.
     """
 
     instrument: Instrument
@@ -40,7 +59,7 @@ class Bar:
     low: float
     close: float
     volume: float
-    is_adjusted: bool
+    adjustment: PriceAdjustment
 
     def __post_init__(self) -> None:
         require_utc(self.timestamp, f"{self._label()}: timestamp")

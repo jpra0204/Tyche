@@ -3,16 +3,19 @@
 import json
 import shutil
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of
+from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of, dividend, split
 from tyche.adapters.data import CacheEntry, DateRange, ParquetBarCache
-from tyche.core.domain import Timeframe
+from tyche.core.domain import PriceAdjustment, Timeframe
 from tyche.core.ports import DataError
+
+SPLITS = PriceAdjustment.SPLITS
 
 FIRST_FETCH = datetime(2024, 1, 20, 12, 0, tzinfo=UTC)
 SECOND_FETCH = datetime(2024, 2, 1, 12, 0, tzinfo=UTC)
@@ -31,7 +34,7 @@ def entry_with(
         [bar(day, close) for day in days],
         fetched_at=fetched_at,
         covered=DateRange(days[0], days[-1]),
-        is_adjusted=True,
+        adjustment=SPLITS,
     )
 
 
@@ -40,7 +43,7 @@ class TestRoundTrip:
         entry = cache.load(SPY, Timeframe.D1)
 
         assert entry == CacheEntry(SPY, Timeframe.D1)
-        assert entry.is_adjusted is None
+        assert entry.adjustment is None
         assert entry.rows == ()
 
     def test_what_is_stored_is_what_is_loaded(self, cache: ParquetBarCache) -> None:
@@ -93,7 +96,7 @@ class TestRoundTrip:
 class TestMerge:
     def test_a_newer_fetch_replaces_the_same_session_and_records_when(self) -> None:
         revised = entry_with(DAYS).merged(
-            [bar(DAYS[1], close=101.5)], fetched_at=SECOND_FETCH, covered=None, is_adjusted=True
+            [bar(DAYS[1], close=101.5)], fetched_at=SECOND_FETCH, covered=None, adjustment=SPLITS
         )
 
         assert [row.bar.close for row in revised.rows] == [100.0, 101.5, 100.0]
@@ -101,7 +104,7 @@ class TestMerge:
 
     def test_rows_stay_in_time_order(self) -> None:
         later_first = entry_with([DAYS[2]]).merged(
-            [bar(DAYS[0])], fetched_at=SECOND_FETCH, covered=None, is_adjusted=True
+            [bar(DAYS[0])], fetched_at=SECOND_FETCH, covered=None, adjustment=SPLITS
         )
 
         assert [row.bar.timestamp for row in later_first.rows] == [
@@ -110,8 +113,10 @@ class TestMerge:
         ]
 
     def test_refuses_to_mix_adjusted_and_unadjusted_prices(self) -> None:
-        with pytest.raises(DataError, match="holds adjusted prices; refusing to mix"):
-            entry_with(DAYS).merged([], fetched_at=SECOND_FETCH, covered=None, is_adjusted=False)
+        with pytest.raises(DataError, match="holds prices adjusted for 'splits'; refusing to mix"):
+            entry_with(DAYS).merged(
+                [], fetched_at=SECOND_FETCH, covered=None, adjustment=PriceAdjustment.NONE
+            )
 
     def test_refuses_a_bar_of_another_instrument(self) -> None:
         with pytest.raises(DataError, match="cannot cache a bar of QQQ@XNAS"):
@@ -119,22 +124,22 @@ class TestMerge:
                 [bar(DAYS[0], instrument=QQQ)],
                 fetched_at=FIRST_FETCH,
                 covered=None,
-                is_adjusted=True,
+                adjustment=SPLITS,
             )
 
     def test_refuses_a_bar_whose_adjustment_does_not_match(self) -> None:
         with pytest.raises(DataError, match="wrong adjustment"):
             CacheEntry(SPY, Timeframe.D1).merged(
-                [bar(DAYS[0], adjusted=False)],
+                [bar(DAYS[0], adjustment=PriceAdjustment.NONE)],
                 fetched_at=FIRST_FETCH,
                 covered=None,
-                is_adjusted=True,
+                adjustment=SPLITS,
             )
 
     def test_fetch_time_must_be_utc(self) -> None:
         with pytest.raises(ValueError, match="timezone-aware UTC"):
             CacheEntry(SPY, Timeframe.D1).merged(
-                [], fetched_at=FIRST_FETCH.replace(tzinfo=None), covered=None, is_adjusted=True
+                [], fetched_at=FIRST_FETCH.replace(tzinfo=None), covered=None, adjustment=SPLITS
             )
 
     def test_bars_between_selects_by_timestamp_inclusive(self) -> None:
@@ -150,7 +155,7 @@ class TestCoverage:
         entry = CacheEntry(SPY, Timeframe.D1)
         for first, last in ranges:
             entry = entry.merged(
-                [], fetched_at=FIRST_FETCH, covered=DateRange(first, last), is_adjusted=True
+                [], fetched_at=FIRST_FETCH, covered=DateRange(first, last), adjustment=SPLITS
             )
         return entry.coverage
 
@@ -273,3 +278,74 @@ def test_a_failed_write_keeps_the_previous_file_and_cleans_up(
 
     assert cache.load(SPY, Timeframe.D1) == before
     assert [p.name for p in cache.path_for(SPY, Timeframe.D1).parent.iterdir()] == ["SPY.parquet"]
+
+
+class TestCorporateActions:
+    def entry_with_actions(self) -> CacheEntry:
+        return entry_with(DAYS).merged(
+            [],
+            fetched_at=FIRST_FETCH,
+            covered=None,
+            adjustment=SPLITS,
+            distributions=[dividend(DAYS[1], "1.595"), dividend(DAYS[0], "0.123456789")],
+            splits=[split(DAYS[2], "10")],
+        )
+
+    def test_are_kept_in_date_order(self) -> None:
+        entry = self.entry_with_actions()
+
+        assert [d.ex_date for d in entry.distributions] == [DAYS[0], DAYS[1]]
+        assert entry.splits == (split(DAYS[2], "10"),)
+
+    def test_survive_a_round_trip_exactly(self, cache: ParquetBarCache) -> None:
+        entry = self.entry_with_actions()
+
+        cache.store(entry)
+        loaded = cache.load(SPY, Timeframe.D1)
+
+        assert loaded == entry
+        assert loaded.distributions[0].amount_per_share.amount == Decimal("0.123456789")
+        assert loaded.splits[0].ratio == Decimal(10)
+
+    def test_a_newer_value_for_the_same_date_replaces_the_old_one(self) -> None:
+        revised = self.entry_with_actions().merged(
+            [],
+            fetched_at=SECOND_FETCH,
+            covered=None,
+            adjustment=SPLITS,
+            distributions=[dividend(DAYS[1], "1.6")],
+        )
+
+        assert [str(d.amount_per_share.amount) for d in revised.distributions] == [
+            "0.123456789",
+            "1.6",
+        ]
+
+    def test_can_be_selected_by_date(self) -> None:
+        entry = self.entry_with_actions()
+
+        assert entry.distributions_between(DAYS[1], DAYS[2]) == (dividend(DAYS[1], "1.595"),)
+        assert entry.splits_between(DAYS[0], DAYS[1]) == ()
+
+    def test_another_instruments_action_is_refused(self) -> None:
+        with pytest.raises(DataError, match="cannot cache QQQ@XNAS dividend"):
+            entry_with(DAYS).merged(
+                [],
+                fetched_at=FIRST_FETCH,
+                covered=None,
+                adjustment=SPLITS,
+                distributions=[dividend(DAYS[0], "1", instrument=QQQ)],
+            )
+
+    def test_invalid_action_metadata_is_refused(self, cache: ParquetBarCache) -> None:
+        cache.store(self.entry_with_actions())
+        path = cache.path_for(SPY, Timeframe.D1)
+        table = pq.read_table(path)
+        metadata = json.loads(table.schema.metadata[b"tyche"])
+        metadata["distributions"][0]["currency"] = "CAD"
+        pq.write_table(
+            table.replace_schema_metadata({b"tyche": json.dumps(metadata).encode()}), path
+        )
+
+        with pytest.raises(DataError, match="has invalid metadata"):
+            cache.load(SPY, Timeframe.D1)

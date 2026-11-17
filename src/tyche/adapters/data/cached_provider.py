@@ -3,10 +3,16 @@
 This is a read-through cache: the caller asks for a range of sessions, the provider
 answers from the cache, asks the source for sessions it has not covered yet, stores
 what comes back, and audits the result against the trading calendar.
+
+Prices are cached adjusted for splits only, and dividends are kept as separate cash
+events (ADR-0019). A split rewrites every earlier price, so when a fetch reveals a
+split the cache has not seen, and the cache holds bars from before it, the
+instrument's whole history is fetched again.
 """
 
 from collections.abc import Mapping, Sequence
-from datetime import date
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time
 from typing import Protocol
 
 from tyche.adapters.data.parquet_cache import CacheEntry, DateRange, ParquetBarCache
@@ -14,24 +20,44 @@ from tyche.core.domain import (
     DEFAULT_MAX_DAILY_MOVE,
     Bar,
     BarHistory,
+    CashDistribution,
     DataIssue,
     DataIssueKind,
     Instrument,
+    PriceAdjustment,
     Session,
+    Split,
     Timeframe,
     audit_daily_bars,
 )
 from tyche.core.ports import Calendar, Clock, DataError
 
-# Found again from the cache on every request, so a fetch must not report them a second time.
+# Found again from the cache on every request, so a fetch must not report them twice.
 _REDERIVED = frozenset({DataIssueKind.MISSING_SESSION, DataIssueKind.SUSPECT_MOVE})
 
 
-class BarSource(Protocol):
-    """A vendor of raw daily bars, such as yfinance (PR 6).
+@dataclass(frozen=True, slots=True)
+class SourceData:
+    """What a ``BarSource`` returns for one request.
 
-    Sources are adapter-level: the core never sees one. A source returns bars already
-    converted to ``Bar`` objects, each stamped at its session's close in UTC.
+    Attributes:
+        bars: Bars the source sent, stamped at session closes in UTC where possible.
+        distributions: Cash distributions with an ex-date in the requested range.
+        splits: Splits with an ex-date in the requested range.
+        issues: Problems the source found while converting its data, such as a row
+            whose prices cannot be real. Those rows are not in ``bars``.
+    """
+
+    bars: tuple[Bar, ...] = ()
+    distributions: tuple[CashDistribution, ...] = ()
+    splits: tuple[Split, ...] = ()
+    issues: tuple[DataIssue, ...] = ()
+
+
+class BarSource(Protocol):
+    """A vendor of daily bars and corporate actions, such as yfinance.
+
+    Sources are adapter-level: the core never sees one.
     """
 
     @property
@@ -40,12 +66,12 @@ class BarSource(Protocol):
         ...
 
     @property
-    def adjusted(self) -> bool:
-        """Whether the bars this source returns are adjusted for splits and dividends."""
+    def adjustment(self) -> PriceAdjustment:
+        """How the prices this source returns are adjusted."""
         ...
 
-    def fetch_daily(self, instrument: Instrument, first: date, last: date) -> Sequence[Bar]:
-        """Return whatever bars the source has for sessions from ``first`` to ``last``.
+    def fetch_daily(self, instrument: Instrument, first: date, last: date) -> SourceData:
+        """Return what the source has for sessions from ``first`` to ``last``.
 
         Raises:
             DataError: The source could not be reached or answered with an error.
@@ -90,7 +116,8 @@ class CachedDataProvider:
         self._max_move = max_move
 
     def daily_bars(self, instrument: Instrument, first: date, last: date) -> BarHistory:
-        sessions = self._closed_sessions(instrument, first, last)
+        calendar = self._calendar_for(instrument)
+        sessions = self._closed_sessions(calendar, first, last)
         if not sessions:
             return BarHistory(instrument, ())
 
@@ -98,63 +125,103 @@ class CachedDataProvider:
         fetch_issues: tuple[DataIssue, ...] = ()
         uncovered = [session for session in sessions if not entry.covers(session.day)]
         if uncovered:
-            entry, fetch_issues = self._fetch(instrument, entry, sessions, uncovered)
+            entry, fetch_issues = self._fetch(
+                instrument, calendar, entry, uncovered[0].day, uncovered[-1].day
+            )
 
         rows = entry.bars_between(sessions[0].opens_at, sessions[-1].closes_at)
-        is_adjusted = self._source.adjusted if entry.is_adjusted is None else entry.is_adjusted
         audited = audit_daily_bars(
             instrument,
             (row.bar for row in rows),
             sessions,
-            adjusted=is_adjusted,
+            adjustment=entry.adjustment or self._source.adjustment,
             max_move=self._max_move,
         )
         # The fetch adds only what it dropped before caching; the rest is found again above.
         dropped = tuple(i for i in fetch_issues if i.kind not in _REDERIVED)
         fetched_times = [row.fetched_at for row in rows]
+        first_day, last_day = sessions[0].day, sessions[-1].day
         return BarHistory(
             instrument,
             audited.bars,
-            dropped + audited.issues,
-            (min(fetched_times), max(fetched_times)) if fetched_times else None,
+            issues=dropped + audited.issues,
+            distributions=entry.distributions_between(first_day, last_day),
+            splits=entry.splits_between(first_day, last_day),
+            fetched=(min(fetched_times), max(fetched_times)) if fetched_times else None,
         )
 
-    def _closed_sessions(self, instrument: Instrument, first: date, last: date) -> list[Session]:
+    def _calendar_for(self, instrument: Instrument) -> Calendar:
         calendar = self._calendars.get(instrument.calendar)
         if calendar is None:
             raise DataError(f"no calendar {instrument.calendar!r} loaded for {instrument}")
+        return calendar
+
+    def _closed_sessions(self, calendar: Calendar, first: date, last: date) -> list[Session]:
         now = self._clock.now()
         return [s for s in calendar.sessions_between(first, last) if s.closes_at <= now]
 
     def _fetch(
         self,
         instrument: Instrument,
+        calendar: Calendar,
         entry: CacheEntry,
-        sessions: Sequence[Session],
-        uncovered: Sequence[Session],
+        first: date,
+        last: date,
     ) -> tuple[CacheEntry, tuple[DataIssue, ...]]:
-        fetch_first, fetch_last = uncovered[0].day, uncovered[-1].day
-        raw = self._source.fetch_daily(instrument, fetch_first, fetch_last)
-        window = [s for s in sessions if fetch_first <= s.day <= fetch_last]
+        data = self._source.fetch_daily(instrument, first, last)
+
+        if self._invalidated_by_new_split(entry, data.splits, calendar):
+            # Every cached price from before the split is on the old basis. Start again.
+            first = entry.coverage[0].first
+            last = max(last, entry.coverage[-1].last)
+            data = self._source.fetch_daily(instrument, first, last)
+            if not data.bars:
+                raise DataError(
+                    f"{instrument} has a new split, but the source returned no bars when "
+                    f"its full history ({first} to {last}) was requested again"
+                )
+            entry = CacheEntry(instrument, Timeframe.D1)
+
+        window = self._closed_sessions(calendar, first, last)
         audited = audit_daily_bars(
             instrument,
-            raw,
+            data.bars,
             window,
-            adjusted=self._source.adjusted,
+            adjustment=self._source.adjustment,
             max_move=self._max_move,
         )
-
+        issues = data.issues + audited.issues
         if not audited.bars:
             # Nothing usable came back: cover nothing, store nothing, ask again next time.
-            return entry, audited.issues
+            return entry, issues
 
         last_returned = audited.bars[-1].timestamp
         through = max(s.day for s in window if s.closes_at <= last_returned)
         updated = entry.merged(
             audited.bars,
             fetched_at=self._clock.now(),
-            covered=DateRange(fetch_first, through),
-            is_adjusted=self._source.adjusted,
+            covered=DateRange(first, through),
+            adjustment=self._source.adjustment,
+            distributions=data.distributions,
+            splits=data.splits,
         )
         self._cache.store(updated)
-        return updated, audited.issues
+        return updated, issues
+
+    @staticmethod
+    def _invalidated_by_new_split(
+        entry: CacheEntry, splits: Sequence[Split], calendar: Calendar
+    ) -> bool:
+        known = set(entry.splits)
+        for split in splits:
+            if split in known:
+                continue
+            session = calendar.session_on(split.ex_date)
+            cutoff = (
+                session.opens_at
+                if session is not None
+                else datetime.combine(split.ex_date, time.min, tzinfo=UTC)
+            )
+            if any(row.bar.timestamp < cutoff for row in entry.rows):
+                return True
+        return False
