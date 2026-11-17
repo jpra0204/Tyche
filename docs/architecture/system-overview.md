@@ -1,0 +1,224 @@
+# System overview
+
+*Status: Phase 0 design, awaiting Pablo's review. Nothing described here is implemented yet except the package skeleton and the CI checks.*
+
+This is the one document to read to understand how Tyche is put together. Each section links to the ADR that records the decision behind it.
+
+## 1. What Tyche is
+
+Tyche is a trading framework that runs on your own machine. It has two separate halves:
+
+- **The trading path** turns market data into orders: `data → universe → screening → signals → portfolio → risk → execution → reconciliation → journal`. It is plain, deterministic, tested Python. No LLM is involved.
+- **The improvement loop** runs offline. LLM agents read the journal and reports and write *proposals* as files. A proposal changes nothing until it has passed an automated backtest gate and you have approved it.
+
+The two halves share data through files and the database, never through function calls. CI enforces that the trading path cannot import agent code ([ADR-0007](../adr/0007-python-driven-agents.md)).
+
+## 2. System context
+
+```mermaid
+flowchart LR
+    pablo(["Pablo"])
+
+    subgraph machine["Your machine (Docker from Phase 2)"]
+        tyche["Tyche"]
+        ws[("Private workspace<br/>config, data, state, reports")]
+        gw["IB Gateway"]
+        claude["Claude Code<br/>(headless, agents only)"]
+    end
+
+    yf["yfinance<br/>free daily bars"]
+    ibkr["Interactive Brokers"]
+    discord["Discord channel"]
+
+    pablo -- "CLI commands, approvals" --> tyche
+    tyche -- "reads and writes" --> ws
+    tyche -- "daily bars" --> yf
+    tyche -- "orders, fills, positions" --> gw
+    gw --- ibkr
+    tyche -- "summaries and alerts" --> discord
+    tyche -- "prompt in, JSON out" --> claude
+    discord -. "notifications" .-> pablo
+```
+
+## 3. Core, ports and adapters
+
+Tyche uses a ports-and-adapters (hexagonal) structure ([ADR-0004](../adr/0004-hexagonal-architecture.md)). The rule is about purity:
+
+- **`tyche.core`** is pure code. It does no network or disk I/O, never reads the wall clock and never imports a vendor library.
+- **Ports** (`tyche.core.ports`) are the interfaces the core uses to reach the outside world: `Clock`, `Calendar`, `DataProvider`, `Broker`, `Notifier`, `LLMProvider` and the storage ports.
+- **Adapters** (`tyche.adapters`) implement ports against a real vendor, the network, the disk or the wall clock.
+- **The runtime** (`tyche.runtime`) is the only place that knows both sides. It picks adapters and hands them to the core.
+
+```mermaid
+flowchart LR
+    subgraph outer["tyche.cli and tyche.runtime"]
+        cli["CLI commands"]
+        rt["Composition root<br/>picks clock, feed, broker"]
+    end
+
+    subgraph core["tyche.core (pure)"]
+        engine["Engine and event bus"]
+        stages["Pipeline stages and risk"]
+        sim["Simulator<br/>SimClock, SimBroker, replay feed"]
+        ports{{"Ports<br/>Clock, Calendar, DataProvider,<br/>Broker, Notifier, LLMProvider, stores"}}
+        engine --> stages
+        stages --> ports
+        sim -. "implements" .-> ports
+    end
+
+    subgraph adapters["tyche.adapters (outside world)"]
+        a1["yfinance, Parquet cache"]
+        a2["IBKR via ib_async"]
+        a3["exchange_calendars, wall clock"]
+        a4["Discord webhook"]
+        a5["SQLite, report rendering"]
+        a6["claude-code LLM adapter"]
+    end
+
+    cli --> rt
+    rt --> engine
+    rt --> adapters
+    adapters -. "implement" .-> ports
+```
+
+The simulated clock, feed and broker are pure code we write ourselves, so they live in `tyche.core.sim`, not in `tyche.adapters`.
+
+Five import-linter contracts in `pyproject.toml` turn these rules into CI failures. The folder-by-folder map is in the [repo map](../developer-guide/repo-map.md).
+
+## 4. One engine, three modes
+
+Backtest, paper and live run the same engine and the same pipeline stages ([ADR-0005](../adr/0005-backtest-paper-live-parity.md)). The runtime swaps exactly three things:
+
+| Mode | Clock | Data feed | Broker |
+|---|---|---|---|
+| Backtest | `SimClock` (jumps from event to event) | Historical replay from the Parquet cache | `SimBroker` |
+| Paper | Wall clock | Live feed (fetch after the close) | `IBKRBroker` on the paper account |
+| Live | Wall clock | Live feed | `IBKRBroker` on the live account, only after the manual gate in [ADR-0013](../adr/0013-live-trading-gate.md) |
+
+Parity means the *code path* is the same. It does not mean simulated fills match real ones; the limits are listed in section 9.
+
+## 5. The event flow
+
+Components never call each other. Each one subscribes to the events it needs and publishes the events it produces, through a synchronous, single-threaded bus ([ADR-0003](../adr/0003-synchronous-event-bus.md)). The full list of events is in the [event catalog](event-catalog.md).
+
+```mermaid
+flowchart TB
+    feed["Data feed"] -- "BarEvent ... then DataReadyEvent" --> s1["1. Universe"]
+    s1 -- "UniverseEvent" --> s2["2. Screening"]
+    s2 -- "ScreeningEvent" --> s3["3. Signals<br/>(strategy plugins)"]
+    s3 -- "SignalEvent per strategy,<br/>then SignalsReadyEvent" --> s4["4. Portfolio construction"]
+    s4 -- "TargetPortfolioEvent (proposed)" --> s5["5. Risk gate"]
+    s5 -- "ApprovedPortfolioEvent" --> s6["6. Execution"]
+    s5 -- "RiskEvent" --> journal
+    s6 -- "OrderEvent" --> broker["Broker port"]
+    broker -- "OrderEvent, FillEvent" --> acct["Account state"]
+    acct -- "AccountEvent" --> s7["7. Reconciliation"]
+    s7 -- "ReconciliationEvent" --> journal["8. Journal<br/>(subscribes to every event)"]
+    journal --> notifier["Notifier<br/>daily summary and alerts"]
+```
+
+Three properties of this flow matter most:
+
+1. **Risk cannot be bypassed, by construction.** Portfolio construction publishes a *proposed* `TargetPortfolioEvent`. Execution only accepts `ApprovedPortfolioEvent`, and only the risk gate creates one ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)).
+2. **The run is deterministic.** The engine takes the next input from the feed only when the event queue is empty, so everything caused by one input is finished before the next arrives. The same inputs always produce the same sequence of events.
+3. **The journal is the event log.** The journal subscribes to every event and stores it with its cause. Reports, the Discord summary and the weekly review all read from it.
+
+### An end-of-day cycle, step by step
+
+The timeframe is a field on the bar, and nothing in the core assumes one bar per day. For the end-of-day setup in Phases 1 and 2, one cycle looks like this:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant F as Data feed
+    participant B as Broker (Sim or IBKR)
+    participant P as Pipeline stages 1 to 4
+    participant R as Risk gate
+    participant X as Execution
+    participant J as Journal and notifier
+
+    Note over F,J: Session t+1 has closed (plus the configured buffer)
+    F->>B: BarEvent for session t+1, per instrument
+    B->>J: FillEvent for orders decided at close t (filled at the open of t+1), and any stop that triggered
+    F->>P: DataReadyEvent (all bars for t+1 delivered and quality-checked)
+    P->>R: TargetPortfolioEvent (proposed), using data up to the close of t+1 only
+    R->>X: ApprovedPortfolioEvent (shrunk, blocked or flattened as needed)
+    R->>J: RiskEvent for every adjustment
+    X->>B: OrderEvent, to fill at the open of t+2
+    B->>J: Reconciliation, then daily summary
+```
+
+This is how lookahead is prevented: a decision uses data up to the close of session *t*, and its orders fill at the open of *t+1* at the earliest.
+
+## 6. Risk and safety model
+
+Limits are layered, and each layer can only be stricter than the one above it ([ADR-0010](../adr/0010-config-toml-pydantic.md)):
+
+```mermaid
+flowchart TB
+    g["Hard guardrails<br/>one file, only Pablo edits"]
+    p["Active risk profile<br/>default, safecash, ..."]
+    o["Per-strategy overrides"]
+    g -- "a profile may not exceed" --> p
+    p -- "an override may only be stricter" --> o
+```
+
+Config that breaks this ordering fails validation, and Tyche refuses to start.
+
+Other safety mechanisms:
+
+| Mechanism | Behaviour | Phase |
+|---|---|---|
+| Position sizing | With a stop: sized so a stop-out loses at most the profile's risk per trade. Always: capped by max position size and max open positions. | 2 |
+| Protective stops | A target may carry a stop price. The stop rests at the broker, so it works while Tyche is not running. | 1 (sim), 2 (IBKR) |
+| Daily loss limit | Blocks new entries for the rest of the session. | 2 |
+| Drawdown kill switch | Halts everything; only a manual restart resumes. | 2 |
+| Manual kill switch | `KILL` flag file plus a CLI command. No new orders; optional flatten. | 2 |
+| Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
+| Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
+| Live gate | Live mode needs a manual, interactive arming step that code and agents cannot perform. | 2 |
+
+## 7. Where state lives
+
+The code repository is public; your trading setup is not. Everything specific to you lives in a private workspace folder, `TYCHE_HOME`, which is its own private git repository ([ADR-0008](../adr/0008-public-code-private-workspace.md)).
+
+```text
+$TYCHE_HOME/
+├── .env                 secrets (gitignored)
+├── config/
+│   ├── tyche.toml       market profile, active strategies and budgets, schedule
+│   ├── guardrails.toml  hard limits
+│   ├── risk/            one file per named risk profile
+│   └── strategies/      one file per strategy instance (versioned parameters)
+├── strategies/          your own strategy plugins (optional)
+├── research/            agent research notes
+├── proposals/           agent proposals, gate results, your decisions
+├── reports/             backtest reports, each with its config and code version
+├── data/                Parquet market-data cache (gitignored)
+├── state/               SQLite database and run state (gitignored)
+├── logs/                structured daily logs (gitignored)
+└── KILL                 kill-switch flag (present means on)
+```
+
+Storage formats are in [ADR-0009](../adr/0009-storage-sqlite-parquet.md): SQLite for operational state, Parquet for market data, DuckDB for ad hoc analysis.
+
+## 8. Agents
+
+Three agents (research analyst, performance reviewer, strategy proposer) run offline as Python workflows that call an LLM as a function. Their inputs and outputs are files validated against JSON Schemas. See [agent architecture](agent-architecture.md).
+
+## 9. Assumptions and honest notes
+
+You asked for plain statements where something is a likely way to lose money or fool yourself. These are the ones I see in the brief. None blocks Phase 1; each needs a decision or a verification at the phase noted.
+
+1. **A small account is expensive to trade.** With under $1,000 CAD split over up to five positions, each position is small. A per-order minimum commission is then a large percentage of every trade, and whole-share sizing may make some targets impossible. I will verify IBKR Canada's current commissions and fractional-share rules at the start of Phase 1 and model them exactly. Expect backtests at this size to show costs eating most simple strategies; that is useful information, not a bug.
+2. **Three months of paper trading is not evidence of an edge.** For end-of-day strategies, three months is a few dozen trades at most. It proves the plumbing works. Evidence of edge has to come from out-of-sample backtests, and even that is weak. The promotion rule should be read as "at least three months *and* the system behaved correctly", not as a statistical test.
+3. **A weekly proposal loop is an overfitting machine unless it is fenced in.** Testing a new idea against the same history every week will eventually find something that passes by luck. The gate will keep a registry of every candidate ever tried per strategy, reserve a holdout period the proposer never sees, and report results with the trial count beside them (Phase 3).
+4. **Cash-account settlement can block same-day rotation.** In a cash account, sale proceeds may not be usable until they settle. A rotation that sells and buys at the same open may then be partly unfunded. `SimBroker` will model settled and unsettled cash; I will verify IBKR's rule for Canadian cash accounts in Phase 1.
+5. **Free data has real limits.** yfinance is unofficial, can change or break without notice, revises adjusted prices, and only lists companies that still exist (survivorship bias). ETF-based strategies are affected less than stock-picking ones. Every report will state these limits.
+6. **Daily loss limit in an end-of-day system.** Tyche decides once per session, so "no new entries for the rest of the day" means: if equity fell by the limit or more during session *t*, the decision made at the close of *t* opens no new positions. With intraday data later, the same rule applies within the session. Tell me if you meant something else.
+7. **Tax.** Tyche will record what you need for adjusted cost base in CAD (Phase 4). It will not decide how the CRA classifies your trading; frequent trading can be treated as business income, and the superficial-loss rule affects ACB. Worth a conversation with an accountant before going live. This is not tax advice.
+8. **Draft strategies written by an agent are untrusted code.** A proposed strategy file must be read and approved by you before Tyche executes it, even in a backtest.
+
+## 10. Open decisions
+
+Tracked in [`STATUS.md`](../../STATUS.md). The ADRs marked *Proposed* are my recommendations and need your approval in the Phase 0 review.
