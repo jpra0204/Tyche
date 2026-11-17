@@ -1,6 +1,48 @@
-"""Loading and validating configuration from the workspace.
+"""The workspace and its configuration.
 
-Planned (Phase 1 onward): reads TOML and ``.env`` from ``TYCHE_HOME``, builds typed
-settings and refuses to start on any invalid value (ADR-0010). The typed models
-themselves live next to the code they configure.
+Available now:
+
+* ``Workspace``, ``resolve_home``, ``check_location`` and ``init_workspace``: where
+  the private workspace is and how to create one (ADR-0008).
+* ``load_config``: reads the workspace's TOML files, validates them with pydantic,
+  converts them to domain objects and fingerprints them. Invalid config raises
+  ``ConfigError`` and Tyche refuses to start (ADR-0010).
+
+The file schemas live here; the core only receives domain objects (ADR-0017).
 """
+
+from tyche.config.loader import (
+    SCHEMA_VERSION,
+    ConfigError,
+    MarketProfileFile,
+    TycheConfig,
+    TycheFile,
+    config_hash,
+    load_config,
+)
+from tyche.config.workspace import (
+    DEFAULT_HOME,
+    HOME_ENV_VAR,
+    Workspace,
+    WorkspaceError,
+    check_location,
+    init_workspace,
+    resolve_home,
+)
+
+__all__ = [
+    "DEFAULT_HOME",
+    "HOME_ENV_VAR",
+    "SCHEMA_VERSION",
+    "ConfigError",
+    "MarketProfileFile",
+    "TycheConfig",
+    "TycheFile",
+    "Workspace",
+    "WorkspaceError",
+    "check_location",
+    "config_hash",
+    "init_workspace",
+    "load_config",
+    "resolve_home",
+]

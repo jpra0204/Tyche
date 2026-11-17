@@ -51,6 +51,8 @@ make check     # everything CI runs: lint, format check, types, import contracts
 make format    # auto-format and apply safe lint fixes
 make test      # pytest with coverage
 uv run tyche --version
+uv run tyche init --home <scratch-folder>   # creates a workspace; never run it on Pablo's real one
+uv run tyche config check                  # validates the workspace config, prints its hash
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.
@@ -74,7 +76,7 @@ src/tyche/
 │   └── agents/       offline LLM-agent workflows
 ├── strategies/   built-in strategy plugins
 ├── adapters/     everything that touches the outside world, one folder per port
-├── config/       loading and validating workspace config
+├── config/       the workspace, config file schemas, loading and the config hash
 ├── runtime/      composition root: wires adapters into the core
 └── cli/          the `tyche` command
 tests/            mirrors src/tyche

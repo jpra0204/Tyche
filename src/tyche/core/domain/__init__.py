@@ -4,7 +4,7 @@ Immutable data with no behaviour that needs I/O. Every object validates itself w
 is created, so an instance that exists can be trusted everywhere it travels.
 
 Available now: ``Currency``, ``Money``, ``Timeframe``, ``Instrument``, ``AssetClass``,
-``Bar`` and ``Session``.
+``Bar``, ``Session`` and ``MarketProfile``.
 
 Planned (Phase 1, PR 8): ``Order``, ``Fill``, ``Position`` and ``Account`` (cash per
 currency).
@@ -13,6 +13,7 @@ currency).
 from tyche.core.domain.bar import Bar
 from tyche.core.domain.currency import Currency
 from tyche.core.domain.instrument import AssetClass, Instrument
+from tyche.core.domain.market_profile import MarketProfile, require_profile_name
 from tyche.core.domain.money import CurrencyMismatchError, Money
 from tyche.core.domain.session import Session
 from tyche.core.domain.timeframe import Timeframe
@@ -23,7 +24,9 @@ __all__ = [
     "Currency",
     "CurrencyMismatchError",
     "Instrument",
+    "MarketProfile",
     "Money",
     "Session",
     "Timeframe",
+    "require_profile_name",
 ]

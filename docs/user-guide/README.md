@@ -4,13 +4,14 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 
 ## Available now
 
-Nothing a user can do yet: Phase 0 contains no trading functionality. To set up the development environment, see the [README](../../README.md#getting-started-development).
+| Page | What it covers |
+|---|---|
+| [Installation and your workspace](01-installation.md) | Installing Tyche, creating your private workspace, checking its configuration |
 
 ## Planned
 
 | Page | What it will cover | Written in |
 |---|---|---|
-| `01-installation.md` | Installing Tyche and creating your private workspace | Phase 1 |
 | `02-running-a-backtest.md` | Running a backtest and reading the report | Phase 1 |
 | `03-first-time-setup.md` | IBKR paper account, IB Gateway, Discord webhook, `.env`, choosing a market profile and a risk profile | Phase 2 |
 | `04-daily-and-weekly-routine.md` | What Tyche does by itself and what you check | Phase 2 |

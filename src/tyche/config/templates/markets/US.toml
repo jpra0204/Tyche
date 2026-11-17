@@ -1,0 +1,12 @@
+# Market profile: US stocks and ETFs, with USD cash.
+#
+# The file name, without .toml, must equal `name`.
+
+name = "US"
+
+# Currencies the account holds cash in under this profile.
+cash_currencies = ["USD"]
+
+# Trading calendars of the profile's markets, as market identifier codes.
+# XNYS covers every US exchange, including NASDAQ and NYSE Arca.
+calendars = ["XNYS"]

@@ -187,6 +187,7 @@ $TYCHE_HOME/
 ├── .env                 secrets (gitignored)
 ├── config/
 │   ├── tyche.toml       market profile, active strategies and budgets, schedule
+│   ├── markets/         one file per market profile (US.toml, later CA.toml, CA+US.toml)
 │   ├── guardrails.toml  hard limits
 │   ├── risk/            one file per named risk profile
 │   └── strategies/      one file per strategy instance (versioned parameters)
