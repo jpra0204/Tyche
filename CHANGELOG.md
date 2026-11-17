@@ -28,6 +28,7 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `tyche data fetch` (Phase 1, PR 6b): downloads daily bars, dividends and splits from Yahoo Finance into the workspace cache, audited against the calendar.
 - `YFinanceSource`: stamps bars at session closes, retries rate limits and network failures with exponential backoff, fails at once on unknown symbols.
 - `SystemClock`, the real-time `Clock`, and a table of known US exchanges.
+
 - User guide: fetching market data. Developer guide: how to add a data source.
 - `network` test marker for opt-in tests against real services.
 - Runtime dependency: `yfinance` (Apache-2.0). Development dependency: `pandas-stubs` (BSD-3-Clause).
@@ -39,6 +40,8 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `Money.round_to`, banker's rounding at an explicit number of places.
 - Property-based tests for the ledger. Learning note: property-based testing.
 - Development dependency: `hypothesis` (MPL-2.0).
+
+- IBKR Canada costs and settlement, checked 2026-11-17 and written up with sources; ADR-0020 (cost and settlement model) proposed (Phase 1, PR 9).
 
 ### Changed
 
