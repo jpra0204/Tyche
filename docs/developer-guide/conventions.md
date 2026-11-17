@@ -51,7 +51,8 @@ Rules:
 - Tests are deterministic. No real network, no real clock, no sleeping. Randomness uses a fixed seed. Use `SimClock` wherever code needs the time.
 - A warning fails the test run. If a library raises one that we cannot fix, add a narrow `ignore` to `filterwarnings` in `pyproject.toml` with the reason and the condition for removing it.
 - Every folder under `tests/` has an `__init__.py`, so two test files may share a name in different folders.
-- The `ibkr_paper` marker is deselected by default. Run those tests on purpose with `uv run pytest -m ibkr_paper`.
+- The `ibkr_paper` and `network` markers are deselected by default. Run those tests on purpose with `uv run pytest -m ibkr_paper` or `uv run pytest -m network`. Every adapter for an external service has one `network` test that checks the facts it relies on.
+- Make network calls and pauses injectable (a `fetch` function, a `sleep` function), so unit tests never touch the network or wait.
 - **No automated test ever touches a live account.**
 - A bug fix comes with a test that fails without the fix.
 

@@ -8,7 +8,8 @@ Available now:
   ``BarSource``, auditing every answer against the trading calendar.
 * ``BarSource`` and ``SourceData``: what a data vendor adapter implements and returns.
 
-Planned (Phase 1, PR 6): the yfinance ``BarSource``, with retries.
+* ``YFinanceSource``: daily bars and corporate actions from Yahoo Finance, with retries.
+  Yahoo's data is for personal use only; see the module docstring.
 """
 
 from tyche.adapters.data.cached_provider import BarSource, CachedDataProvider, SourceData
@@ -19,6 +20,7 @@ from tyche.adapters.data.parquet_cache import (
     DateRange,
     ParquetBarCache,
 )
+from tyche.adapters.data.yfinance_source import YFinanceSource, yfinance_fetcher
 
 __all__ = [
     "CACHE_FORMAT",
@@ -29,4 +31,6 @@ __all__ = [
     "DateRange",
     "ParquetBarCache",
     "SourceData",
+    "YFinanceSource",
+    "yfinance_fetcher",
 ]

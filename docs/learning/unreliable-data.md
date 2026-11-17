@@ -66,6 +66,18 @@ If you have used a data-fetching library on the front end such as React Query or
 - The read-through provider: `tyche.adapters.data.cached_provider`.
 - The clock decides which sessions should exist: a session that has not closed yet is not expected to have a bar.
 
+### 3. Retry only what can change
+
+Some failures are worth a second try and some are not. Tyche's Yahoo adapter sorts them:
+
+| Failure | Retry? | Why |
+|---|---|---|
+| Rate limit (HTTP 429), server error (5xx), timeout, dropped connection | Yes, up to 3 tries, pausing 2 s then 4 s | The same request may work in a moment |
+| Unknown symbol (HTTP 404) | No | It will fail the same way every time |
+| No data for the range (a weekend, before a fund existed) | Not a failure | An empty answer; the audit reports the missing sessions |
+
+The pause doubles each time (*exponential backoff*), so a struggling service gets more breathing room with each try instead of a burst of repeats.
+
 ## What it costs
 
 - **A gap the source later fixes stays a gap in the cache**, because the day is already covered. Deleting the instrument's cache file forces a full refetch. A proper refresh command can come later.

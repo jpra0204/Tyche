@@ -3,6 +3,8 @@
 import re
 import subprocess
 import sys
+from collections.abc import Callable
+from datetime import date
 from importlib.metadata import version
 from pathlib import Path
 
@@ -10,7 +12,11 @@ import pytest
 from typer.testing import CliRunner
 
 import tyche
+from tests.adapters.data.test_yfinance_source import row
+from tests.support.market import JANUARY_2024
+from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
 from tyche.cli import app
+from tyche.runtime import data as runtime_data
 
 runner = CliRunner()
 
@@ -143,3 +149,165 @@ class TestConfigCheck:
 
         assert result.exit_code == 1
         assert "TYCHE_HOME is set but empty" in result.stderr
+
+
+class TestDataFetch:
+    @pytest.fixture
+    def offline(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, date, date]]:
+        """Replace Yahoo with canned rows for January 2024; record every request."""
+        calls: list[tuple[str, date, date]] = []
+
+        def fake_fetcher(
+            cache_dir: Path | None = None,
+        ) -> Callable[[str, date, date], list[YahooRow]]:
+            def fetch(ticker: str, start: date, end: date) -> list[YahooRow]:
+                calls.append((ticker, start, end))
+                if ticker == "ZZZQX":
+                    raise UnknownSymbolError("no timezone found")
+                rows = [row(day) for day in JANUARY_2024 if start <= day < end]
+                if rows:
+                    rows[2] = row(rows[2].day, dividend=0.5)
+                return rows
+
+            return fetch
+
+        monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
+        return calls
+
+    def test_fetches_and_summarises(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app,
+            [
+                "data",
+                "fetch",
+                "SPY",
+                "--exchange",
+                "ARCX",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-16",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (
+            "SPY@ARCX: 10 bars, 2024-01-02 to 2024-01-16; 1 distribution; 0 splits" in result.stdout
+        )
+        assert offline == [("SPY", date(2024, 1, 2), date(2024, 1, 17))]
+
+    def test_lists_data_issues(self, home: Path, offline: list[tuple[str, date, date]]) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app,
+            [
+                "data",
+                "fetch",
+                "SPY",
+                "--exchange",
+                "ARCX",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-31",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "data issue(s):" in result.stdout
+        assert "2024-01-17 missing_session: no bar for this session" in result.stdout
+        assert "... and" in result.stdout  # more than ten missing sessions after 16 January
+
+    def test_a_failed_symbol_is_reported_and_fails_the_command(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app,
+            [
+                "data",
+                "fetch",
+                "ZZZQX",
+                "SPY",
+                "--exchange",
+                "XNAS",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-16",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Error: ZZZQX@XNAS: Yahoo Finance does not know the symbol 'ZZZQX'" in result.stderr
+        assert "SPY@XNAS: 10 bars" in result.stdout
+
+    def test_an_unknown_exchange_fails_before_fetching(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(app, ["data", "fetch", "XIU", "--exchange", "XTSE"])
+
+        assert result.exit_code == 1
+        assert "unknown exchange 'XTSE'" in result.stderr
+        assert offline == []
+
+    def test_needs_a_workspace(self, home: Path, offline: list[tuple[str, date, date]]) -> None:
+        result = runner.invoke(app, ["data", "fetch", "SPY", "--exchange", "ARCX"])
+
+        assert result.exit_code == 1
+        assert "config/tyche.toml is missing" in result.stderr
+
+    def test_a_range_with_no_sessions_says_so(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app,
+            [
+                "data",
+                "fetch",
+                "SPY",
+                "--exchange",
+                "ARCX",
+                "--from",
+                "2024-01-13",
+                "--to",
+                "2024-01-15",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout.strip() == "SPY@ARCX: no bars in this range"
+
+    def test_a_short_issue_list_is_shown_in_full(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app,
+            [
+                "data",
+                "fetch",
+                "SPY",
+                "--exchange",
+                "ARCX",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-17",
+            ],
+        )
+
+        assert "1 data issue(s):" in result.stdout
+        assert "2024-01-17 missing_session" in result.stdout
+        assert "... and" not in result.stdout
