@@ -56,6 +56,11 @@ class Workspace:
     def env_file(self) -> Path:
         return self.root / ".env"
 
+    @property
+    def data_dir(self) -> Path:
+        """Market data. Gitignored: it is large and can be fetched again."""
+        return self.root / "data"
+
     def relative(self, path: Path) -> str:
         """``path`` relative to the workspace root, for messages."""
         return path.relative_to(self.root).as_posix()

@@ -195,7 +195,8 @@ $TYCHE_HOME/
 ├── research/            agent research notes
 ├── proposals/           agent proposals, gate results, your decisions
 ├── reports/             backtest reports, each with its config and code version
-├── data/                Parquet market-data cache (gitignored)
+├── data/                market data (gitignored): bars/<source>/<timeframe>/<exchange>/<symbol>.parquet,
+│                        plus yfinance's own small caches
 ├── state/               SQLite database and run state (gitignored)
 ├── logs/                structured daily logs (gitignored)
 └── KILL                 kill-switch flag (present means on)

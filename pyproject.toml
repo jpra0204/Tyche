@@ -12,6 +12,7 @@ dependencies = [
     "pyarrow>=26.0.1",
     "pydantic>=2.14.3",
     "typer>=0.29.1",
+    "yfinance>=1.8.0",
 ]
 
 [project.scripts]
@@ -25,6 +26,7 @@ build-backend = "uv_build"
 dev = [
     "import-linter>=2.16",
     "mypy>=2.4.1",
+    "pandas-stubs>=3.1.0.261029",
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
@@ -69,12 +71,19 @@ files = ["src", "tests"]
 module = ["exchange_calendars", "exchange_calendars.*"]
 ignore_missing_imports = true
 
+# yfinance ships no type information either. Only tyche.adapters.data.yfinance_source
+# imports it, and that module turns every value into our own types straight away.
+[[tool.mypy.overrides]]
+module = ["yfinance", "yfinance.*"]
+ignore_missing_imports = true
+
 # --- pytest -------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not ibkr_paper"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not ibkr_paper and not network"]
 markers = [
     "ibkr_paper: opt-in integration test against an IBKR PAPER account (never live); run with -m ibkr_paper",
+    "network: opt-in test that calls a real external service, such as Yahoo Finance; run with -m network",
 ]
 # Every warning fails the test run, so a new one is dealt with instead of scrolling past.
 # Each exception below names its source and the condition for removing it.
