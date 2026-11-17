@@ -1,0 +1,41 @@
+# Secrets: never commit. The real .env lives in the private workspace (ADR-0008).
+.env
+.env.*
+!.env.example
+
+# Workspace state, in case a workspace is ever created inside this repo by mistake
+/workspace/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.duckdb
+*.parquet
+/logs/
+KILL
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json

@@ -1,0 +1,142 @@
+[project]
+name = "tyche"
+version = "0.0.1"
+description = "Tyche: an event-driven, agent-assisted trading framework."
+readme = "README.md"
+authors = [{ name = "jpra0204" }]
+requires-python = ">=3.14"
+# Runtime dependencies are added in the phase that first uses them, so the
+# lockfile only ever contains what the code actually imports. See ADR-0002.
+dependencies = []
+
+[project.scripts]
+tyche = "tyche.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.16",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.5",
+]
+
+# --- Ruff: lint + format ----------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", # pycodestyle + pyflakes
+    "I",           # import sorting
+    "N",           # naming
+    "UP",          # modern Python idioms
+    "B",           # likely bugs
+    "SIM",         # simplifications
+    "C4",          # comprehensions
+    "PT",          # pytest style
+    "PTH",         # pathlib over os.path
+    "DTZ",         # no naive datetimes: every timestamp in Tyche is timezone-aware
+    "TID",         # tidy imports
+    "RUF",         # ruff-specific
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all" # absolute imports only, so the layer of every import is visible
+
+# --- mypy: strict everywhere -------------------------------------------------
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+files = ["src", "tests"]
+
+# --- pytest -------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not ibkr_paper"]
+markers = [
+    "ibkr_paper: opt-in integration test against an IBKR PAPER account (never live); run with -m ibkr_paper",
+]
+
+[tool.coverage.run]
+source = ["tyche"]
+branch = true
+
+# --- import-linter: the architecture, enforced in CI --------------------------
+# See docs/adr/0004-hexagonal-architecture.md and docs/developer-guide/repo-map.md.
+[tool.importlinter]
+root_package = "tyche"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Outer layers depend inward, never the reverse"
+type = "layers"
+layers = [
+    "tyche.cli",
+    "tyche.runtime",
+    "tyche.adapters | tyche.strategies | tyche.config",
+    "tyche.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "Inside the core, dependencies point toward the domain"
+type = "layers"
+layers = [
+    "tyche.core.agents",
+    "tyche.core.improvement",
+    "tyche.core.backtest",
+    "tyche.core.engine | tyche.core.sim",
+    "tyche.core.pipeline | tyche.core.risk",
+    "tyche.core.ports",
+    "tyche.core.events",
+    "tyche.core.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "The core never imports a vendor or I/O library"
+type = "forbidden"
+source_modules = ["tyche.core"]
+forbidden_modules = [
+    "ib_async",
+    "ccxt",
+    "yfinance",
+    "exchange_calendars",
+    "httpx",
+    "requests",
+    "sqlite3",
+    "duckdb",
+    "pyarrow",
+    "apscheduler",
+    "subprocess",
+]
+
+[[tool.importlinter.contracts]]
+name = "No LLM code in the trading path"
+type = "forbidden"
+source_modules = [
+    "tyche.core.pipeline",
+    "tyche.core.risk",
+    "tyche.core.engine",
+    "tyche.core.sim",
+    "tyche.strategies",
+]
+forbidden_modules = ["tyche.core.agents", "tyche.adapters.llm"]
+
+[[tool.importlinter.contracts]]
+name = "Strategies cannot reach risk, execution, the engine or any port"
+type = "forbidden"
+source_modules = ["tyche.strategies"]
+forbidden_modules = [
+    "tyche.core.risk",
+    "tyche.core.engine",
+    "tyche.core.sim",
+    "tyche.core.ports",
+    "tyche.core.pipeline.execution",
+]
