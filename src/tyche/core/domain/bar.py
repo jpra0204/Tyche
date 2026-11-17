@@ -2,12 +2,11 @@
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.timeframe import Timeframe
-
-_ZERO_OFFSET = timedelta(0)
+from tyche.core.domain.validation import require_utc
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,10 +43,7 @@ class Bar:
     is_adjusted: bool
 
     def __post_init__(self) -> None:
-        if self.timestamp.utcoffset() != _ZERO_OFFSET:
-            raise ValueError(
-                f"{self._label()}: timestamp must be timezone-aware UTC, got {self.timestamp!r}"
-            )
+        require_utc(self.timestamp, f"{self._label()}: timestamp")
 
         prices = {"open": self.open, "high": self.high, "low": self.low, "close": self.close}
         for name, price in prices.items():

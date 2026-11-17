@@ -1,9 +1,9 @@
 """The event base class and the envelope the bus wraps around every event."""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
-_ZERO_OFFSET = timedelta(0)
+from tyche.core.domain.validation import require_utc
 
 
 class Event:
@@ -60,8 +60,4 @@ class Envelope[E: Event]:
     cycle_id: str | None = None
 
     def __post_init__(self) -> None:
-        if self.occurred_at.utcoffset() != _ZERO_OFFSET:
-            raise ValueError(
-                f"envelope {self.seq}: occurred_at must be timezone-aware UTC, "
-                f"got {self.occurred_at!r}"
-            )
+        require_utc(self.occurred_at, f"envelope {self.seq}: occurred_at")

@@ -12,6 +12,7 @@ None. There is nothing running to operate until Phase 2.
 |---|---|---|
 | `start-stop.md` | Starting and stopping Tyche and the gateway cleanly | Phase 2 |
 | `crash-recovery.md` | Tyche or the machine stopped unexpectedly | Phase 2 |
+| `maintenance.md` | Routine upkeep. Includes updating `exchange_calendars` regularly: the calendar knows only scheduled holidays, and an unscheduled closure (a storm, a day of mourning) appears only after a library update | Phase 2 |
 | `gateway-reauth.md` | Discord says the IBKR gateway needs a login or 2FA | Phase 2 |
 | `kill-switch.md` | You want everything to stop now; and how to resume afterwards | Phase 2 |
 | `reconciliation-mismatch.md` | Tyche halted because its records differ from the broker's | Phase 2 |

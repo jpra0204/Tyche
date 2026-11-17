@@ -13,12 +13,13 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Backtest, paper and live parity](backtest-paper-live-parity.md) | One engine, with the clock, feed and broker swapped |
 | [The gated agent loop](gated-agent-loop.md) | LLMs propose, code tests, a human decides |
 | [Value objects](value-objects.md) | Small immutable types that cannot hold an invalid value |
+| [Time as a port](time-as-a-port.md) | The core asks a clock and a calendar for the time; it never reads the system clock |
 
 ## Planned
 
 | Note | Written in |
 |---|---|
-| Lookahead bias and how the clock prevents it | Phase 1 |
+| Lookahead bias and how the clock prevents it | Phase 1, PR 15 |
 | Walk-forward testing and overfitting | Phase 1 |
 | Plugins: adding behaviour without changing the core | Phase 1 |
 | Property-based testing | Phase 2 |

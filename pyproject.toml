@@ -7,7 +7,9 @@ authors = [{ name = "jpra0204" }]
 requires-python = ">=3.14"
 # Runtime dependencies are added in the phase that first uses them, so the
 # lockfile only ever contains what the code actually imports. See ADR-0002.
-dependencies = []
+dependencies = [
+    "exchange-calendars>=4.13.3",
+]
 
 [project.scripts]
 tyche = "tyche.cli:main"
@@ -57,12 +59,28 @@ strict = true
 warn_unreachable = true
 files = ["src", "tests"]
 
+# exchange_calendars ships no type information. Its values are typed as Any, and the
+# adapter converts every one of them to our own types before it leaves the module.
+[[tool.mypy.overrides]]
+module = ["exchange_calendars", "exchange_calendars.*"]
+ignore_missing_imports = true
+
 # --- pytest -------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not ibkr_paper"]
 markers = [
     "ibkr_paper: opt-in integration test against an IBKR PAPER account (never live); run with -m ibkr_paper",
+]
+# Every warning fails the test run, so a new one is dealt with instead of scrolling past.
+# Each exception below names its source and the condition for removing it.
+filterwarnings = [
+    "error",
+    # Raised inside exchange_calendars 4.13.3 (ExchangeCalendar.__init__ reads
+    # schedule.open.values) under pandas 3.1. Not our code; the values are still correct,
+    # and tests/adapters/calendars pins exact UTC session times, so a real breakage would
+    # fail there. Remove once an exchange_calendars release stops triggering it.
+    "ignore:Series.values returning an ndarray that drops timezone information:pandas.errors.Pandas4Warning",
 ]
 
 [tool.coverage.run]
