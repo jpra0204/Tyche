@@ -1,5 +1,6 @@
 """The `tyche` command: version, init and config check, run as a user would."""
 
+import re
 import subprocess
 import sys
 from importlib.metadata import version
@@ -12,6 +13,14 @@ import tyche
 from tyche.cli import app
 
 runner = CliRunner()
+
+# Rich colours help text when it detects a CI service or FORCE_COLOR, even without a
+# terminal. Tests compare words, not styling.
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(text: str) -> str:
+    return _ANSI.sub("", text)
 
 
 @pytest.fixture
@@ -37,9 +46,10 @@ def test_version_flag() -> None:
 
 def test_no_arguments_prints_help() -> None:
     result = runner.invoke(app, [])
+    output = plain(result.output)
 
-    assert "Usage: tyche" in result.output
-    assert "init" in result.output
+    assert "Usage: tyche" in output
+    assert "init" in output
 
 
 def test_module_is_runnable() -> None:
