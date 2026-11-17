@@ -14,6 +14,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [The gated agent loop](gated-agent-loop.md) | LLMs propose, code tests, a human decides |
 | [Value objects](value-objects.md) | Small immutable types that cannot hold an invalid value |
 | [Config at the boundary](config-at-the-boundary.md) | Check all configuration once, as it enters, and turn it into types that cannot be wrong |
+| [Property-based testing](property-based-testing.md) | State a rule, let the computer search for a counter-example |
 | [Time as a port](time-as-a-port.md) | The core asks a clock and a calendar for the time; it never reads the system clock |
 | [Lookahead bias](lookahead-bias.md) | Why a backtest must never see the future, and how the clock and the replay stop it |
 | [Working with unreliable data](unreliable-data.md) | Audit every answer against the calendar, and cache with a record of what was already asked |
@@ -24,7 +25,6 @@ Each note answers the same four questions: what problem does this solve, what is
 |---|---|
 | Walk-forward testing and overfitting | Phase 1 |
 | Plugins: adding behaviour without changing the core | Phase 1 |
-| Property-based testing | Phase 2 |
 | Idempotent orders | Phase 2 |
 | Reconciliation: trusting the broker over yourself | Phase 2 |
 | Schemas as contracts between agents and code | Phase 3 |

@@ -1,0 +1,252 @@
+"""The account ledger: cash per currency, settled and unsettled, and positions.
+
+``Account`` is immutable: every operation returns a new account. That makes each step
+easy to test, lets an event carry a snapshot that nothing can change afterwards, and
+means a rejected operation leaves the previous account untouched.
+
+Rules the ledger enforces, because Tyche v1 trades a long-only cash account:
+
+* Selling more than is held is refused: that would be a short sale.
+* A buy that would take cash below zero, counting unsettled amounts, is refused: that
+  would be borrowing. Whether unsettled sale proceeds may be spent is a separate
+  broker rule, checked in PR 9 and applied by the simulated broker (PR 10).
+* Every fill is applied once.
+
+Positions are valued at their average cost, commissions included. This mirrors the
+average-cost method behind Canada's adjusted cost base, but in the instrument's own
+currency; the CAD figures for tax come in Phase 4.
+
+Precision: selling part of a position allocates it a share of the cost, which is a
+division that may not terminate (selling a third). That share is rounded to
+``COST_PLACES`` decimal places, so every amount in the ledger is a finite decimal and
+adding them up is exact: cash always equals the deposit plus the realised profit minus
+the cost still held, to the last digit. Ten places is far below a cent; tax reports
+round to cents at the end.
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from datetime import date
+from decimal import Decimal
+
+from tyche.core.domain.currency import Currency
+from tyche.core.domain.fill import Fill
+from tyche.core.domain.instrument import Instrument
+from tyche.core.domain.money import Money
+from tyche.core.domain.order import Side
+
+COST_PLACES = 10
+
+
+class LedgerError(ValueError):
+    """An operation would break the account's rules. The account is unchanged."""
+
+
+@dataclass(frozen=True, slots=True)
+class Position:
+    """Shares held in one instrument.
+
+    Attributes:
+        instrument: What is held.
+        quantity: How many shares. Always positive; a closed position is removed.
+        cost: What they cost in total, commissions included, in the instrument's
+            currency.
+    """
+
+    instrument: Instrument
+    quantity: Decimal
+    cost: Money
+
+    def __post_init__(self) -> None:
+        if not self.quantity.is_finite() or self.quantity <= 0:
+            raise ValueError(f"position in {self.instrument}: quantity must be positive")
+        if self.cost.currency is not self.instrument.currency:
+            raise ValueError(f"position in {self.instrument}: cost must be in its currency")
+
+    @property
+    def average_cost(self) -> Money:
+        """Cost per share."""
+        return self.cost / self.quantity
+
+
+@dataclass(frozen=True, slots=True)
+class PendingCash:
+    """Cash from a fill that has not settled yet. Negative for a purchase."""
+
+    amount: Money
+    settles_on: date
+    fill_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class CashBalance:
+    """Cash in one currency.
+
+    Attributes:
+        settled: Cash that has settled.
+        pending: Amounts from fills still waiting to settle, oldest first.
+    """
+
+    settled: Money
+    pending: tuple[PendingCash, ...] = ()
+
+    @property
+    def unsettled(self) -> Money:
+        """The sum of pending amounts: positive if sales are waiting to settle."""
+        total = Money.zero(self.settled.currency)
+        for item in self.pending:
+            total += item.amount
+        return total
+
+    @property
+    def total(self) -> Money:
+        """Settled plus unsettled: the cash the account will have once everything settles."""
+        return self.settled + self.unsettled
+
+
+@dataclass(frozen=True, slots=True)
+class Account:
+    """A snapshot of the account. Operations return a new snapshot.
+
+    Build one with ``Account.empty()`` and ``deposit``; change it only with
+    ``apply_fill``, ``settle`` and ``mark``.
+    """
+
+    _settled: Mapping[Currency, Money] = field(default_factory=dict)
+    _pending: tuple[PendingCash, ...] = ()
+    _positions: Mapping[Instrument, Position] = field(default_factory=dict)
+    _marks: Mapping[Instrument, Money] = field(default_factory=dict)
+    _realized: Mapping[Currency, Money] = field(default_factory=dict)
+    _applied: frozenset[str] = frozenset()
+
+    @classmethod
+    def empty(cls) -> Account:
+        return cls()
+
+    # --- reading -----------------------------------------------------------------
+
+    def cash(self, currency: Currency) -> CashBalance:
+        return CashBalance(
+            self._settled.get(currency, Money.zero(currency)),
+            tuple(p for p in self._pending if p.amount.currency is currency),
+        )
+
+    @property
+    def currencies(self) -> tuple[Currency, ...]:
+        """Every currency the account has touched, in a fixed order."""
+        seen = set(self._settled) | {p.amount.currency for p in self._pending}
+        seen |= {i.currency for i in self._positions}
+        return tuple(sorted(seen))
+
+    def position(self, instrument: Instrument) -> Position | None:
+        return self._positions.get(instrument)
+
+    @property
+    def positions(self) -> tuple[Position, ...]:
+        """Open positions, ordered by instrument."""
+        return tuple(self._positions[i] for i in sorted(self._positions, key=str))
+
+    def mark_of(self, instrument: Instrument) -> Money | None:
+        """The last price recorded for a held instrument."""
+        return self._marks.get(instrument)
+
+    def market_value(self, currency: Currency) -> Money:
+        """Positions in ``currency`` at their last marked price."""
+        total = Money.zero(currency)
+        for instrument, position in self._positions.items():
+            if instrument.currency is currency:
+                total += self._marks[instrument] * position.quantity
+        return total
+
+    def equity(self, currency: Currency) -> Money:
+        """Cash (settled and unsettled) plus market value, in one currency.
+
+        Adding currencies together needs an exchange rate; that comes in Phase 4.
+        """
+        return self.cash(currency).total + self.market_value(currency)
+
+    def realized_pnl(self, currency: Currency) -> Money:
+        """Profit or loss locked in by sales, after commissions on both sides."""
+        return self._realized.get(currency, Money.zero(currency))
+
+    # --- changing ------------------------------------------------------------------
+
+    def deposit(self, amount: Money) -> Account:
+        """Add settled cash, such as the account's starting balance."""
+        if not amount.is_positive:
+            raise LedgerError(f"a deposit must be positive, got {amount}")
+        return replace(self, _settled=_add(self._settled, amount))
+
+    def apply_fill(self, fill: Fill) -> Account:
+        """Record a fill: cash moves to pending, the position changes, the price is marked."""
+        if fill.fill_id in self._applied:
+            raise LedgerError(f"fill {fill.fill_id} has already been applied")
+        account = self._buy(fill) if fill.side is Side.BUY else self._sell(fill)
+        pending = (*account._pending, PendingCash(fill.cash_flow, fill.settles_on, fill.fill_id))
+        return replace(account, _pending=pending, _applied=self._applied | {fill.fill_id})
+
+    def settle(self, through: date) -> Account:
+        """Settle every pending amount due on or before ``through``."""
+        settled = dict(self._settled)
+        remaining: list[PendingCash] = []
+        for item in self._pending:
+            if item.settles_on <= through:
+                settled = dict(_add(settled, item.amount))
+            else:
+                remaining.append(item)
+        return replace(self, _settled=settled, _pending=tuple(remaining))
+
+    def mark(self, instrument: Instrument, price: Money) -> Account:
+        """Record the latest price of a held instrument, for valuation."""
+        if instrument not in self._positions:
+            raise LedgerError(f"cannot mark {instrument}: it is not held")
+        if price.currency is not instrument.currency or not price.is_positive:
+            raise LedgerError(f"cannot mark {instrument} at {price}")
+        return replace(self, _marks={**self._marks, instrument: price})
+
+    def _buy(self, fill: Fill) -> Account:
+        currency = fill.price.currency
+        after = self.cash(currency).total + fill.cash_flow
+        if after.is_negative:
+            raise LedgerError(
+                f"fill {fill.fill_id}: buying {fill.quantity} {fill.instrument} for "
+                f"{-fill.cash_flow} would leave {after} in a cash account"
+            )
+        held = self._positions.get(fill.instrument)
+        position = Position(
+            fill.instrument,
+            fill.quantity + (held.quantity if held else 0),
+            fill.gross + fill.commission + (held.cost if held else Money.zero(currency)),
+        )
+        return replace(
+            self,
+            _positions={**self._positions, fill.instrument: position},
+            _marks={**self._marks, fill.instrument: fill.price},
+        )
+
+    def _sell(self, fill: Fill) -> Account:
+        held = self._positions.get(fill.instrument)
+        if held is None or held.quantity < fill.quantity:
+            have = held.quantity if held else 0
+            raise LedgerError(
+                f"fill {fill.fill_id}: selling {fill.quantity} {fill.instrument} with only "
+                f"{have} held would be a short sale"
+            )
+        cost_sold = (held.cost * fill.quantity / held.quantity).round_to(COST_PLACES)
+        realized = _add(self._realized, fill.gross - fill.commission - cost_sold)
+
+        positions = dict(self._positions)
+        marks = dict(self._marks)
+        left = held.quantity - fill.quantity
+        if left == 0:
+            del positions[fill.instrument]
+            del marks[fill.instrument]
+        else:
+            positions[fill.instrument] = Position(fill.instrument, left, held.cost - cost_sold)
+            marks[fill.instrument] = fill.price
+        return replace(self, _positions=positions, _marks=marks, _realized=realized)
+
+
+def _add(balances: Mapping[Currency, Money], amount: Money) -> Mapping[Currency, Money]:
+    current = balances.get(amount.currency, Money.zero(amount.currency))
+    return {**balances, amount.currency: current + amount}

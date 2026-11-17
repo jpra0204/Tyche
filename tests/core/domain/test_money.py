@@ -206,3 +206,20 @@ class TestOrdering:
         amounts = [usd("3"), usd("-1"), usd("2")]
         assert sorted(amounts) == [usd("-1"), usd("2"), usd("3")]
         assert max(amounts) == usd("3")
+
+
+class TestRounding:
+    def test_rounds_half_to_even(self) -> None:
+        assert usd("0.125").round_to(2) == usd("0.12")
+        assert usd("0.135").round_to(2) == usd("0.14")
+        assert usd("-0.125").round_to(2) == usd("-0.12")
+
+    def test_rounds_to_whole_units(self) -> None:
+        assert usd("2.5").round_to(0) == usd("2")
+
+    def test_keeps_the_currency(self) -> None:
+        assert cad("1.239").round_to(2) == cad("1.24")
+
+    def test_places_cannot_be_negative(self) -> None:
+        with pytest.raises(ValueError, match="zero or more"):
+            usd("1").round_to(-1)

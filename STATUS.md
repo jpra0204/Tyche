@@ -13,7 +13,8 @@
 - PR 4 (workspace and config) is merged; ADR-0017 accepted.
 - PR 5 (data port and Parquet cache) is merged.
 - PR 6 is merged: 6a directly, 6b through #9 (it first landed on the 6a branch because its stacked base was not retargeted in time).
-- PR 7 (engine and replay feed) is open for review against `main`.
+- PR 7 (engine and replay feed) is merged.
+- PR 8 (account ledger) is open for review.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -28,9 +29,10 @@
 - Clock and calendar (PR 3): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
 - Data layer (PRs 5, 6a and 6b): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
-- Engine and replay (PR 7, in review): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
+- Engine and replay (PR 7): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
+- Account ledger (PR 8, in review): orders with a checked lifecycle, fills, positions at average cost, and cash per currency, settled and unsettled. Refuses short sales, buying beyond the cash, and applying a fill twice.
 
-There is no trading code yet: no strategies, risk, orders or broker. The engine runs replayed history end to end, but nothing reacts to it yet except the journal. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
+There is no trading code yet: no strategies, risk, execution or broker. The engine runs replayed history end to end, but nothing reacts to it yet except the journal. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -69,8 +71,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 7 | Engine and replay feed (**in review**) | The run loop, historical replay (`BarEvent`, `DataReadyEvent`), in-memory journal | Also `SessionEvent` (moved from PR 3), `DataQualityEvent`, `RunEvent`, and the `PacedClock` port |
-| 8 | Account ledger | `Order`, `Fill`, `Position`, account with settled and unsettled cash per currency, `AccountEvent` | |
+| 7 | Engine and replay feed (**merged**) | The run loop, historical replay (`BarEvent`, `DataReadyEvent`), in-memory journal | Also `SessionEvent` (moved from PR 3), `DataQualityEvent`, `RunEvent`, and the `PacedClock` port |
+| 8 | Account ledger (**in review**) | `Order`, `Fill`, `Position`, account with settled and unsettled cash per currency | `AccountEvent` moves to PR 10, where it is first published. Adds `hypothesis` |
 | 9 | Costs and settlement | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verify: commissions, minimums, fractional shares, cash-account settlement |
 | 10 | `SimBroker` | Next-open fills, stops against daily bars, rejections, partial fills, settlement | |
 
@@ -148,6 +150,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 7.
+1. Pablo reviews and merges PR 8.
 2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`.
-3. Phase 1, PR 8: account ledger, when Pablo says to start.
+3. Phase 1, PR 9: costs and settlement. It starts with research, not code: IBKR Canada's commissions, minimums, fractional-share rules and cash-account settlement, written up with sources and dates for Pablo to review.

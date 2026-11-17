@@ -75,9 +75,9 @@ Within one moment, the feed's inputs come in a fixed order: session open, then e
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
-| `OrderEvent` | Execution (created, submitted), broker (every later status) | Broker, account state, journal | `order_id`, `client_order_id` (idempotency key), `instrument`, `side`, `quantity`, `order_type` (market, stop), `time_in_force`, `status`, `reason` | 1 |
-| `FillEvent` | Broker | Account state, journal | `order_id`, `quantity`, `price`, `commission`, `currency`, `fx_rate_to_cad` | 1 |
-| `AccountEvent` | Account state | Risk, reconciliation, journal | `cash` per currency (settled and unsettled), `positions`, `equity`, `peak_equity` | 1 |
+| `OrderEvent` | Execution (created, submitted), broker (every later status) | Broker, account state, journal | The `OrderState`: the `Order` (`client_order_id` as idempotency key, `instrument`, `side`, `quantity`, `order_type` market or stop, `stop_price`, `time_in_force` day or GTC, `reason`), its `status`, `filled_quantity` and `note`. Domain types built in PR 8 | 1 (PR 10) |
+| `FillEvent` | Broker | Account state, journal | The `Fill`: `fill_id`, `client_order_id`, `instrument`, `side`, `quantity`, `price`, `commission`, `filled_at`, `trade_date`, `settles_on`. The CAD exchange rate for tax is added in Phase 4. Domain type built in PR 8 | 1 (PR 10) |
+| `AccountEvent` | Account state | Risk, reconciliation, journal | A snapshot of the `Account` (cash per currency, settled and unsettled; positions at average cost; marks; realised profit). Peak equity is the risk layer's to track (Phase 2). Domain type built in PR 8 | 1 (PR 10) |
 | `DistributionEvent` | Data feed (from the `CashDistribution`s in a `BarHistory`) | Broker (credits cash to holders), journal | `instrument`, `ex_date`, `amount_per_share`, `kind` (dividend or capital gain) | 1 (PR 10) |
 | `FxConversionEvent` | Broker | Account state, journal | `from`, `to`, `amount`, `rate`, `cost` | 4 |
 | `ReconciliationEvent` | Reconciliation | Engine (halts on mismatch), journal, notifier | `status` (match or mismatch), `differences` | 2 |
@@ -95,8 +95,10 @@ stateDiagram-v2
     Accepted --> Filled
     Accepted --> Cancelled
     Accepted --> Expired
+    PartiallyFilled --> PartiallyFilled: another partial fill
     PartiallyFilled --> Filled
     PartiallyFilled --> Cancelled
+    PartiallyFilled --> Expired: a day order at the close
     Filled --> [*]
     Rejected --> [*]
     Cancelled --> [*]
