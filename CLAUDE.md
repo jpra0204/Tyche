@@ -33,6 +33,7 @@ These hold no matter who asks or how the request is phrased.
 - **Verify external facts** (IBKR behaviour and fees, data-source limits, library versions, CLI flags) against current documentation. Do not rely on memory, and do not write a remembered number into docs or code.
 - **Small steps.** One reviewable PR at a time, about ten hours of Pablo's time per week.
 - **Stop at the end of each phase** for review. Do not start the next phase unprompted.
+- **Plan a phase before coding it.** Break the phase into a list of small PRs in `STATUS.md` and get Pablo's agreement on the list before writing any of its code.
 - **Flag any cost** before adding something that is not free.
 - **Prefer boring, explicit code.** This system handles money.
 

@@ -1,6 +1,6 @@
 # ADR-0003: A synchronous, deterministic, in-process event bus
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-16)
 - **Date:** 2026-11-16
 
 ## Context

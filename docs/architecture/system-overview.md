@@ -1,6 +1,6 @@
 # System overview
 
-*Status: Phase 0 design, awaiting Pablo's review. Nothing described here is implemented yet except the package skeleton and the CI checks.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Nothing described here is implemented yet except the package skeleton and the CI checks.*
 
 This is the one document to read to understand how Tyche is put together. Each section links to the ADR that records the decision behind it.
 
@@ -171,8 +171,8 @@ Other safety mechanisms:
 |---|---|---|
 | Position sizing | With a stop: sized so a stop-out loses at most the profile's risk per trade. Always: capped by max position size and max open positions. | 2 |
 | Protective stops | A target may carry a stop price. The stop rests at the broker, so it works while Tyche is not running. | 1 (sim), 2 (IBKR) |
-| Daily loss limit | Blocks new entries for the rest of the session. | 2 |
-| Drawdown kill switch | Halts everything; only a manual restart resumes. | 2 |
+| Daily loss limit | Measured close to close, including stop-outs and fees. When hit, the decision at that close opens no new positions ([ADR-0015](../adr/0015-daily-loss-limit.md)). | 2 |
+| Drawdown kill switch | Checked every time Tyche runs. Halts everything; only a manual restart resumes. | 2 |
 | Manual kill switch | `KILL` flag file plus a CLI command. No new orders; optional flatten. | 2 |
 | Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
 | Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
@@ -208,17 +208,21 @@ Three agents (research analyst, performance reviewer, strategy proposer) run off
 
 ## 9. Assumptions and honest notes
 
-You asked for plain statements where something is a likely way to lose money or fool yourself. These are the ones I see in the brief. None blocks Phase 1; each needs a decision or a verification at the phase noted.
+You asked for plain statements where something is a likely way to lose money or fool yourself. These are the ones I see in the brief. Pablo reviewed them on 2026-11-16; each note ends with what was agreed.
 
-1. **A small account is expensive to trade.** With under $1,000 CAD split over up to five positions, each position is small. A per-order minimum commission is then a large percentage of every trade, and whole-share sizing may make some targets impossible. I will verify IBKR Canada's current commissions and fractional-share rules at the start of Phase 1 and model them exactly. Expect backtests at this size to show costs eating most simple strategies; that is useful information, not a bug.
-2. **Three months of paper trading is not evidence of an edge.** For end-of-day strategies, three months is a few dozen trades at most. It proves the plumbing works. Evidence of edge has to come from out-of-sample backtests, and even that is weak. The promotion rule should be read as "at least three months *and* the system behaved correctly", not as a statistical test.
-3. **A weekly proposal loop is an overfitting machine unless it is fenced in.** Testing a new idea against the same history every week will eventually find something that passes by luck. The gate will keep a registry of every candidate ever tried per strategy, reserve a holdout period the proposer never sees, and report results with the trial count beside them (Phase 3).
-4. **Cash-account settlement can block same-day rotation.** In a cash account, sale proceeds may not be usable until they settle. A rotation that sells and buys at the same open may then be partly unfunded. `SimBroker` will model settled and unsettled cash; I will verify IBKR's rule for Canadian cash accounts in Phase 1.
+1. **A small account is expensive to trade.** With under $1,000 CAD split over up to five positions, each position is small. A per-order minimum commission is then a large percentage of every trade, and whole-share sizing may make some targets impossible.
+   *Agreed:* Phase 1 verifies IBKR Canada's current commissions and fractional-share rules and models them exactly. Every backtest report gets a cost-drag section, and Phase 1 ends with a minimum viable capital analysis: the account size at which each strategy's edge survives costs. If five positions under $1,000 CAD cannot work, the analysis will say so and propose different defaults (fewer positions, lower turnover or more capital).
+2. **Three months of paper trading is not evidence of an edge.** For end-of-day strategies, three months is a few dozen trades at most. It proves the plumbing works.
+   *Agreed:* in Phase 2 I will propose revised promotion criteria with two separate tests. The edge must be shown by walk-forward and out-of-sample backtests. Paper trading must show that live results stay close to what the backtest predicts for the same period, within a defined tracking threshold.
+3. **A weekly proposal loop is an overfitting machine unless it is fenced in.** Testing a new idea against the same history every week will eventually find something that passes by luck.
+   *Agreed:* every candidate ever tried is counted, a holdout period stays untouched, and results are reported with a deflated Sharpe ratio or an equivalent correction for the number of trials. The holdout is reserved from the first backtest in Phase 1; a holdout that earlier experiments have already seen is not a holdout.
+4. **Cash-account settlement can block same-day rotation.** In a cash account, sale proceeds may not be usable until they settle. A rotation that sells and buys at the same open may then be partly unfunded.
+   *Agreed:* Phase 1 verifies the current rule for an IBKR Canada cash account and models settled and unsettled cash in `SimBroker`.
 5. **Free data has real limits.** yfinance is unofficial, can change or break without notice, revises adjusted prices, and only lists companies that still exist (survivorship bias). ETF-based strategies are affected less than stock-picking ones. Every report will state these limits.
-6. **Daily loss limit in an end-of-day system.** Tyche decides once per session, so "no new entries for the rest of the day" means: if equity fell by the limit or more during session *t*, the decision made at the close of *t* opens no new positions. With intraday data later, the same rule applies within the session. Tell me if you meant something else.
+6. **Daily loss limit in an end-of-day system.** *Resolved* in [ADR-0015](../adr/0015-daily-loss-limit.md): measured close to close, including stop-outs and fees. Within a session, only a stop order resting at the broker protects a position.
 7. **Tax.** Tyche will record what you need for adjusted cost base in CAD (Phase 4). It will not decide how the CRA classifies your trading; frequent trading can be treated as business income, and the superficial-loss rule affects ACB. Worth a conversation with an accountant before going live. This is not tax advice.
 8. **Draft strategies written by an agent are untrusted code.** A proposed strategy file must be read and approved by you before Tyche executes it, even in a backtest.
 
 ## 10. Open decisions
 
-Tracked in [`STATUS.md`](../../STATUS.md). The ADRs marked *Proposed* are my recommendations and need your approval in the Phase 0 review.
+Tracked in [`STATUS.md`](../../STATUS.md). Every ADR written so far is accepted.

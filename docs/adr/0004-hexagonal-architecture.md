@@ -1,6 +1,6 @@
 # ADR-0004: Hexagonal architecture, enforced by import contracts
 
-- **Status:** Accepted (brief) for the pattern; **Proposed** for the package layout and contracts
+- **Status:** Accepted (brief for the pattern; Pablo, 2026-11-16 for the package layout and contracts)
 - **Date:** 2026-11-16
 
 ## Context

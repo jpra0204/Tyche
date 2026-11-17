@@ -11,7 +11,7 @@ Phase 0: plan and scaffolding. No trading functionality.
 ### Added
 
 - Architecture documentation: system overview, event catalog and agent architecture.
-- ADRs 0001 to 0014.
+- ADRs 0001 to 0015.
 - `CLAUDE.md`, `STATUS.md`, `README.md` and this changelog.
 - Developer guide (repo map, conventions), learning notes (event-driven design, hexagonal architecture, backtest/paper/live parity, the gated agent loop) and index pages for the user guide and runbooks.
 - Python 3.14 project managed by `uv`, with a locked development toolchain: ruff, mypy (strict), pytest, import-linter.

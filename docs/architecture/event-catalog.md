@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, awaiting Pablo's review. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 

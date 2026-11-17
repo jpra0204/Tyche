@@ -1,6 +1,6 @@
 # ADR-0011: pandas as the only dataframe library, kept at the edges
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-16)
 - **Date:** 2026-11-16
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR-0010: TOML config validated by pydantic; layered risk limits
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-16)
 - **Date:** 2026-11-16
 
 ## Context

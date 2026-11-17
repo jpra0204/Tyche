@@ -1,6 +1,6 @@
 # Agent architecture
 
-*Status: Phase 0 design, awaiting Pablo's review. Agents are built in Phase 3; this page fixes the shape now so that nothing built before then gets in the way.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Agents are built in Phase 3; this page fixes the shape now so that nothing built before then gets in the way.*
 
 Learning agent architecture is goal #1 of this project, so this page explains the reasoning as well as the design. The decision record is [ADR-0007](../adr/0007-python-driven-agents.md).
 
@@ -119,11 +119,12 @@ What stops an agent, or a bug in an agent, from affecting trading:
 
 ## 8. Keeping the loop honest
 
-A loop that proposes a change every week and tests it on the same history will eventually pass something by luck. Three rules guard against that:
+A loop that proposes a change every week and tests it on the same history will eventually pass something by luck. Four rules guard against that:
 
 1. **Trial registry.** Every candidate ever evaluated for a strategy is recorded. Gate results show the trial number, and the pass threshold tightens as trials accumulate.
-2. **Holdout.** The most recent slice of history is reserved. The reviewer's input bundle and the walk-forward never include it; it is used once, for the final check before promotion.
+2. **Holdout.** The most recent slice of history is reserved, starting with the first backtest in Phase 1 so that nothing has seen it before the loop exists. The reviewer's input bundle and the walk-forward never include it; it is used once, for the final check before promotion.
 3. **Pre-registered effect.** A proposal must state its expected effect before the gate runs. The gate reports the actual effect beside it, so a proposal that "worked" for a different reason than claimed is visible.
+4. **Deflated results.** Gate results report a deflated Sharpe ratio, or an equivalent correction, that discounts performance for the number of trials behind it. A raw Sharpe ratio from the best of many attempts is not shown alone.
 
 ## 9. Where this lives in the code
 

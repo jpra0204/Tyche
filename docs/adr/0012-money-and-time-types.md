@@ -1,6 +1,6 @@
 # ADR-0012: Decimal for money, UTC for time
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-16)
 - **Date:** 2026-11-16
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR-0013: The live-trading gate
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-16)
 - **Date:** 2026-11-16
 
 ## Context
