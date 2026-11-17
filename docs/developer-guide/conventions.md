@@ -44,6 +44,7 @@ Further rules checked in review:
 Rules:
 
 - Tests are deterministic. No real network, no real clock, no sleeping. Randomness uses a fixed seed.
+- Every folder under `tests/` has an `__init__.py`, so two test files may share a name in different folders.
 - The `ibkr_paper` marker is deselected by default. Run those tests on purpose with `uv run pytest -m ibkr_paper`.
 - **No automated test ever touches a live account.**
 - A bug fix comes with a test that fails without the fix.

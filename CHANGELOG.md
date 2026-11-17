@@ -4,6 +4,11 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Domain types in `tyche.core.domain`: `Currency`, `Money`, `Timeframe`, `Instrument`, `AssetClass` and `Bar` (Phase 1, PR 1).
+- Learning note on value objects.
+
 ## [0.0.1] - 2026-11-16
 
 Phase 0: plan and scaffolding. No trading functionality.
