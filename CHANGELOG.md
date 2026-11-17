@@ -23,7 +23,12 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - ADR-0018 (audit market data). Learning note: working with unreliable data.
 - Runtime dependency: `pyarrow` (Apache-2.0). Development dependency: `pyarrow-stubs` (BSD-2-Clause).
 
+- Corporate actions (Phase 1, PR 6a): `PriceAdjustment`, `CashDistribution` and `Split` in the domain; `BarHistory` returns the distributions and splits in its window; the cache stores them exactly; a new split triggers a full refetch of the instrument's history (ADR-0019).
+
 ### Changed
+
+- `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.
+- `BarSource.fetch_daily` returns `SourceData` (bars, distributions, splits and the source's own issues) instead of a list of bars.
 
 - ADR-0017 and ADR-0018 accepted.
 

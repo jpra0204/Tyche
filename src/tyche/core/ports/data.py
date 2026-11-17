@@ -26,6 +26,8 @@ class DataProvider(Protocol):
         Dates are session days on the instrument's own calendar, inclusive. Sessions
         that have not closed yet are not expected to have a bar. A session the source
         has no bar for appears as a ``MISSING_SESSION`` issue, not as an error.
+        Dividends and splits with an ex-date in the range come with the bars, in the
+        returned ``BarHistory``.
 
         Raises:
             DataError: The data could not be obtained at all.

@@ -6,23 +6,26 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of, session
+from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of, dividend, session, split
 from tyche.core.domain import (
     DEFAULT_MAX_DAILY_MOVE,
     Bar,
     BarHistory,
     DataIssue,
     DataIssueKind,
+    PriceAdjustment,
     Timeframe,
     audit_daily_bars,
 )
+
+SPLITS = PriceAdjustment.SPLITS
 
 DAYS = JANUARY_2024[:5]  # 2, 3, 4, 5 and 8 January
 SESSIONS = [session(day) for day in DAYS]
 
 
 def audit(bars: Iterable[Bar], *, max_move: float = DEFAULT_MAX_DAILY_MOVE) -> BarHistory:
-    return audit_daily_bars(SPY, bars, SESSIONS, adjusted=True, max_move=max_move)
+    return audit_daily_bars(SPY, bars, SESSIONS, adjustment=SPLITS, max_move=max_move)
 
 
 def kinds(history: BarHistory) -> list[DataIssueKind]:
@@ -43,7 +46,7 @@ class TestCleanData:
         assert [b.timestamp for b in history.bars] == [close_of(day) for day in DAYS]
 
     def test_no_sessions_means_an_empty_history(self) -> None:
-        history = audit_daily_bars(SPY, [bar(DAYS[0])], [], adjusted=True)
+        history = audit_daily_bars(SPY, [bar(DAYS[0])], [], adjustment=SPLITS)
 
         assert history.bars == ()
         assert history.issues == ()
@@ -107,10 +110,10 @@ class TestDropped:
     def test_a_bar_with_the_other_adjustment_is_dropped(self) -> None:
         bars = [bar(day) for day in DAYS if day != date(2024, 1, 5)]
 
-        history = audit([*bars, bar(date(2024, 1, 5), adjusted=False)])
+        history = audit([*bars, bar(date(2024, 1, 5), adjustment=PriceAdjustment.NONE)])
 
         assert kinds(history) == [DataIssueKind.MIXED_ADJUSTMENT, DataIssueKind.MISSING_SESSION]
-        assert "not adjusted" in history.issues[0].detail
+        assert "adjusted for 'none', expected 'splits'" in history.issues[0].detail
 
 
 class TestSuspectMoves:
@@ -184,8 +187,8 @@ class TestBarHistoryRules:
             BarHistory(SPY, (bar(DAYS[0]), bar(DAYS[0])))
 
     def test_rejects_mixed_adjustment(self) -> None:
-        with pytest.raises(ValueError, match="mix adjusted and unadjusted"):
-            BarHistory(SPY, (bar(DAYS[0]), bar(DAYS[1], adjusted=False)))
+        with pytest.raises(ValueError, match="mix price adjustments"):
+            BarHistory(SPY, (bar(DAYS[0]), bar(DAYS[1], adjustment=PriceAdjustment.NONE)))
 
     def test_fetched_range_must_be_utc_and_in_order(self) -> None:
         early = datetime(2024, 1, 9, tzinfo=UTC)
@@ -200,3 +203,32 @@ class TestBarHistoryRules:
     def test_is_immutable(self) -> None:
         history = BarHistory(SPY, (bar(DAYS[0]),))
         assert replace(history) == history
+
+
+class TestCorporateActionsInAHistory:
+    def test_holds_distributions_and_splits(self) -> None:
+        paid = dividend(DAYS[2], "1.5")
+        changed = split(DAYS[3], "2")
+
+        history = BarHistory(SPY, (), distributions=(paid,), splits=(changed,))
+
+        assert history.distributions == (paid,)
+        assert history.splits == (changed,)
+
+    def test_rejects_another_instruments_action(self) -> None:
+        with pytest.raises(ValueError, match="corporate action of QQQ@XNAS"):
+            BarHistory(SPY, (), distributions=(dividend(DAYS[0], "1", instrument=QQQ),))
+        with pytest.raises(ValueError, match="corporate action of QQQ@XNAS"):
+            BarHistory(SPY, (), splits=(split(DAYS[0], "2", instrument=QQQ),))
+
+    def test_distributions_must_be_in_order_and_unique(self) -> None:
+        with pytest.raises(ValueError, match="distributions must be in date order"):
+            BarHistory(SPY, (), distributions=(dividend(DAYS[1], "1"), dividend(DAYS[0], "1")))
+        with pytest.raises(ValueError, match="one per kind and date"):
+            BarHistory(SPY, (), distributions=(dividend(DAYS[0], "1"), dividend(DAYS[0], "2")))
+
+    def test_splits_must_be_in_order_and_unique(self) -> None:
+        with pytest.raises(ValueError, match="splits must be in date order"):
+            BarHistory(SPY, (), splits=(split(DAYS[1], "2"), split(DAYS[0], "2")))
+        with pytest.raises(ValueError, match="one per date"):
+            BarHistory(SPY, (), splits=(split(DAYS[0], "2"), split(DAYS[0], "3")))

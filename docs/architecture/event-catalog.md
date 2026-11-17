@@ -76,6 +76,7 @@ From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.cor
 | `OrderEvent` | Execution (created, submitted), broker (every later status) | Broker, account state, journal | `order_id`, `client_order_id` (idempotency key), `instrument`, `side`, `quantity`, `order_type` (market, stop), `time_in_force`, `status`, `reason` | 1 |
 | `FillEvent` | Broker | Account state, journal | `order_id`, `quantity`, `price`, `commission`, `currency`, `fx_rate_to_cad` | 1 |
 | `AccountEvent` | Account state | Risk, reconciliation, journal | `cash` per currency (settled and unsettled), `positions`, `equity`, `peak_equity` | 1 |
+| `DistributionEvent` | Data feed (from the `CashDistribution`s in a `BarHistory`) | Broker (credits cash to holders), journal | `instrument`, `ex_date`, `amount_per_share`, `kind` (dividend or capital gain) | 1 (PR 10) |
 | `FxConversionEvent` | Broker | Account state, journal | `from`, `to`, `amount`, `rate`, `cost` | 4 |
 | `ReconciliationEvent` | Reconciliation | Engine (halts on mismatch), journal, notifier | `status` (match or mismatch), `differences` | 2 |
 

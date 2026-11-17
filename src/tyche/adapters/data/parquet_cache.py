@@ -5,9 +5,9 @@ One file per source, timeframe and instrument::
     <root>/<source>/<timeframe>/<exchange>/<symbol>.parquet
 
 Each row is one bar plus the moment it was fetched. The file's metadata records which
-instrument it belongs to, whether its prices are adjusted, and which date ranges have
-already been asked of the source ("coverage"), so a gap the source cannot fill is not
-fetched again on every run.
+instrument it belongs to, how its prices are adjusted, the dividends and splits seen,
+and which date ranges have already been asked of the source ("coverage"), so a gap
+the source cannot fill is not fetched again on every run.
 """
 
 import json
@@ -17,17 +17,29 @@ import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from tyche.core.domain import AssetClass, Bar, Currency, Instrument, Timeframe
+from tyche.core.domain import (
+    AssetClass,
+    Bar,
+    CashDistribution,
+    Currency,
+    DistributionKind,
+    Instrument,
+    Money,
+    PriceAdjustment,
+    Split,
+    Timeframe,
+)
 from tyche.core.domain.validation import require_utc
 from tyche.core.ports import DataError
 
-CACHE_FORMAT = 1
+CACHE_FORMAT = 2
 _METADATA_KEY = b"tyche"
 _SOURCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _ONE_DAY = timedelta(days=1)
@@ -74,16 +86,20 @@ class CacheEntry:
     Attributes:
         instrument: Whose bars these are.
         timeframe: The bars' timeframe.
-        is_adjusted: Whether prices are adjusted, or ``None`` while the entry is empty.
+        adjustment: How prices are adjusted, or ``None`` while the entry is empty.
         rows: Cached bars, oldest first, one per timestamp.
         coverage: Session-day ranges already asked of the source, sorted and disjoint.
+        distributions: Cash distributions seen, oldest first, one per date and kind.
+        splits: Splits seen, oldest first, one per date.
     """
 
     instrument: Instrument
     timeframe: Timeframe
-    is_adjusted: bool | None = None
+    adjustment: PriceAdjustment | None = None
     rows: tuple[CachedBar, ...] = ()
     coverage: tuple[DateRange, ...] = field(default=())
+    distributions: tuple[CashDistribution, ...] = ()
+    splits: tuple[Split, ...] = ()
 
     def covers(self, day: date) -> bool:
         """True if the source has already been asked about ``day``."""
@@ -93,33 +109,47 @@ class CacheEntry:
         """Cached bars stamped from ``start`` to ``end`` inclusive."""
         return tuple(row for row in self.rows if start <= row.bar.timestamp <= end)
 
+    def distributions_between(self, first: date, last: date) -> tuple[CashDistribution, ...]:
+        """Distributions with an ex-date from ``first`` to ``last`` inclusive."""
+        return tuple(d for d in self.distributions if first <= d.ex_date <= last)
+
+    def splits_between(self, first: date, last: date) -> tuple[Split, ...]:
+        """Splits with an ex-date from ``first`` to ``last`` inclusive."""
+        return tuple(s for s in self.splits if first <= s.ex_date <= last)
+
     def merged(
         self,
         bars: Sequence[Bar],
         *,
         fetched_at: datetime,
         covered: DateRange | None,
-        is_adjusted: bool,
+        adjustment: PriceAdjustment,
+        distributions: Sequence[CashDistribution] = (),
+        splits: Sequence[Split] = (),
     ) -> CacheEntry:
-        """Return a new entry with ``bars`` added.
+        """Return a new entry with ``bars`` and corporate actions added.
 
         A new bar replaces a cached bar with the same timestamp: sources revise
         history, and the newer fetch is taken as the better one. Its ``fetched_at``
-        records that it changed.
+        records that it changed. Distributions and splits are replaced the same way,
+        by date (and kind, for distributions).
         """
         require_utc(fetched_at, "fetched_at")
-        if self.is_adjusted is not None and self.is_adjusted != is_adjusted:
-            kind = "adjusted" if self.is_adjusted else "unadjusted"
+        if self.adjustment is not None and self.adjustment is not adjustment:
             raise DataError(
-                f"cache for {self.instrument} holds {kind} prices; refusing to mix in "
-                "the other kind"
+                f"cache for {self.instrument} holds prices adjusted for "
+                f"'{self.adjustment}'; refusing to mix in prices adjusted for '{adjustment}'"
             )
+        actions: list[CashDistribution | Split] = [*distributions, *splits]
+        for action in actions:
+            if action.instrument != self.instrument:
+                raise DataError(f"cannot cache {action} in the cache for {self.instrument}")
         for bar in bars:
             if bar.instrument != self.instrument or bar.timeframe is not self.timeframe:
                 raise DataError(
                     f"cannot cache a bar of {bar.instrument} in the cache for {self.instrument}"
                 )
-            if bar.is_adjusted != is_adjusted:
+            if bar.adjustment is not adjustment:
                 raise DataError(
                     f"cannot cache a bar at {bar.timestamp.isoformat()} with the wrong adjustment"
                 )
@@ -129,7 +159,20 @@ class CacheEntry:
             by_time[bar.timestamp] = CachedBar(bar, fetched_at)
         rows = tuple(by_time[stamp] for stamp in sorted(by_time))
         coverage = self.coverage if covered is None else _add_range(self.coverage, covered)
-        return replace(self, is_adjusted=is_adjusted, rows=rows, coverage=coverage)
+
+        by_distribution = {(d.ex_date, d.kind): d for d in self.distributions}
+        by_distribution.update({(d.ex_date, d.kind): d for d in distributions})
+        by_split = {s.ex_date: s for s in self.splits}
+        by_split.update({s.ex_date: s for s in splits})
+
+        return replace(
+            self,
+            adjustment=adjustment,
+            rows=rows,
+            coverage=coverage,
+            distributions=tuple(by_distribution[key] for key in sorted(by_distribution)),
+            splits=tuple(by_split[day] for day in sorted(by_split)),
+        )
 
 
 class ParquetBarCache:
@@ -179,7 +222,14 @@ class ParquetBarCache:
                 f"cache file {path} belongs to {stored} {metadata['timeframe']}, "
                 f"not {instrument} {timeframe}"
             )
-        is_adjusted: bool = metadata["is_adjusted"]
+        try:
+            adjustment = PriceAdjustment(metadata["adjustment"])
+            distributions = tuple(
+                _distribution_from(instrument, d) for d in metadata["distributions"]
+            )
+            splits = tuple(_split_from(instrument, s) for s in metadata["splits"])
+        except (KeyError, ValueError, InvalidOperation) as error:
+            raise DataError(f"cache file {path} has invalid metadata: {error!r}") from None
 
         try:
             rows = tuple(
@@ -193,7 +243,7 @@ class ParquetBarCache:
                         low=record["low"],
                         close=record["close"],
                         volume=record["volume"],
-                        is_adjusted=is_adjusted,
+                        adjustment=adjustment,
                     ),
                     record["fetched_at"],
                 )
@@ -205,11 +255,11 @@ class ParquetBarCache:
         coverage = tuple(
             DateRange(date.fromisoformat(a), date.fromisoformat(b)) for a, b in metadata["coverage"]
         )
-        return CacheEntry(instrument, timeframe, is_adjusted, rows, coverage)
+        return CacheEntry(instrument, timeframe, adjustment, rows, coverage, distributions, splits)
 
     def store(self, entry: CacheEntry) -> None:
         """Write ``entry``, replacing any previous file for the same instrument."""
-        if entry.is_adjusted is None:
+        if entry.adjustment is None:
             raise DataError(f"refusing to store an empty cache entry for {entry.instrument}")
         path = self.path_for(entry.instrument, entry.timeframe)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,9 +268,22 @@ class ParquetBarCache:
             "format": CACHE_FORMAT,
             "instrument": _instrument_to(entry.instrument),
             "timeframe": entry.timeframe.value,
-            "is_adjusted": entry.is_adjusted,
+            "adjustment": entry.adjustment.value,
             "coverage": [
                 [span.first.isoformat(), span.last.isoformat()] for span in entry.coverage
+            ],
+            # Amounts and ratios are written as text so that Decimal values stay exact.
+            "distributions": [
+                {
+                    "ex_date": d.ex_date.isoformat(),
+                    "amount": str(d.amount_per_share.amount),
+                    "currency": d.amount_per_share.currency.value,
+                    "kind": d.kind.value,
+                }
+                for d in entry.distributions
+            ],
+            "splits": [
+                {"ex_date": s.ex_date.isoformat(), "ratio": str(s.ratio)} for s in entry.splits
             ],
         }
         columns: dict[str, list[Any]] = {
@@ -279,6 +342,19 @@ def _instrument_from(data: dict[str, str]) -> Instrument:
         calendar=data["calendar"],
         asset_class=AssetClass(data["asset_class"]),
     )
+
+
+def _distribution_from(instrument: Instrument, data: dict[str, str]) -> CashDistribution:
+    return CashDistribution(
+        instrument=instrument,
+        ex_date=date.fromisoformat(data["ex_date"]),
+        amount_per_share=Money(Decimal(data["amount"]), Currency(data["currency"])),
+        kind=DistributionKind(data["kind"]),
+    )
+
+
+def _split_from(instrument: Instrument, data: dict[str, str]) -> Split:
+    return Split(instrument, date.fromisoformat(data["ex_date"]), Decimal(data["ratio"]))
 
 
 def _read_metadata(path: Path, raw: dict[bytes, bytes] | None) -> dict[str, Any]:

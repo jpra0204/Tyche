@@ -29,6 +29,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0016](0016-typer-for-the-cli.md) | Typer for the command-line interface | Accepted (Pablo, 2026-11-17) |
 | [0017](0017-config-schemas-at-the-boundary.md) | Config file schemas live in `tyche.config`; the core receives domain objects | Accepted (Pablo, 2026-11-17) |
 | [0018](0018-audit-market-data.md) | Market data is audited against the calendar, not trusted or rejected | Accepted (Pablo, 2026-11-17) |
+| [0019](0019-split-adjusted-prices-and-cash-dividends.md) | Split-adjusted prices, with dividends as cash events | Accepted (Pablo, 2026-11-17) |
 
 ## Template
 

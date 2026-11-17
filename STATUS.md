@@ -11,8 +11,9 @@
 - PR 2 (event envelope and bus) is merged.
 - PR 3 (clock and calendar) is merged.
 - PR 4 (workspace and config) is merged; ADR-0017 accepted.
-- PR 5 (data port and Parquet cache) is open for review; ADR-0018 in it is accepted.
-- Next: PR 6, the yfinance source, when Pablo says to start. It needs a decision on adjusted prices first (see the PR 6 row).
+- PR 5 (data port and Parquet cache) is merged.
+- PR 6 is split in two, stacked. **6a** (dividends, splits and price adjustment in the data layer) is open for review. **6b** (the yfinance source and `tyche data fetch`) follows it.
+- Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
 ## What works today
 
@@ -24,7 +25,7 @@
 - Event bus (PR 2): `Event`, `Envelope`, `EventBus`. No concrete events yet.
 - Clock and calendar (PR 3): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
-- Data layer (PR 5, in review): `DataProvider` port, data-quality audit, Parquet cache and read-through provider. No real data source yet.
+- Data layer (PR 5, plus 6a in review): `DataProvider` port, data-quality audit, Parquet cache and read-through provider. No real data source yet.
 
 There is no trading or backtesting code yet, and no real data source. Apart from `cli`, `config`, `core.domain`, `core.events`, `core.ports`, `core.sim`, `adapters.calendars` and `adapters.data`, every package under `src/tyche/` contains only a docstring saying what will live there.
 
@@ -57,8 +58,9 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 5 | Data port and Parquet cache (**in review**) | `DataProvider` port, cache that records when data was fetched, quality checks, gap detection against the calendar | Adds `pyarrow` only; pandas waits until code imports it |
-| 6 | yfinance adapter | Daily bars with retries and adjusted prices, `tyche data fetch` | Adds `yfinance`. Verify: its limits and terms. Decide: how to keep cached adjusted prices consistent (store unadjusted prices plus dividends and splits, or refetch full history) |
+| 5 | Data port and Parquet cache (**merged**) | `DataProvider` port, cache that records when data was fetched, quality checks, gap detection against the calendar | Adds `pyarrow` only; pandas waits until code imports it |
+| 6a | Dividends, splits and price adjustment (**in review**) | `PriceAdjustment`, `CashDistribution`, `Split`; cached with the bars; full refetch on a new split | Decided: split-adjusted prices, dividends as cash (ADR-0019) |
+| 6b | yfinance source | Daily bars and corporate actions with retries, `tyche data fetch` | Adds `yfinance`. Verified 2026-11-17: Apache-2.0; Yahoo data is for personal use only |
 
 **C. Engine and simulation**
 
@@ -110,6 +112,8 @@ Two things in the brief's Phase 1 that this plan moves:
 | Revised promotion criteria with a paper-versus-backtest tracking threshold, as an ADR for approval | 2 |
 | User guide page on what protects a position within a session ([ADR-0015](docs/adr/0015-daily-loss-limit.md)) | 2 |
 | Maintenance runbook: update `exchange_calendars` regularly, because unscheduled market closures only appear after a library update | 2 |
+| Simulated broker credits distributions as cash at the ex-date, and documents that rule (ADR-0019) | 1 (PR 10) |
+| Withholding tax on US dividends paid to a Canadian resident: verify the rate and IBKR's handling, then model it | 2 or 4 |
 | Trial registry, holdout and deflated results inside the automated gate | 3 |
 
 ## Open decisions
@@ -141,6 +145,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 5.
-2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, before PR 6 fetches real data.
-3. Phase 1, PR 6: the yfinance source, when Pablo says to start.
+1. Pablo reviews and merges 6a, then 6b.
+2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, before running `tyche data fetch` from 6b.
+3. Phase 1, PR 7: engine and replay feed, when Pablo says to start.
