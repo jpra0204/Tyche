@@ -11,7 +11,7 @@
 - PR 2 (event envelope and bus) is merged.
 - PR 3 (clock and calendar) is merged.
 - PR 4 (workspace and config) is merged; ADR-0017 accepted.
-- PR 5 (data port and Parquet cache) is open for review. ADR-0018 in it is proposed.
+- PR 5 (data port and Parquet cache) is open for review; ADR-0018 in it is accepted.
 - Next: PR 6, the yfinance source, when Pablo says to start. It needs a decision on adjusted prices first (see the PR 6 row).
 
 ## What works today
@@ -141,6 +141,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews PR 5 and decides on ADR-0018.
+1. Pablo reviews and merges PR 5.
 2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, before PR 6 fetches real data.
 3. Phase 1, PR 6: the yfinance source, when Pablo says to start.

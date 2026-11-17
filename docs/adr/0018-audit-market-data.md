@@ -1,6 +1,6 @@
 # ADR-0018: Market data is audited against the calendar, not trusted or rejected
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-17)
 - **Date:** 2026-11-17
 
 ## Context
