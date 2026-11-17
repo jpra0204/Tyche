@@ -7,8 +7,8 @@
 **Phase 1: core and backtesting (`US`, end of day). In progress.** Pablo agreed the PR list below on 2026-11-16.
 
 - Phase 0 is merged.
-- PR 1 (domain types) is open for review against `main`.
-- PR 2 (event envelope and bus) is open for review, stacked on PR 1. Merge PR 1 first.
+- PR 1 (domain types) is merged.
+- PR 2 (event envelope and bus) is open for review against `main`.
 - Next: PR 3, clock and calendar.
 
 ## What works today
@@ -17,7 +17,7 @@
 - `make check` passes: ruff lint and format, mypy strict, five import-linter architecture contracts, pytest.
 - `tyche --version` runs.
 - CI runs the same checks on every pull request and on `main`.
-- Domain types (PR 1, in review): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
+- Domain types (PR 1): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
 - Event bus (PR 2, in review): `Event`, `Envelope`, `EventBus`. No concrete events yet.
 
 There is no trading, data or backtesting code yet. Apart from `cli`, `core.domain` and `core.events`, every package under `src/tyche/` contains only a docstring saying what will live there.
@@ -42,7 +42,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 1 | Domain types (**in review**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
+| 1 | Domain types (**merged**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
 | 2 | Event envelope and bus (**in review**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
 | 3 | Clock and calendar | `Clock` and `Calendar` ports, `SimClock`, NYSE calendar adapter, `SessionEvent` | Adds `exchange_calendars` |
 | 4 | Workspace and config | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic`. Decide: CLI framework; where your workspace lives |
@@ -134,5 +134,5 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 1, then PR 2.
+1. Pablo reviews and merges PR 2.
 2. Phase 1, PR 3: clock and calendar.
