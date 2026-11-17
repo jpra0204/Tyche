@@ -22,7 +22,9 @@ Further rules checked in review:
 
 - **No mode checks in the core.** Never `if backtest:`. Differences between modes come from ports.
 - **Money is `Decimal` with a currency;** market data and analytics are `float` ([ADR-0012](../adr/0012-money-and-time-types.md)).
-- **Events are immutable** and named `SomethingEvent`. A new or changed event updates the [event catalog](../architecture/event-catalog.md) in the same PR.
+- **Events are frozen dataclasses** that subclass `Event` and are named `SomethingEvent`; the bus rejects anything else. An event holds its own facts only; the bus adds the envelope.
+- **Handlers only publish.** A handler never calls another component and never drains the bus.
+- A new or changed event updates the [event catalog](../architecture/event-catalog.md) in the same PR.
 - **Ports are `typing.Protocol` classes.** Adapters do not inherit from core classes.
 - **Fail closed.** When something unexpected happens in the trading path, stop and alert. Do not guess and continue.
 - **No secrets in code, logs or tests.** Log an account id or URL only in a masked form.
