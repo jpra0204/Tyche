@@ -4,7 +4,7 @@ See ADR-0012 for why money is ``Decimal`` and never ``float``.
 """
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import overload
 
 from tyche.core.domain.currency import Currency
@@ -95,6 +95,19 @@ class Money:
 
     def __str__(self) -> str:
         return f"{self.amount} {self.currency}"
+
+    def round_to(self, places: int) -> Money:
+        """Round to ``places`` decimal places, halves to even (banker's rounding).
+
+        Rounding never happens implicitly. Code that needs it calls this, at the one
+        point where a rule says how: the ledger's cost allocation, a broker's
+        commission to the cent.
+        """
+        if places < 0:
+            raise ValueError("places must be zero or more")
+        return Money(
+            self.amount.quantize(Decimal(1).scaleb(-places), ROUND_HALF_EVEN), self.currency
+        )
 
     # --- arithmetic with Money of the same currency -----------------------------
 

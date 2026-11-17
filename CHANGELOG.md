@@ -35,6 +35,11 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Engine and replay (Phase 1, PR 7): `Engine` (one run loop for every mode), `HistoricalReplay` (a `Feed` that plays cached history session by session), `InMemoryJournal`, the `Feed` and `PacedClock` ports, and the events `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent` and `RunEvent`.
 - Learning note: lookahead bias.
 
+- Account ledger (Phase 1, PR 8): `Order` and its `OrderState` lifecycle, `Fill`, `Position`, and an immutable `Account` with cash per currency (settled and unsettled), positions at average cost, marks and realised profit. Refuses short sales, buying beyond the cash and applying a fill twice.
+- `Money.round_to`, banker's rounding at an explicit number of places.
+- Property-based tests for the ledger. Learning note: property-based testing.
+- Development dependency: `hypothesis` (MPL-2.0).
+
 ### Changed
 
 - `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.

@@ -39,7 +39,7 @@ Further rules checked in review:
 | Kind | Purpose | Where | Phase |
 |---|---|---|---|
 | Unit | Every core module, tested through its public interface with fakes for ports | `tests/core/...` | 1 onward |
-| Property-based (hypothesis) | The risk layer: no generated input may produce an order that breaks the active profile or the guardrails | `tests/core/risk/` | 2 |
+| Property-based (hypothesis) | Rules that must hold for any input. The ledger: cash conserved exactly, no short positions, settlement never changes the total (PR 8). The risk layer: no generated input may produce an order that breaks the active profile or the guardrails (Phase 2) | `tests/core/domain/`, `tests/core/risk/` | 1, 2 |
 | Golden-file regression | A fixed backtest must reproduce its stored event log and metrics exactly | `tests/core/backtest/` | 1 |
 | Reference validation | Our backtester agrees with an independent library on a simple strategy | `tests/core/backtest/` | 1 |
 | Simulator | `SimBroker` fills, partial fills, rejections, stops, settlement, currency | `tests/core/sim/` | 1, 4 |
@@ -48,6 +48,7 @@ Further rules checked in review:
 
 Rules:
 
+- Property-based tests run from a fixed seed (the `tyche` profile in `tests/conftest.py`), so they find the same examples on every run. When one fails, turn the printed example into a regular test as well.
 - Tests are deterministic. No real network, no real clock, no sleeping. Randomness uses a fixed seed. Use `SimClock` wherever code needs the time.
 - A warning fails the test run. If a library raises one that we cannot fix, add a narrow `ignore` to `filterwarnings` in `pyproject.toml` with the reason and the condition for removing it.
 - Every folder under `tests/` has an `__init__.py`, so two test files may share a name in different folders.
