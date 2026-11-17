@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope and the bus. Each event in the catalog is added by the PR that first publishes it.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 
@@ -13,15 +13,32 @@ Every component in the trading path communicates through the events on this page
 
 ## The envelope
 
-Every event has these fields in addition to its own:
+An event holds only its own facts: which bar, which order. The bus wraps every published event in an `Envelope` and fills in the delivery details, so the component that creates an event cannot get them wrong. Handlers receive the envelope and read the event from `envelope.event`.
 
-| Field | Meaning |
+| Field | Set by | Meaning |
+|---|---|---|
+| `seq` | The bus | Position in the run's event sequence, starting at 1. Events are handled in this order, and two runs of the same backtest can be compared event by event. |
+| `occurred_at` | The bus, from the clock | Time when the event was published, in UTC. Simulated time in a backtest. |
+| `source` | The publisher | Name of the component that published it. Inside a handler it defaults to that subscriber's name. |
+| `caused_by` | The bus | `seq` of the event whose handler published this one. Empty for an input from outside, such as a bar from the feed. Following these links answers "why did this order exist?". |
+| `cycle_id` | Whoever starts a cycle | The decision cycle this event belongs to, if any. Everything published while handling an event inherits that event's cycle. Fills and stop triggers that arrive between cycles have none. |
+| `event` | The publisher | The event itself. |
+
+Causation is automatic. A handler calls `bus.publish(SomeEvent(...))` and nothing else; the bus knows which event is being handled and records it as the cause.
+
+## Rules the bus enforces
+
+From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.core.events.bus`:
+
+| Rule | What happens otherwise |
 |---|---|
-| `seq` | Position in the run's event sequence, assigned by the bus. Deterministic, so two runs of the same backtest can be compared event by event. |
-| `occurred_at` | Time from the `Clock` port when the event was published. Simulated time in a backtest. |
-| `cycle_id` | The decision cycle this event belongs to, if any. Fills and stop triggers that arrive between cycles have none. |
-| `caused_by` | `seq` of the event that led to this one. Following these links answers "why did this order exist?". |
-| `source` | Name of the component that published it. |
+| An event class is a frozen dataclass whose name ends in `Event` | `TypeError` when the class is defined (name) or first published (not frozen) |
+| `publish` only queues; `drain` delivers until the queue is empty | Calling `drain` from inside a handler is an error |
+| Subscribers run in registration order, and a subscription covers subclasses | Subscribing to `Event` receives everything; this is how the journal works |
+| Subscriptions close at the first publish | A late `subscribe` raises, so no subscriber can miss the start of a run |
+| An input from outside must name its source | `publish` raises |
+| A handler that raises halts the bus for good | `HandlerError`; nothing still queued is delivered |
+| One drain may not exceed a set number of events | `RunawayDispatchError` and a halt; this catches handlers publishing to each other in a loop |
 
 ## Two patterns used below
 
