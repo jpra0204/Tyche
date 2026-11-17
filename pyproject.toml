@@ -72,6 +72,16 @@ addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not ibkr_paper"]
 markers = [
     "ibkr_paper: opt-in integration test against an IBKR PAPER account (never live); run with -m ibkr_paper",
 ]
+# Every warning fails the test run, so a new one is dealt with instead of scrolling past.
+# Each exception below names its source and the condition for removing it.
+filterwarnings = [
+    "error",
+    # Raised inside exchange_calendars 4.13.3 (ExchangeCalendar.__init__ reads
+    # schedule.open.values) under pandas 3.1. Not our code; the values are still correct,
+    # and tests/adapters/calendars pins exact UTC session times, so a real breakage would
+    # fail there. Remove once an exchange_calendars release stops triggering it.
+    "ignore:Series.values returning an ndarray that drops timezone information:pandas.errors.Pandas4Warning",
+]
 
 [tool.coverage.run]
 source = ["tyche"]

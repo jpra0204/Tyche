@@ -45,7 +45,8 @@ Further rules checked in review:
 
 Rules:
 
-- Tests are deterministic. No real network, no real clock, no sleeping. Randomness uses a fixed seed.
+- Tests are deterministic. No real network, no real clock, no sleeping. Randomness uses a fixed seed. Use `SimClock` wherever code needs the time.
+- A warning fails the test run. If a library raises one that we cannot fix, add a narrow `ignore` to `filterwarnings` in `pyproject.toml` with the reason and the condition for removing it.
 - Every folder under `tests/` has an `__init__.py`, so two test files may share a name in different folders.
 - The `ibkr_paper` marker is deselected by default. Run those tests on purpose with `uv run pytest -m ibkr_paper`.
 - **No automated test ever touches a live account.**

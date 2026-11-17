@@ -1,6 +1,6 @@
 # Status
 
-*Last updated: 2026-11-16*
+*Last updated: 2026-11-17*
 
 ## Current phase
 
@@ -8,8 +8,9 @@
 
 - Phase 0 is merged.
 - PR 1 (domain types) is merged.
-- PR 2 (event envelope and bus) is open for review against `main`.
-- Next: PR 3, clock and calendar.
+- PR 2 (event envelope and bus) is merged.
+- PR 3 (clock and calendar) is open for review against `main`.
+- Next: PR 4, workspace and config.
 
 ## What works today
 
@@ -18,9 +19,10 @@
 - `tyche --version` runs.
 - CI runs the same checks on every pull request and on `main`.
 - Domain types (PR 1): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
-- Event bus (PR 2, in review): `Event`, `Envelope`, `EventBus`. No concrete events yet.
+- Event bus (PR 2): `Event`, `Envelope`, `EventBus`. No concrete events yet.
+- Clock and calendar (PR 3, in review): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
 
-There is no trading, data or backtesting code yet. Apart from `cli`, `core.domain` and `core.events`, every package under `src/tyche/` contains only a docstring saying what will live there.
+There is no trading, data or backtesting code yet. Apart from `cli`, `core.domain`, `core.events`, `core.ports`, `core.sim` and `adapters.calendars`, every package under `src/tyche/` contains only a docstring saying what will live there.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -43,8 +45,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
 | 1 | Domain types (**merged**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
-| 2 | Event envelope and bus (**in review**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
-| 3 | Clock and calendar (**in review**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). Still owed: the learning note on the clock as a port |
+| 2 | Event envelope and bus (**merged**) | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
+| 3 | Clock and calendar (**in review**) | `Clock` and `Calendar` ports, `Session`, `SimClock`, NYSE calendar adapter. `SessionEvent` moves to PR 7, where the engine first publishes it | Adds `exchange_calendars` (Apache-2.0, free). |
 | 4 | Workspace and config | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic`. Decide: CLI framework; where your workspace lives |
 
 **B. Data**
@@ -134,5 +136,5 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 2.
-2. Phase 1, PR 3: clock and calendar.
+1. Pablo reviews and merges PR 3.
+2. Phase 1, PR 4: workspace and config. It needs two decisions from you: the CLI framework (stay with `argparse` or adopt Typer) and where your private workspace lives.
