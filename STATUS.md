@@ -12,8 +12,8 @@
 - PR 3 (clock and calendar) is merged.
 - PR 4 (workspace and config) is merged; ADR-0017 accepted.
 - PR 5 (data port and Parquet cache) is merged.
-- PR 6a is merged. PR 6b was merged into the 6a branch instead of `main` (the stacked base wasn't retargeted in time); **#9 carries the same commit to `main`** and is open.
-- PR 7 (engine and replay feed) is open for review, stacked on 6b's branch. Merge #9 first; I'll retarget PR 7 to `main` straight after.
+- PR 6 is merged: 6a directly, 6b through #9 (it first landed on the 6a branch because its stacked base was not retargeted in time).
+- PR 7 (engine and replay feed) is open for review against `main`.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -27,7 +27,7 @@
 - Event bus (PR 2): `Event`, `Envelope`, `EventBus`.
 - Clock and calendar (PR 3): `Clock` and `Calendar` ports, `Session`, `SimClock`, and an NYSE calendar backed by `exchange_calendars`.
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
-- Data layer (PRs 5 and 6a merged; 6b in #9): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
+- Data layer (PRs 5, 6a and 6b): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
 - Engine and replay (PR 7, in review): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
 
 There is no trading code yet: no strategies, risk, orders or broker. The engine runs replayed history end to end, but nothing reacts to it yet except the journal. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
@@ -63,7 +63,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 5 | Data port and Parquet cache (**merged**) | `DataProvider` port, cache that records when data was fetched, quality checks, gap detection against the calendar | Adds `pyarrow` only; pandas waits until code imports it |
 | 6a | Dividends, splits and price adjustment (**merged**) | `PriceAdjustment`, `CashDistribution`, `Split`; cached with the bars; full refetch on a new split | Decided: split-adjusted prices, dividends as cash (ADR-0019) |
-| 6b | yfinance source (**in review as #9**) | Daily bars and corporate actions with retries, `tyche data fetch` | Adds `yfinance`. Verified 2026-11-17: Apache-2.0; Yahoo data is for personal use only; `raise_errors` is deprecated in 1.8 |
+| 6b | yfinance source (**merged**, via #9) | Daily bars and corporate actions with retries, `tyche data fetch` | Adds `yfinance`. Verified 2026-11-17: Apache-2.0; Yahoo data is for personal use only; `raise_errors` is deprecated in 1.8 |
 
 **C. Engine and simulation**
 
@@ -148,6 +148,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo merges #9 (6b to `main`), then reviews PR 7 once it is retargeted.
+1. Pablo reviews and merges PR 7.
 2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`.
 3. Phase 1, PR 8: account ledger, when Pablo says to start.
