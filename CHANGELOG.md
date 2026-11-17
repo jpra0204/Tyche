@@ -15,11 +15,17 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `tyche init`: creates a private workspace from packaged templates, refusing unsafe locations and never overwriting (Phase 1, PR 4).
 - `tyche config check`: validates the workspace configuration and prints its fingerprint.
 - Workspace configuration: `config/tyche.toml` and the `US` market profile, validated by pydantic file schemas and the new `MarketProfile` domain object, with a config hash.
-- ADR-0016 (Typer) and ADR-0017 (config schemas at the boundary, proposed).
+- ADR-0016 (Typer) and ADR-0017 (config schemas at the boundary).
 - User guide: installation and your workspace. Learning note: config at the boundary.
 - Runtime dependencies: `pydantic` (MIT) and `typer` (MIT).
 
+- Market data layer (Phase 1, PR 5): the `DataProvider` port; `BarHistory` and the calendar-based data-quality audit; a Parquet bar cache that records fetch times and coverage; a read-through `CachedDataProvider` over any `BarSource`.
+- ADR-0018 (audit market data, proposed). Learning note: working with unreliable data.
+- Runtime dependency: `pyarrow` (Apache-2.0). Development dependency: `pyarrow-stubs` (BSD-2-Clause).
+
 ### Changed
+
+- ADR-0017 accepted.
 
 - The CLI is built with Typer instead of `argparse`. Running `tyche` with no arguments now prints help and exits with code 2.
 - pytest now treats every warning as an error. One known warning raised inside `exchange_calendars` is ignored, with the reason and the condition for removing it in `pyproject.toml`.

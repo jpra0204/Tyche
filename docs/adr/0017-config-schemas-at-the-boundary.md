@@ -1,6 +1,6 @@
 # ADR-0017: Config file schemas live in `tyche.config`; the core receives domain objects
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-17)
 - **Date:** 2026-11-17
 - **Refines:** [ADR-0010](0010-config-toml-pydantic.md), the line "Models live beside the code they configure"
 

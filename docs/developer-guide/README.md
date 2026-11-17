@@ -17,7 +17,7 @@ For the end-to-end flow of an event from data to fill, see the [system overview]
 |---|---|---|
 | `pipeline-contracts.md` | Input and output contract of each pipeline stage, with examples | Phase 1, extended in Phase 2 |
 | `how-to-add-a-strategy.md` | One file plus config, with no core changes | Phase 1 |
-| `how-to-add-a-data-provider.md` | Implementing the `DataProvider` port | Phase 1 |
+| `how-to-add-a-data-source.md` | Implementing a `BarSource` behind the cached `DataProvider`, using yfinance as the worked example | Phase 1, PR 6 |
 | `backtesting-internals.md` | Fill rules, cost models, how lookahead is prevented, known limits | Phase 1 |
 | `how-to-add-a-broker.md` | Implementing the `Broker` port | Phase 2 |
 | `how-to-add-a-notifier.md` | Implementing the `Notifier` port | Phase 2 |

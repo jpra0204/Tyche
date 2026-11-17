@@ -4,13 +4,21 @@ Each port is a ``typing.Protocol``. An implementation does not inherit from it; 
 has to provide the same methods. Implementations that touch the outside world live in
 ``tyche.adapters``; the simulated ones are pure code and live in ``tyche.core.sim``.
 
-Available now: ``Clock`` and ``Calendar``.
+Available now: ``Clock``, ``Calendar`` and ``DataProvider``.
 
-Planned (Phase 1 onward): ``DataProvider``, ``Broker``, ``Notifier``, ``LLMProvider``
+Planned (Phase 1 onward): ``Broker``, ``Notifier``, ``LLMProvider``
 and the storage ports.
 """
 
 from tyche.core.ports.calendar import Calendar, CalendarError, OutOfCalendarRangeError
 from tyche.core.ports.clock import Clock
+from tyche.core.ports.data import DataError, DataProvider
 
-__all__ = ["Calendar", "CalendarError", "Clock", "OutOfCalendarRangeError"]
+__all__ = [
+    "Calendar",
+    "CalendarError",
+    "Clock",
+    "DataError",
+    "DataProvider",
+    "OutOfCalendarRangeError",
+]
