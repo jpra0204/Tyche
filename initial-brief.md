@@ -22,7 +22,7 @@ Be honest with me. If something I ask for is a bad idea, a likely way to lose mo
 - **Location: Canada.** The broker is **Interactive Brokers (IBKR)** for stocks. **Kraken** for crypto comes in a later phase.
 - **Account type:** the bot trades in a **non-registered** account, never a TFSA, RRSP or FHSA.
 - **v1 trading scope:** **long-only, cash account.** No margin, shorting, options or leverage. The design should allow adding them later, but they stay disabled by default.
-- **Language:** Python 3.12+.
+- **Language:** Python 3.12+. My Mac has Python 3.14. Don't rely on the system Python: pin the version per project with `uv` (`.python-version`). Use 3.14 if every dependency supports it; otherwise pin the newest version they all support. Record the choice in an ADR, and use the same version in the Docker image.
 - **Runs on my own computer** in Docker (docker compose), so I can move it to an always-on machine later without code changes.
 - **Live trading is never turned on by code or by an agent.** Only I can switch to live, through a documented, deliberate manual step.
 - **My time:** about 10 hours a week. Work in small, reviewable increments.
