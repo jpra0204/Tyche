@@ -97,6 +97,8 @@ Backtest, paper and live run the same engine and the same pipeline stages ([ADR-
 
 Parity means the *code path* is the same. It does not mean simulated fills match real ones; the limits are listed in section 9.
 
+The engine's loop (`tyche.core.engine`) is the same in every mode: take the next input from the `Feed`, ask the clock to `wait_until` its moment, publish it, drain the bus. A `SimClock` jumps to the moment; the wall clock (Phase 2) sleeps until it. That is the `PacedClock` port, and it is why the engine never needs to know which mode it is in.
+
 ## 5. The event flow
 
 Components never call each other. Each one subscribes to the events it needs and publishes the events it produces, through a synchronous, single-threaded bus ([ADR-0003](../adr/0003-synchronous-event-bus.md)). The full list of events is in the [event catalog](event-catalog.md).

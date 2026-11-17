@@ -32,6 +32,9 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `network` test marker for opt-in tests against real services.
 - Runtime dependency: `yfinance` (Apache-2.0). Development dependency: `pandas-stubs` (BSD-3-Clause).
 
+- Engine and replay (Phase 1, PR 7): `Engine` (one run loop for every mode), `HistoricalReplay` (a `Feed` that plays cached history session by session), `InMemoryJournal`, the `Feed` and `PacedClock` ports, and the events `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent` and `RunEvent`.
+- Learning note: lookahead bias.
+
 ### Changed
 
 - `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.

@@ -1,9 +1,11 @@
 """Event types and the event bus.
 
 Available now: the ``Event`` base class, the ``Envelope`` the bus wraps around every
-event, and the synchronous, deterministic ``EventBus`` (ADR-0003).
+event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
+(``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``) and
+``RunEvent``.
 
-Planned (Phase 1 onward): the concrete events listed in
+Planned (Phase 1 onward): the other events listed in
 ``docs/architecture/event-catalog.md``, each added by the PR that first publishes it.
 """
 
@@ -16,14 +18,30 @@ from tyche.core.events.bus import (
     RunawayDispatchError,
 )
 from tyche.core.events.event import Envelope, Event
+from tyche.core.events.market import (
+    BarEvent,
+    DataQualityEvent,
+    DataReadyEvent,
+    SessionEvent,
+    SessionPhase,
+)
+from tyche.core.events.system import RunEvent, RunMode, RunStage
 
 __all__ = [
+    "BarEvent",
     "BusError",
     "BusHaltedError",
+    "DataQualityEvent",
+    "DataReadyEvent",
     "Envelope",
     "Event",
     "EventBus",
     "Handler",
     "HandlerError",
+    "RunEvent",
+    "RunMode",
+    "RunStage",
     "RunawayDispatchError",
+    "SessionEvent",
+    "SessionPhase",
 ]

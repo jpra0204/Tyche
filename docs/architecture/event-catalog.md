@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope and the bus. Each event in the catalog is added by the PR that first publishes it.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent` and `RunEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 
@@ -50,12 +50,14 @@ From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.cor
 
 ### Market data and time
 
+Within one moment, the feed's inputs come in a fixed order: session open, then each instrument's `BarEvent`, then any `DataQualityEvent` for the day, then session close, then `DataReadyEvent`. The bus finishes everything each input causes before the next one (ADR-0003), so a decision cycle always sees every bar and every fill from that moment.
+
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
-| `SessionEvent` | Engine (from `Clock` and `Calendar`) | Broker, risk, scheduler | `calendar`, `session_date`, `kind` (open or close), `is_half_day` | 1 |
-| `BarEvent` | Data feed | Broker (to fill waiting orders and check stops), market-data store | `instrument`, `timeframe`, `open`, `high`, `low`, `close`, `volume`, `is_adjusted` | 1 |
-| `DataReadyEvent` | Data feed | Universe (starts a decision cycle) | `timeframe`, `as_of`, `instruments`, `missing` | 1 |
-| `DataQualityEvent` | Data feed (from each `DataIssue` in a `BarHistory`) | Journal, notifier, universe | `instrument`, `kind` (the `DataIssueKind`: missing session, off session, duplicate, conflict, wrong series, mixed adjustment, suspect move; plus fetch failed), `session_day`, `detail` | 1 (PR 7) |
+| `SessionEvent` | Feed (in a backtest, `HistoricalReplay` from the `Calendar`) | Broker, risk, scheduler | `session` (calendar, day, open and close times, half day), `phase` (open or close) | **implemented** (PR 7) |
+| `BarEvent` | Feed, at the bar's own timestamp | Broker (to fill waiting orders and check stops), market-data store | `bar` (instrument, timeframe, timestamp, prices, volume, `adjustment`) | **implemented** (PR 7) |
+| `DataReadyEvent` | Feed, after every bar for the decision time | Universe (starts a decision cycle) | `timeframe`, `as_of`, `delivered`, `missing` | **implemented** (PR 7) |
+| `DataQualityEvent` | Feed (from each `DataIssue` in a `BarHistory`: at its session's close, or before the first session if it has none) | Journal, notifier, universe | `issue` (instrument, `DataIssueKind`, session day, detail) | **implemented** (PR 7) |
 
 ### Decision cycle (pipeline stages 1 to 5)
 
@@ -107,7 +109,7 @@ The `client_order_id` is derived from the decision that created the order (cycle
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
-| `RunEvent` | Engine, scheduler | Journal, notifier | `run_id`, `mode`, `kind` (started, completed, failed, skipped), `reason`, `config_hash`, `code_version` | 1 |
+| `RunEvent` | Engine, scheduler | Journal, notifier | `run_id`, `mode`, `stage` (started or completed), `code_version`, `config_hash`. A failed run cannot publish (the bus has halted), so the engine reports failure in its `RunResult`; a skipped run comes with the scheduler (Phase 2) | **implemented** (PR 7) |
 | `HaltEvent` | Risk (drawdown), reconciliation, kill switch | Engine, execution, notifier | `cause`, `flatten`, `resume_requires` (always a manual step) | 2 |
 
 ## What is deliberately not an event
