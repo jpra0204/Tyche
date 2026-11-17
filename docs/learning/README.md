@@ -12,6 +12,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Hexagonal architecture](hexagonal-architecture.md) | The core defines what it needs; the outside world plugs in |
 | [Backtest, paper and live parity](backtest-paper-live-parity.md) | One engine, with the clock, feed and broker swapped |
 | [The gated agent loop](gated-agent-loop.md) | LLMs propose, code tests, a human decides |
+| [Value objects](value-objects.md) | Small immutable types that cannot hold an invalid value |
 
 ## Planned
 

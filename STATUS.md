@@ -4,9 +4,10 @@
 
 ## Current phase
 
-**Phase 0: approved by Pablo on 2026-11-16.** Its pull request is open and waiting to be merged.
+**Phase 1: core and backtesting (`US`, end of day). In progress.** Pablo agreed the PR list below on 2026-11-16.
 
-**Phase 1: planned, not started.** The PR list below needs Pablo's agreement before any Phase 1 code is written.
+- PR 1 (domain types) is open for review. It is stacked on the Phase 0 pull request, which is approved but not yet merged; merge Phase 0 first.
+- Next: PR 2, event envelope and bus.
 
 ## What works today
 
@@ -14,8 +15,9 @@
 - `make check` passes: ruff lint and format, mypy strict, five import-linter architecture contracts, pytest.
 - `tyche --version` runs.
 - CI runs the same checks on every pull request and on `main`.
+- Domain types (PR 1, in review): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
 
-There is no trading, data or backtesting code yet. Every package under `src/tyche/` except `cli` contains only a docstring saying what will live there.
+There is no trading, data or backtesting code yet. Apart from `cli` and `core.domain`, every package under `src/tyche/` contains only a docstring saying what will live there.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -37,7 +39,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 1 | Domain types | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
+| 1 | Domain types (**in review**) | `Currency`, `Money`, `Instrument`, `Timeframe`, `Bar` | |
 | 2 | Event envelope and bus | Envelope fields, FIFO bus, run to completion, fail closed, an event-log helper for tests | |
 | 3 | Clock and calendar | `Clock` and `Calendar` ports, `SimClock`, NYSE calendar adapter, `SessionEvent` | Adds `exchange_calendars` |
 | 4 | Workspace and config | `TYCHE_HOME`, `tyche init`, typed config for the `US` profile, config hash | Adds `pydantic`. Decide: CLI framework; where your workspace lives |
@@ -129,6 +131,5 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo merges the Phase 0 pull request.
-2. Pablo agrees or changes the Phase 1 PR list above.
-3. Phase 1, PR 1: domain types.
+1. Pablo merges the Phase 0 pull request, then reviews and merges PR 1.
+2. Phase 1, PR 2: event envelope and bus.
