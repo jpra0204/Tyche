@@ -5,6 +5,7 @@ its result or error into text and an exit code. No logic lives here.
 """
 
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -19,6 +20,14 @@ from tyche.config import (
     init_workspace,
     load_config,
     resolve_home,
+)
+from tyche.core.domain import AssetClass
+from tyche.runtime.data import (
+    DEFAULT_FIRST,
+    FetchOutcome,
+    FetchRequestError,
+    fetch_daily_histories,
+    instrument_for,
 )
 
 app = typer.Typer(
@@ -35,6 +44,14 @@ config_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(config_app, name="config")
+
+data_app = typer.Typer(
+    help="Fetch market data into the workspace.",
+    no_args_is_help=True,
+)
+app.add_typer(data_app, name="data")
+
+MAX_ISSUES_SHOWN = 10
 
 HomeOption = Annotated[
     Path | None,
@@ -103,6 +120,107 @@ def config_check(home: HomeOption = None) -> None:
     typer.echo(f"Configuration is valid: {workspace.root}")
     typer.echo(f"  Market profile: {config.market_profile}")
     typer.echo(f"  Config hash:    {config.config_hash}")
+
+
+@data_app.command("fetch")
+def data_fetch(
+    symbols: Annotated[
+        list[str],
+        typer.Argument(
+            help="Symbols as the exchange lists them, e.g. SPY or BRK.B.", show_default=False
+        ),
+    ],
+    exchange: Annotated[
+        str,
+        typer.Option(
+            "--exchange",
+            help="Listing exchange, as a market identifier code: ARCX, XNAS, XNYS, BATS or XASE.",
+            show_default=False,
+        ),
+    ],
+    asset_class: Annotated[
+        AssetClass, typer.Option("--asset-class", help="Stock or ETF.")
+    ] = AssetClass.ETF,
+    first: Annotated[
+        datetime | None,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help=f"First session date. Defaults to {DEFAULT_FIRST}.",
+            show_default=False,
+        ),
+    ] = None,
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last session date. Defaults to today.",
+            show_default=False,
+        ),
+    ] = None,
+    home: HomeOption = None,
+) -> None:
+    """Fetch daily bars, dividends and splits from Yahoo Finance into the workspace cache.
+
+    Only sessions not already cached are downloaded. Every answer is checked against
+    the trading calendar, and any problem found is listed. Yahoo's data is for personal
+    use only.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        config = load_config(workspace)
+        instruments = [
+            instrument_for(symbol, exchange, asset_class, config.market_profile)
+            for symbol in symbols
+        ]
+        outcomes = fetch_daily_histories(
+            config,
+            instruments,
+            first.date() if first else DEFAULT_FIRST,
+            last.date() if last else None,
+        )
+    except (WorkspaceError, ConfigError, FetchRequestError) as error:
+        _fail(str(error))
+
+    failed = 0
+    for outcome in outcomes:
+        if outcome.error is not None:
+            failed += 1
+            typer.echo(f"Error: {outcome.instrument}: {outcome.error}", err=True)
+        else:
+            typer.echo(_describe_fetch(outcome))
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _describe_fetch(outcome: FetchOutcome) -> str:
+    history = outcome.history
+    assert history is not None
+    if not history.bars:
+        lines = [f"{outcome.instrument}: no bars in this range"]
+    else:
+        span = f"{history.bars[0].timestamp.date()} to {history.bars[-1].timestamp.date()}"
+        lines = [
+            f"{outcome.instrument}: {_count(len(history.bars), 'bar')}, {span}; "
+            f"{_count(len(history.distributions), 'distribution')}; "
+            f"{_count(len(history.splits), 'split')}"
+        ]
+    if history.fetched is not None:
+        oldest, newest = history.fetched
+        lines.append(f"  fetched {oldest:%Y-%m-%d %H:%M} to {newest:%Y-%m-%d %H:%M} UTC")
+    if history.issues:
+        lines.append(f"  {len(history.issues)} data issue(s):")
+        for issue in history.issues[:MAX_ISSUES_SHOWN]:
+            day = issue.session_day.isoformat() if issue.session_day else "(no session)"
+            lines.append(f"    {day} {issue.kind}: {issue.detail}")
+        if len(history.issues) > MAX_ISSUES_SHOWN:
+            lines.append(f"    ... and {len(history.issues) - MAX_ISSUES_SHOWN} more")
+    return "\n".join(lines)
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number:,} {noun}{'' if number == 1 else 's'}"
 
 
 def main() -> None:

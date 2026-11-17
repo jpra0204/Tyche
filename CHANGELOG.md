@@ -25,6 +25,13 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 - Corporate actions (Phase 1, PR 6a): `PriceAdjustment`, `CashDistribution` and `Split` in the domain; `BarHistory` returns the distributions and splits in its window; the cache stores them exactly; a new split triggers a full refetch of the instrument's history (ADR-0019).
 
+- `tyche data fetch` (Phase 1, PR 6b): downloads daily bars, dividends and splits from Yahoo Finance into the workspace cache, audited against the calendar.
+- `YFinanceSource`: stamps bars at session closes, retries rate limits and network failures with exponential backoff, fails at once on unknown symbols.
+- `SystemClock`, the real-time `Clock`, and a table of known US exchanges.
+- User guide: fetching market data. Developer guide: how to add a data source.
+- `network` test marker for opt-in tests against real services.
+- Runtime dependency: `yfinance` (Apache-2.0). Development dependency: `pandas-stubs` (BSD-3-Clause).
+
 ### Changed
 
 - `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.

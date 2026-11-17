@@ -53,6 +53,8 @@ make test      # pytest with coverage
 uv run tyche --version
 uv run tyche init --home <scratch-folder>   # creates a workspace; never run it on Pablo's real one
 uv run tyche config check                  # validates the workspace config, prints its hash
+uv run tyche data fetch SPY --exchange ARCX  # downloads from Yahoo (network; personal-use data)
+uv run pytest -m network                   # opt-in tests against real services
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.

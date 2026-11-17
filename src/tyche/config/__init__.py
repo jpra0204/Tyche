@@ -11,6 +11,7 @@ Available now:
 The file schemas live here; the core only receives domain objects (ADR-0017).
 """
 
+from tyche.config.exchanges import KNOWN_EXCHANGES, ExchangeInfo
 from tyche.config.loader import (
     SCHEMA_VERSION,
     ConfigError,
@@ -33,8 +34,10 @@ from tyche.config.workspace import (
 __all__ = [
     "DEFAULT_HOME",
     "HOME_ENV_VAR",
+    "KNOWN_EXCHANGES",
     "SCHEMA_VERSION",
     "ConfigError",
+    "ExchangeInfo",
     "MarketProfileFile",
     "TycheConfig",
     "TycheFile",
