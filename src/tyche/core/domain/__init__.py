@@ -11,6 +11,9 @@ audit that produces it.
 Also the ledger types: ``Order`` with its ``OrderState`` lifecycle, ``Fill``,
 ``Position`` and ``Account`` (cash per currency, settled and unsettled).
 
+The universe types: ``UniverseRules``, ``UniverseMember``, ``Exclusion`` with its
+``ExclusionReason``, ``ScoredInstrument``, and the ``DISQUALIFYING_ISSUES``.
+
 And what trading costs (ADR-0020): ``TradingCosts`` with its ``CommissionSchedule``
 and ``RegulatoryFees``, ``TradeCost``, and whole-share sizing with ``whole_shares``
 and ``affordable_shares``.
@@ -50,9 +53,18 @@ from tyche.core.domain.order import (
 )
 from tyche.core.domain.session import Session
 from tyche.core.domain.timeframe import Timeframe
+from tyche.core.domain.universe import (
+    DISQUALIFYING_ISSUES,
+    Exclusion,
+    ExclusionReason,
+    ScoredInstrument,
+    UniverseMember,
+    UniverseRules,
+)
 
 __all__ = [
     "DEFAULT_MAX_DAILY_MOVE",
+    "DISQUALIFYING_ISSUES",
     "Account",
     "AssetClass",
     "Bar",
@@ -65,6 +77,8 @@ __all__ = [
     "DataIssue",
     "DataIssueKind",
     "DistributionKind",
+    "Exclusion",
+    "ExclusionReason",
     "Fill",
     "Instrument",
     "LedgerError",
@@ -79,6 +93,7 @@ __all__ = [
     "Position",
     "PriceAdjustment",
     "RegulatoryFees",
+    "ScoredInstrument",
     "Session",
     "Side",
     "Split",
@@ -86,6 +101,8 @@ __all__ = [
     "Timeframe",
     "TradeCost",
     "TradingCosts",
+    "UniverseMember",
+    "UniverseRules",
     "affordable_shares",
     "audit_daily_bars",
     "require_profile_name",

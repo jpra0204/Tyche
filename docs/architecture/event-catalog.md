@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent`, `RunEvent`, `OrderEvent`, `FillEvent` and `DistributionEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent`, `RunEvent`, `OrderEvent`, `FillEvent`, `DistributionEvent`, `UniverseEvent` and `ScreeningEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 
@@ -55,16 +55,16 @@ Within one moment, the feed's inputs come in a fixed order: session open, then a
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
 | `SessionEvent` | Feed (in a backtest, `HistoricalReplay` from the `Calendar`) | Broker, risk, scheduler | `session` (calendar, day, open and close times, half day), `phase` (open or close) | **implemented** (PR 7) |
-| `BarEvent` | Feed, at the bar's own timestamp | Broker (to fill waiting orders and check stops), market-data store | `bar` (instrument, timeframe, timestamp, prices, volume, `adjustment`) | **implemented** (PR 7) |
-| `DataReadyEvent` | Feed, after every bar for the decision time | Universe (starts a decision cycle) | `timeframe`, `as_of`, `delivered`, `missing` | **implemented** (PR 7) |
-| `DataQualityEvent` | Feed (from each `DataIssue` in a `BarHistory`: at its session's close, or before the first session if it has none) | Journal, notifier, universe | `issue` (instrument, `DataIssueKind`, session day, detail) | **implemented** (PR 7) |
+| `BarEvent` | Feed, at the bar's own timestamp | Broker (to fill waiting orders and check stops), universe (keeps the last few bars), market-data store | `bar` (instrument, timeframe, timestamp, prices, volume, `adjustment`) | **implemented** (PR 7) |
+| `DataReadyEvent` | Feed, after every bar for the decision time | Universe (starts a decision cycle: publishes one `UniverseEvent`) | `timeframe`, `as_of`, `delivered`, `missing` | **implemented** (PR 7) |
+| `DataQualityEvent` | Feed (from each `DataIssue` in a `BarHistory`: at its session's close, or before the first session if it has none) | Journal, notifier, universe (excludes the instrument for a few cycles after a disqualifying issue) | `issue` (instrument, `DataIssueKind`, session day, detail) | **implemented** (PR 7) |
 
 ### Decision cycle (pipeline stages 1 to 5)
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
-| `UniverseEvent` | Universe | Screening | `as_of`, `eligible`, `excluded` (each with a reason) | 1 |
-| `ScreeningEvent` | Screening | Signals | `as_of`, `ranked` (instrument, score, screen name) | 1 |
+| `UniverseEvent` | Universe, once per `DataReadyEvent` | Screening, journal | `as_of`; `eligible`: `UniverseMember`s (instrument, `last_close`, `average_dollar_volume`); `excluded`: `Exclusion`s (instrument, `ExclusionReason`, `detail`). Every instrument the feed expected appears exactly once. The reasons, in the order they are checked: `not_in_profile`, `no_bar`, `data_issue`, `insufficient_history`, `price_too_low`, `illiquid` | **implemented** (PR 11) |
+| `ScreeningEvent` | Screening, once per `UniverseEvent` | Signals, journal | `as_of`, `screen` (its name), `ranked`: `ScoredInstrument`s (instrument, `score`), best first, ties broken by symbol; `cut`: eligible instruments below the screen's limit | **implemented** (PR 11) |
 | `SignalEvent` | Signals (one per strategy) | Portfolio construction | `strategy_id`, `strategy_version`, `as_of`, `targets` (instrument, weight within the strategy's budget, optional `stop_price`, `reason`) | 1 |
 | `SignalsReadyEvent` | Signals | Portfolio construction | `strategies` reported, `failed` (strategy and error) | 1 |
 | `TargetPortfolioEvent` | Portfolio construction | Risk gate only | `as_of`, `targets` (instrument, quantity, optional `stop_price`, contribution per strategy), `conflicts_resolved` | 1 |

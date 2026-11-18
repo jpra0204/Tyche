@@ -5,9 +5,12 @@ from typing import Any
 
 import pytest
 
-from tyche.core.domain import Currency, MarketProfile, require_profile_name
+from tests.support.profiles import US_RULES
+from tyche.core.domain import Currency, MarketProfile, Money, require_profile_name
 
-US = MarketProfile(name="US", cash_currencies=(Currency.USD,), calendars=("XNYS",))
+US = MarketProfile(
+    name="US", cash_currencies=(Currency.USD,), calendars=("XNYS",), universe=US_RULES
+)
 
 
 def test_holds_its_fields() -> None:
@@ -24,7 +27,7 @@ def test_is_immutable() -> None:
 
 
 def test_a_combined_profile_holds_both_currencies_and_calendars() -> None:
-    both = MarketProfile("CA+US", (Currency.CAD, Currency.USD), ("XTSE", "XNYS"))
+    both = MarketProfile("CA+US", (Currency.CAD, Currency.USD), ("XTSE", "XNYS"), US_RULES)
 
     assert both.cash_currencies == (Currency.CAD, Currency.USD)
     assert both.calendars == ("XTSE", "XNYS")
@@ -69,3 +72,19 @@ def test_rejects_a_malformed_calendar() -> None:
 def test_rejects_a_repeated_calendar() -> None:
     with pytest.raises(ValueError, match="calendars are repeated"):
         replace(US, calendars=("XNYS", "XNYS"))
+
+
+def test_holds_its_universe_rules() -> None:
+    assert US.universe == US_RULES
+    assert US.universe.currency is Currency.USD
+
+
+def test_universe_thresholds_must_be_in_a_cash_currency() -> None:
+    in_cad = replace(
+        US_RULES,
+        min_price=Money.of("5", Currency.CAD),
+        min_average_dollar_volume=Money.of("1", Currency.CAD),
+    )
+
+    with pytest.raises(ValueError, match="universe thresholds are in CAD"):
+        replace(US, universe=in_cad)

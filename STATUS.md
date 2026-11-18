@@ -1,6 +1,6 @@
 # Status
 
-*Last updated: 2026-11-17*
+*Last updated: 2026-11-18*
 
 ## Current phase
 
@@ -16,7 +16,8 @@
 - PR 7 (engine and replay feed) is merged.
 - PR 8 (account ledger) is merged.
 - PR 9 (costs and settlement) is merged; ADR-0020 accepted.
-- PR 10 (`SimBroker`) is open for review.
+- PR 10 (`SimBroker`) is merged.
+- PR 11 (universe and screening) is open for review.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -32,11 +33,12 @@
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
 - Data layer (PRs 5, 6a and 6b): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
 - Engine and replay (PR 7): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
-- Simulated broker (PR 10, in review): `SimBroker` fills market orders at the next open and sell stops against each bar's low, with slippage, volume-capped partial fills, settled-cash-only purchases, T+1 settlement, free-riding records and dividends credited at the ex-date. The `Broker` port, and the `OrderEvent`, `FillEvent` and `DistributionEvent` events. The replay now publishes distributions.
+- Universe and screening (PR 11, in review): `UniverseStage` decides at every decision cycle which instruments are eligible under the market profile's new `[universe]` rules (profile membership, a current bar, no recent data problem, enough history, a minimum price, a minimum average dollar volume) and says why each other one is excluded. `ScreeningStage` ranks the eligible ones with a `Screen`; the first, `DollarVolumeScreen`, ranks by liquidity. Events `UniverseEvent` and `ScreeningEvent`.
+- Simulated broker (PR 10): `SimBroker` fills market orders at the next open and sell stops against each bar's low, with slippage, volume-capped partial fills, settled-cash-only purchases, T+1 settlement, free-riding records and dividends credited at the ex-date. The `Broker` port, and the `OrderEvent`, `FillEvent` and `DistributionEvent` events. The replay now publishes distributions.
 - Costs and settlement (PR 9): IBKR Pro Fixed commissions and regulatory fees, adverse slippage, whole-share sizing that leaves room for costs, and T+1 settlement dates, with the rates in a dated `config/costs/US.toml`. `tyche config check` prints when the rates were checked.
 - Account ledger (PR 8): orders with a checked lifecycle, fills, positions at average cost, and cash per currency, settled and unsettled. Refuses short sales, buying beyond the cash, and applying a fill twice.
 
-There is no decision-making code yet: no strategies, risk or execution. The engine runs replayed history end to end; the simulated broker can fill orders, but nothing submits them yet outside tests. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
+There are no strategies, risk or execution yet: the pipeline stops at a ranked list of eligible instruments. The engine runs replayed history end to end; the simulated broker can fill orders, but nothing submits them yet outside tests. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `universe`, `screening` and `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -78,13 +80,13 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 | 7 | Engine and replay feed (**merged**) | The run loop, historical replay (`BarEvent`, `DataReadyEvent`), in-memory journal | Also `SessionEvent` (moved from PR 3), `DataQualityEvent`, `RunEvent`, and the `PacedClock` port |
 | 8 | Account ledger (**merged**) | `Order`, `Fill`, `Position`, account with settled and unsettled cash per currency | `AccountEvent` moves to PR 10, where it is first published. Adds `hypothesis` |
 | 9 | Costs and settlement (**merged**) | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verified 2026-11-17 ([summary](docs/developer-guide/ibkr-canada-costs-and-settlement.md)). [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted 2026-11-17 |
-| 10 | `SimBroker` (**in review**) | Next-open fills, stops against daily bars, rejections, partial fills, settlement | Buys from settled cash only; free-riding violations recorded (ADR-0020). `AccountEvent` moves to PR 14 |
+| 10 | `SimBroker` (**merged**) | Next-open fills, stops against daily bars, rejections, partial fills, settlement | Buys from settled cash only; free-riding violations recorded (ADR-0020). `AccountEvent` moves to PR 14 |
 
 **D. Pipeline, up to the first backtest**
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 11 | Universe and screening | Stages 1 and 2 for the `US` profile, with liquidity, price and data-quality filters | |
+| 11 | Universe and screening (**in review**) | Stages 1 and 2 for the `US` profile, with liquidity, price and data-quality filters | The rules live in a new `[universe]` table of `config/markets/US.toml`. The universe keeps its own last few bars from `BarEvent`s; PR 12 may replace that with whatever it decides for strategies |
 | 12 | Strategy interface and benchmark | The plugin contract, the signals stage, buy-and-hold | Decide: how a strategy sees price history |
 | 13 | Portfolio construction | Several strategies at once, per-strategy budgets, conflict resolution | |
 | 14 | Risk gate (pass-through) and execution | `ApprovedPortfolioEvent` with no rules yet, target-to-order diffing, idempotent order ids | Also `AccountEvent` (moved from PR 10) and order cancellation. Decide: place a stop after its entry fills (the entry session is unprotected) or with it (a same-day stop-out is free riding) |
@@ -157,6 +159,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 10.
-2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`. A workspace created before PR 9 needs `config/costs/US.toml` copied in.
-3. Phase 1, PR 11: universe and screening, when Pablo says to start it.
+1. Pablo reviews and merges PR 11. The universe thresholds in the template (USD 5.00 minimum price, USD 10,000,000 minimum average dollar volume, 20 bars, 5 cycles after a data problem) are my choices, not facts; worth a look.
+2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`. A workspace created before PR 9 needs `config/costs/US.toml` copied in; one created before PR 11 needs the `[universe]` table from the template's `config/markets/US.toml`, or `tyche config check` reports `universe: Field required`.
+3. Phase 1, PR 12: strategy interface and benchmark, when Pablo says to start it.
