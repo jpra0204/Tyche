@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of
+from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of, dividend
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.domain import (
     AssetClass,
@@ -16,7 +16,14 @@ from tyche.core.domain import (
     PriceAdjustment,
     Timeframe,
 )
-from tyche.core.events import BarEvent, DataQualityEvent, DataReadyEvent, SessionEvent, SessionPhase
+from tyche.core.events import (
+    BarEvent,
+    DataQualityEvent,
+    DataReadyEvent,
+    DistributionEvent,
+    SessionEvent,
+    SessionPhase,
+)
 from tyche.core.ports import Calendar
 from tyche.core.sim import HistoricalReplay, cycle_id
 
@@ -47,6 +54,8 @@ def describe(replay: HistoricalReplay) -> list[str]:
             out.append(f"issue {event.issue.kind}")
         elif isinstance(event, DataReadyEvent):
             out.append("ready")
+        elif isinstance(event, DistributionEvent):
+            out.append(f"distribution {event.distribution.instrument.symbol}")
     return out
 
 
@@ -204,3 +213,36 @@ def test_adjustment_basis_is_untouched(calendars: dict[str, Calendar]) -> None:
 
     assert isinstance(bar_input.event, BarEvent)
     assert bar_input.event.bar.adjustment is PriceAdjustment.SPLITS
+
+
+class TestDistributions:
+    def test_a_distribution_is_replayed_at_the_open_of_its_ex_date(
+        self, calendars: dict[str, Calendar]
+    ) -> None:
+        first, ex_date = date(2024, 1, 2), date(2024, 1, 3)
+        paid = BarHistory(
+            SPY,
+            tuple(bar(day) for day in (first, ex_date)),
+            distributions=(dividend(ex_date, "1.50"),),
+        )
+        replay = HistoricalReplay([paid], calendars, first, ex_date)
+
+        inputs = list(replay.inputs())
+        assert describe(replay) == [
+            "open XNYS", "bar SPY", "close XNYS", "ready",
+            "open XNYS", "distribution SPY", "bar SPY", "close XNYS", "ready",
+        ]  # fmt: skip
+        distribution = next(i for i in inputs if isinstance(i.event, DistributionEvent))
+        assert distribution.at == inputs[4].at  # the ex-date's open
+
+    def test_a_distribution_outside_the_range_is_not_replayed(
+        self, calendars: dict[str, Calendar]
+    ) -> None:
+        day = date(2024, 1, 2)
+        paid = BarHistory(
+            SPY,
+            tuple(bar(d) for d in (day, date(2024, 1, 3))),
+            distributions=(dividend(date(2024, 1, 3), "1.50"),),
+        )
+
+        assert "distribution SPY" not in describe(HistoricalReplay([paid], calendars, day, day))

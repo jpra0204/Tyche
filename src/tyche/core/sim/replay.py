@@ -3,6 +3,7 @@
 For each trading session, inputs are produced in this order::
 
     session open                      at the open
+    any DistributionEvent going ex    at the open
     one BarEvent per instrument       at the close
     any DataQualityEvent for the day  at the close
     session close                     at the close
@@ -22,6 +23,7 @@ from tyche.core.events import (
     BarEvent,
     DataQualityEvent,
     DataReadyEvent,
+    DistributionEvent,
     Event,
     SessionEvent,
     SessionPhase,
@@ -32,7 +34,7 @@ SOURCE_CALENDAR = "calendar"
 SOURCE_REPLAY = "replay"
 
 # Order of inputs that share a moment.
-_EARLY_ISSUE, _OPEN, _BAR, _QUALITY, _CLOSE, _READY = range(6)
+_EARLY_ISSUE, _OPEN, _DISTRIBUTION, _BAR, _QUALITY, _CLOSE, _READY = range(7)
 
 
 def cycle_id(session: Session) -> str:
@@ -61,7 +63,10 @@ class HistoricalReplay:
 
     Data issues are replayed too: those tied to a session at that session's close, and
     those with no session (bars dropped before caching) before the first session opens.
-    Bars outside the range are not replayed.
+    Cash distributions are replayed at the open of their ex-date session, so the broker
+    pays whoever held the shares at the previous close. A distribution whose ex-date is
+    not a session in the range is not replayed. Splits are not replayed: prices are
+    already split-adjusted (ADR-0019). Bars outside the range are not replayed.
     """
 
     def __init__(
@@ -116,6 +121,15 @@ class HistoricalReplay:
         self._add(
             session.opens_at, _OPEN, SessionEvent(session, SessionPhase.OPEN), SOURCE_CALENDAR
         )
+        for history in members:
+            for distribution in history.distributions:
+                if distribution.ex_date == session.day:
+                    self._add(
+                        session.opens_at,
+                        _DISTRIBUTION,
+                        DistributionEvent(distribution),
+                        SOURCE_REPLAY,
+                    )
 
         delivered: list[Instrument] = []
         missing: list[Instrument] = []

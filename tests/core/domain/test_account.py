@@ -226,3 +226,30 @@ def test_market_value_counts_only_positions_in_that_currency() -> None:
     assert account.market_value(Currency.USD) == usd("1000")
     assert account.market_value(Currency.CAD) == Money.of("300", Currency.CAD)
     assert account.equity(Currency.CAD) == Money.of("5000", Currency.CAD)
+
+
+class TestDistributions:
+    def test_a_distribution_is_settled_cash_and_counted_as_income(self) -> None:
+        account = funded("100").receive_distribution("SPY:2024-01-03:dividend", usd("5.55"))
+
+        assert account.cash(Currency.USD).settled == usd("105.55")
+        assert account.distributions_received(Currency.USD) == usd("5.55")
+        assert account.realized_pnl(Currency.USD) == usd("0")
+
+    def test_nothing_received_reads_as_zero(self) -> None:
+        assert funded().distributions_received(Currency.CAD) == Money.of("0", Currency.CAD)
+
+    def test_the_same_payment_is_refused_twice(self) -> None:
+        account = funded().receive_distribution("p-1", usd("1"))
+
+        with pytest.raises(LedgerError, match="p-1 has already been received"):
+            account.receive_distribution("p-1", usd("1"))
+
+    def test_needs_a_payment_id(self) -> None:
+        with pytest.raises(LedgerError, match="needs a payment id"):
+            funded().receive_distribution(" ", usd("1"))
+
+    @pytest.mark.parametrize("amount", ["0", "-1"])
+    def test_the_amount_must_be_positive(self, amount: str) -> None:
+        with pytest.raises(LedgerError, match="amount must be positive"):
+            funded().receive_distribution("p-1", usd(amount))

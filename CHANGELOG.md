@@ -46,6 +46,11 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `settlement_date` in `tyche.core.sim`: T+n sessions on the trading calendar.
 - Workspace file `config/costs/US.toml` with the rates and the date they were checked; decimals must be quoted strings. `tyche config check` prints that date. Learning note: costs as data.
 
+- `SimBroker` (Phase 1, PR 10): the `Broker` port for backtests. Market orders fill at the next open; sell stops fill at the open on a gap or at the stop when the low reaches it; slippage and costs per fill; at most a set share of each bar's volume, so day orders can fill partly and expire; purchases from settled cash only; T+1 settlement; free-riding violations recorded; repeated order ids ignored; cash distributions credited to holders at the ex-date.
+- The `Broker` port, and the events `OrderEvent`, `FillEvent` and `DistributionEvent`. `HistoricalReplay` publishes distributions at the open of their ex-date.
+- `Account.receive_distribution` and `Account.distributions_received`: dividends are income, kept apart from deposits.
+- Developer guide: backtesting internals.
+
 ### Changed
 
 - `load_config` now also requires `config/costs/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 9 must copy the file from a new one.
