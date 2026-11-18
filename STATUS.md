@@ -15,7 +15,8 @@
 - PR 6 is merged: 6a directly, 6b through #9 (it first landed on the 6a branch because its stacked base was not retargeted in time).
 - PR 7 (engine and replay feed) is merged.
 - PR 8 (account ledger) is merged.
-- PR 9 (costs and settlement) is open for review: IBKR Canada's rules checked and written up, [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted, and the cost, sizing and settlement models built.
+- PR 9 (costs and settlement) is merged; ADR-0020 accepted.
+- PR 10 (`SimBroker`) is open for review.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -31,10 +32,11 @@
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
 - Data layer (PRs 5, 6a and 6b): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
 - Engine and replay (PR 7): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
-- Costs and settlement (PR 9, in review): IBKR Pro Fixed commissions and regulatory fees, adverse slippage, whole-share sizing that leaves room for costs, and T+1 settlement dates, with the rates in a dated `config/costs/US.toml`. `tyche config check` prints when the rates were checked.
+- Simulated broker (PR 10, in review): `SimBroker` fills market orders at the next open and sell stops against each bar's low, with slippage, volume-capped partial fills, settled-cash-only purchases, T+1 settlement, free-riding records and dividends credited at the ex-date. The `Broker` port, and the `OrderEvent`, `FillEvent` and `DistributionEvent` events. The replay now publishes distributions.
+- Costs and settlement (PR 9): IBKR Pro Fixed commissions and regulatory fees, adverse slippage, whole-share sizing that leaves room for costs, and T+1 settlement dates, with the rates in a dated `config/costs/US.toml`. `tyche config check` prints when the rates were checked.
 - Account ledger (PR 8): orders with a checked lifecycle, fills, positions at average cost, and cash per currency, settled and unsettled. Refuses short sales, buying beyond the cash, and applying a fill twice.
 
-There is no trading code yet: no strategies, risk, execution or broker. The engine runs replayed history end to end, but nothing reacts to it yet except the journal. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
+There is no decision-making code yet: no strategies, risk or execution. The engine runs replayed history end to end; the simulated broker can fill orders, but nothing submits them yet outside tests. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -75,8 +77,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 7 | Engine and replay feed (**merged**) | The run loop, historical replay (`BarEvent`, `DataReadyEvent`), in-memory journal | Also `SessionEvent` (moved from PR 3), `DataQualityEvent`, `RunEvent`, and the `PacedClock` port |
 | 8 | Account ledger (**merged**) | `Order`, `Fill`, `Position`, account with settled and unsettled cash per currency | `AccountEvent` moves to PR 10, where it is first published. Adds `hypothesis` |
-| 9 | Costs and settlement (**in review**) | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verified 2026-11-17 ([summary](docs/developer-guide/ibkr-canada-costs-and-settlement.md)). [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted 2026-11-17 |
-| 10 | `SimBroker` | Next-open fills, stops against daily bars, rejections, partial fills, settlement | Buys from settled cash only; count free-riding violations, including stops triggered on the day of entry (ADR-0020) |
+| 9 | Costs and settlement (**merged**) | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verified 2026-11-17 ([summary](docs/developer-guide/ibkr-canada-costs-and-settlement.md)). [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted 2026-11-17 |
+| 10 | `SimBroker` (**in review**) | Next-open fills, stops against daily bars, rejections, partial fills, settlement | Buys from settled cash only; free-riding violations recorded (ADR-0020). `AccountEvent` moves to PR 14 |
 
 **D. Pipeline, up to the first backtest**
 
@@ -85,7 +87,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 | 11 | Universe and screening | Stages 1 and 2 for the `US` profile, with liquidity, price and data-quality filters | |
 | 12 | Strategy interface and benchmark | The plugin contract, the signals stage, buy-and-hold | Decide: how a strategy sees price history |
 | 13 | Portfolio construction | Several strategies at once, per-strategy budgets, conflict resolution | |
-| 14 | Risk gate (pass-through) and execution | `ApprovedPortfolioEvent` with no rules yet, target-to-order diffing, idempotent order ids | |
+| 14 | Risk gate (pass-through) and execution | `ApprovedPortfolioEvent` with no rules yet, target-to-order diffing, idempotent order ids | Also `AccountEvent` (moved from PR 10) and order cancellation. Decide: place a stop after its entry fills (the entry session is unprotected) or with it (a same-day stop-out is free riding) |
 | 15 | Backtest runner | `tyche backtest`, a run record with config hash and code version, the reserved holdout | Decide: how much recent history to reserve. **Milestone: first end-to-end backtest** |
 
 **E. Measurement**
@@ -119,7 +121,7 @@ Two things in the brief's Phase 1 that this plan moves:
 | Revised promotion criteria with a paper-versus-backtest tracking threshold, as an ADR for approval | 2 |
 | User guide page on what protects a position within a session ([ADR-0015](docs/adr/0015-daily-loss-limit.md)) | 2 |
 | Maintenance runbook: update `exchange_calendars` regularly, because unscheduled market closures only appear after a library update | 2 |
-| Simulated broker credits distributions as cash at the ex-date, and documents that rule (ADR-0019) | 1 (PR 10) |
+| ~~Simulated broker credits distributions as cash at the ex-date, and documents that rule (ADR-0019)~~ Done in PR 10: [backtesting internals](docs/developer-guide/backtesting-internals.md) | 1 (PR 10) |
 | Withholding tax on US dividends paid to a Canadian resident: verify the rate and IBKR's handling, then model it | 2 or 4 |
 | Trial registry, holdout and deflated results inside the automated gate | 3 |
 
@@ -155,6 +157,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 9.
+1. Pablo reviews and merges PR 10.
 2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`. A workspace created before PR 9 needs `config/costs/US.toml` copied in.
-3. Phase 1, PR 10: `SimBroker`, when Pablo says to start it.
+3. Phase 1, PR 11: universe and screening, when Pablo says to start it.

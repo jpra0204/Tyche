@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent` and `RunEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent`, `RunEvent`, `OrderEvent`, `FillEvent` and `DistributionEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 
@@ -50,7 +50,7 @@ From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.cor
 
 ### Market data and time
 
-Within one moment, the feed's inputs come in a fixed order: session open, then each instrument's `BarEvent`, then any `DataQualityEvent` for the day, then session close, then `DataReadyEvent`. The bus finishes everything each input causes before the next one (ADR-0003), so a decision cycle always sees every bar and every fill from that moment.
+Within one moment, the feed's inputs come in a fixed order: session open, then any `DistributionEvent` going ex (at the open), then each instrument's `BarEvent`, then any `DataQualityEvent` for the day, then session close, then `DataReadyEvent`. The bus finishes everything each input causes before the next one (ADR-0003), so a decision cycle always sees every bar and every fill from that moment.
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
@@ -75,10 +75,10 @@ Within one moment, the feed's inputs come in a fixed order: session open, then e
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
-| `OrderEvent` | Execution (created, submitted), broker (every later status) | Broker, account state, journal | The `OrderState`: the `Order` (`client_order_id` as idempotency key, `instrument`, `side`, `quantity`, `order_type` market or stop, `stop_price`, `time_in_force` day or GTC, `reason`), its `status`, `filled_quantity` and `note`. Domain types built in PR 8 | 1 (PR 10) |
-| `FillEvent` | Broker | Account state, journal | The `Fill`: `fill_id`, `client_order_id`, `instrument`, `side`, `quantity`, `price`, `commission`, `filled_at`, `trade_date`, `settles_on`. The CAD exchange rate for tax is added in Phase 4. Domain type built in PR 8 | 1 (PR 10) |
-| `AccountEvent` | Account state | Risk, reconciliation, journal | A snapshot of the `Account` (cash per currency, settled and unsettled; positions at average cost; marks; realised profit). Peak equity is the risk layer's to track (Phase 2). Domain type built in PR 8 | 1 (PR 10) |
-| `DistributionEvent` | Data feed (from the `CashDistribution`s in a `BarHistory`) | Broker (credits cash to holders), journal | `instrument`, `ex_date`, `amount_per_share`, `kind` (dividend or capital gain) | 1 (PR 10) |
+| `OrderEvent` | Execution (created, submitted), broker (every later status) | Broker, account state, journal | The `OrderState`: the `Order` (`client_order_id` as idempotency key, `instrument`, `side`, `quantity`, `order_type` market or stop, `stop_price`, `time_in_force` day or GTC, `reason`), its `status`, `filled_quantity` and `note` (the reason for a rejection, cancellation or expiry). Domain types built in PR 8. `SimBroker` ignores a repeated `client_order_id` | **implemented** (PR 10) |
+| `FillEvent` | Broker, just before the order's new status | Account state, journal | The `Fill`: `fill_id`, `client_order_id`, `instrument`, `side`, `quantity`, `price`, `commission` (commission plus regulatory fees, ADR-0020), `filled_at`, `trade_date`, `settles_on`. No `cycle_id`: fills arrive between cycles. The CAD exchange rate for tax is added in Phase 4 | **implemented** (PR 10) |
+| `AccountEvent` | Account state | Risk, reconciliation, journal | A snapshot of the `Account` (cash per currency, settled and unsettled; positions at average cost; marks; realised profit). Peak equity is the risk layer's to track (Phase 2). Domain type built in PR 8. Moved from PR 10 to PR 14, where execution first needs Tyche's own view of the account | 1 (PR 14) |
+| `DistributionEvent` | Data feed (from the `CashDistribution`s in a `BarHistory`), at the open of the ex-date session | Broker (credits cash to holders at the previous close), journal | `distribution`: a `CashDistribution` (`instrument`, `ex_date`, `amount_per_share`, `kind`) | **implemented** (PR 10) |
 | `FxConversionEvent` | Broker | Account state, journal | `from`, `to`, `amount`, `rate`, `cost` | 4 |
 | `ReconciliationEvent` | Reconciliation | Engine (halts on mismatch), journal, notifier | `status` (match or mismatch), `differences` | 2 |
 

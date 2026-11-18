@@ -24,6 +24,7 @@ The clock deserves a closer look, because it is the least obvious of the three. 
 
 - The engine, written once: `tyche.core.engine`.
 - The simulated parts: `tyche.core.sim` (`SimClock`, replay feed, `SimBroker`).
+- The `Broker` port is mostly a contract about events, not methods: a broker consumes submitted `OrderEvent`s and publishes fills and every later status. The only method the rest of the core calls is `account()`, the broker's own record of cash and positions. `SimBroker` keeps that record exactly as IBKR keeps a real one, which is what lets reconciliation (Phase 2) compare Tyche's view with the broker's in every mode.
 - The real parts: `tyche.adapters.clocks`, `tyche.adapters.data`, `tyche.adapters.brokers`.
 - The choice of mode: `tyche.runtime`, and nowhere else.
 - The rule that keeps it honest: there is no `if backtest:` anywhere in the core ([ADR-0005](../adr/0005-backtest-paper-live-parity.md)).
@@ -31,6 +32,6 @@ The clock deserves a closer look, because it is the least obvious of the three. 
 ## What it costs, and what it does not give you
 
 - **Speed.** Processing one event at a time is far slower than computing on whole arrays. For daily bars it does not matter. For large parameter sweeps it will, and the answer then is running backtests in parallel, not a second implementation.
-- **It is parity of code, not of markets.** The simulated broker *assumes* how orders fill: at the next open, with a configured slippage. Real fills differ. So does IBKR's paper account, which also simulates. Parity guarantees that the logic being tested is the logic that runs. It does not guarantee the backtest's numbers.
+- **It is parity of code, not of markets.** The simulated broker *assumes* how orders fill: at the next open, with a configured slippage. Real fills differ. So does IBKR's paper account, which also simulates. Parity guarantees that the logic being tested is the logic that runs. It does not guarantee the backtest's numbers. Every fill rule `SimBroker` assumes is listed in [backtesting internals](../developer-guide/backtesting-internals.md).
 
 That second point is why the roadmap has a paper phase at all. The backtest checks the idea; paper trading checks the machinery and shows how far simulated fills are from the broker's.

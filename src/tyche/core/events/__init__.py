@@ -2,8 +2,9 @@
 
 Available now: the ``Event`` base class, the ``Envelope`` the bus wraps around every
 event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
-(``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``) and
-``RunEvent``.
+(``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``),
+``RunEvent``, and the trading events (``OrderEvent``, ``FillEvent``,
+``DistributionEvent``).
 
 Planned (Phase 1 onward): the other events listed in
 ``docs/architecture/event-catalog.md``, each added by the PR that first publishes it.
@@ -26,6 +27,7 @@ from tyche.core.events.market import (
     SessionPhase,
 )
 from tyche.core.events.system import RunEvent, RunMode, RunStage
+from tyche.core.events.trading import DistributionEvent, FillEvent, OrderEvent
 
 __all__ = [
     "BarEvent",
@@ -33,11 +35,14 @@ __all__ = [
     "BusHaltedError",
     "DataQualityEvent",
     "DataReadyEvent",
+    "DistributionEvent",
     "Envelope",
     "Event",
     "EventBus",
+    "FillEvent",
     "Handler",
     "HandlerError",
+    "OrderEvent",
     "RunEvent",
     "RunMode",
     "RunStage",

@@ -110,7 +110,7 @@ class Account:
     """A snapshot of the account. Operations return a new snapshot.
 
     Build one with ``Account.empty()`` and ``deposit``; change it only with
-    ``apply_fill``, ``settle`` and ``mark``.
+    ``apply_fill``, ``receive_distribution``, ``settle`` and ``mark``.
     """
 
     _settled: Mapping[Currency, Money] = field(default_factory=dict)
@@ -118,6 +118,7 @@ class Account:
     _positions: Mapping[Instrument, Position] = field(default_factory=dict)
     _marks: Mapping[Instrument, Money] = field(default_factory=dict)
     _realized: Mapping[Currency, Money] = field(default_factory=dict)
+    _distributions: Mapping[Currency, Money] = field(default_factory=dict)
     _applied: frozenset[str] = frozenset()
 
     @classmethod
@@ -170,6 +171,10 @@ class Account:
         """Profit or loss locked in by sales, after commissions on both sides."""
         return self._realized.get(currency, Money.zero(currency))
 
+    def distributions_received(self, currency: Currency) -> Money:
+        """Cash distributions credited so far, before any tax withheld."""
+        return self._distributions.get(currency, Money.zero(currency))
+
     # --- changing ------------------------------------------------------------------
 
     def deposit(self, amount: Money) -> Account:
@@ -185,6 +190,26 @@ class Account:
         account = self._buy(fill) if fill.side is Side.BUY else self._sell(fill)
         pending = (*account._pending, PendingCash(fill.cash_flow, fill.settles_on, fill.fill_id))
         return replace(account, _pending=pending, _applied=self._applied | {fill.fill_id})
+
+    def receive_distribution(self, payment_id: str, amount: Money) -> Account:
+        """Credit a cash distribution (a dividend) as settled cash.
+
+        Kept apart from ``deposit`` because a distribution is income and a deposit is
+        not: the daily loss limit counts one and excludes the other (ADR-0015).
+        ``payment_id`` makes it idempotent, like a fill id.
+        """
+        if not payment_id.strip():
+            raise LedgerError("a distribution needs a payment id")
+        if payment_id in self._applied:
+            raise LedgerError(f"distribution {payment_id} has already been received")
+        if not amount.is_positive:
+            raise LedgerError(f"distribution {payment_id}: amount must be positive, got {amount}")
+        return replace(
+            self,
+            _settled=_add(self._settled, amount),
+            _distributions=_add(self._distributions, amount),
+            _applied=self._applied | {payment_id},
+        )
 
     def settle(self, through: date) -> Account:
         """Settle every pending amount due on or before ``through``."""
