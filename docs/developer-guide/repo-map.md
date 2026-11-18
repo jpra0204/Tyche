@@ -34,7 +34,7 @@ src/tyche/
 │   ├── pipeline/
 │   │   ├── universe/         stage 1: UniverseStage applies the profile's universe rules
 │   │   ├── screening/        stage 2: ScreeningStage ranks the universe with a Screen
-│   │   ├── signals/          stage 3: strategy interface and runner
+│   │   ├── signals/          stage 3: strategy contract, history windows, the signals stage
 │   │   ├── portfolio/        stage 4
 │   │   ├── execution/        stage 6
 │   │   ├── reconciliation/   stage 7

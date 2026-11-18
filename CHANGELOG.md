@@ -55,6 +55,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `UniverseRules`, `UniverseMember`, `Exclusion`, `ScoredInstrument` and `DISQUALIFYING_ISSUES` in the domain.
 - Backtesting internals: which instruments are considered. Learning note: state built from events.
 
+- Strategy interface and signals (Phase 1, PR 12): the `Strategy` protocol and the read-only `StrategyContext` it is handed at every cycle (ranking, exactly `lookback` bars per offered instrument, instruments still warming up, the strategy's own positions); `BarWindows` keyed by instrument and timeframe, with one warm-up path; `SignalsStage`, which checks every strategy's targets and records a failing strategy without halting the run; `SignalEvent` and `SignalsReadyEvent`; `Target`, `StrategyPosition`, `WarmingUp` and `StrategyFailure` in the domain.
+- `BuyAndHold`, the benchmark strategy, in `tyche.strategies`.
+- ADR-0021 (strategies see a window handed in). Developer guide: how to add a strategy. Learning note: plugins.
+
 ### Changed
 
 - `MarketProfile` has a required `universe` (`UniverseRules`), read from a new `[universe]` table in `config/markets/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 11 must copy the table from a new one.

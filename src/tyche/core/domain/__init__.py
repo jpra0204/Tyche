@@ -17,6 +17,9 @@ The universe types: ``UniverseRules``, ``UniverseMember``, ``Exclusion`` with it
 And what trading costs (ADR-0020): ``TradingCosts`` with its ``CommissionSchedule``
 and ``RegulatoryFees``, ``TradeCost``, and whole-share sizing with ``whole_shares``
 and ``affordable_shares``.
+
+The signal types (ADR-0021): ``Target``, ``StrategyPosition``, ``WarmingUp`` and
+``StrategyFailure``, with ``require_strategy_id``.
 """
 
 from tyche.core.domain.account import Account, CashBalance, LedgerError, PendingCash, Position
@@ -52,6 +55,13 @@ from tyche.core.domain.order import (
     TimeInForce,
 )
 from tyche.core.domain.session import Session
+from tyche.core.domain.signals import (
+    StrategyFailure,
+    StrategyPosition,
+    Target,
+    WarmingUp,
+    require_strategy_id,
+)
 from tyche.core.domain.timeframe import Timeframe
 from tyche.core.domain.universe import (
     DISQUALIFYING_ISSUES,
@@ -97,14 +107,19 @@ __all__ = [
     "Session",
     "Side",
     "Split",
+    "StrategyFailure",
+    "StrategyPosition",
+    "Target",
     "TimeInForce",
     "Timeframe",
     "TradeCost",
     "TradingCosts",
     "UniverseMember",
     "UniverseRules",
+    "WarmingUp",
     "affordable_shares",
     "audit_daily_bars",
     "require_profile_name",
+    "require_strategy_id",
     "whole_shares",
 ]
