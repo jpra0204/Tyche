@@ -31,6 +31,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0018](0018-audit-market-data.md) | Market data is audited against the calendar, not trusted or rejected | Accepted (Pablo, 2026-11-17) |
 | [0019](0019-split-adjusted-prices-and-cash-dividends.md) | Split-adjusted prices, with dividends as cash events | Accepted (Pablo, 2026-11-17) |
 | [0020](0020-cost-and-settlement-model.md) | The cost and settlement model for the US profile | Accepted (Pablo, 2026-11-17) |
+| [0021](0021-strategies-see-a-window-handed-in.md) | Strategies see a read-only window of history, handed in at every cycle | Accepted (Pablo, 2026-11-18) |
 
 ## Template
 

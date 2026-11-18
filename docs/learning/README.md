@@ -20,13 +20,13 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Working with unreliable data](unreliable-data.md) | Audit every answer against the calendar, and cache with a record of what was already asked |
 | [Costs as data](costs-as-data.md) | Keep broker prices in dated config, use the broker's own formula, and round every doubt against yourself |
 | [State built from events](state-built-from-events.md) | A stage remembers only what it has been told, so it cannot see the future and behaves the same in every mode |
+| [Plugins](plugins.md) | The core defines a small contract, hands the plugin only what it allows, and checks everything that comes back |
 
 ## Planned
 
 | Note | Written in |
 |---|---|
 | Walk-forward testing and overfitting | Phase 1 |
-| Plugins: adding behaviour without changing the core | Phase 1 |
 | Idempotent orders | Phase 2 |
 | Reconciliation: trusting the broker over yourself | Phase 2 |
 | Schemas as contracts between agents and code | Phase 3 |

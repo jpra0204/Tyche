@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
 
 ## 1. How time moves
 
@@ -92,7 +92,36 @@ What follows from the rules:
 - **Survivorship.** The universe can only choose among the instruments the replay was given. Yahoo lists only instruments that still exist, so a backtest over today's symbols never meets a company that failed.
 - **Old gaps are forgiven.** A bar missing more than `quality_sessions` cycles ago no longer excludes the instrument, and its liquidity average then spans a few more sessions than `liquidity_sessions`.
 
-## 4. Known limits
+## 4. What a strategy sees
+
+The signals stage (`tyche.core.pipeline.signals`) asks each strategy to decide once per decision cycle, after screening ([ADR-0021](../adr/0021-strategies-see-a-window-handed-in.md)). A strategy is handed a `StrategyContext` and nothing else: no bus, clock or data provider.
+
+```mermaid
+sequenceDiagram
+    participant R as Replay
+    participant G as SignalsStage
+    participant S as Strategy
+
+    R->>G: BarEvent per instrument (kept in a window)
+    Note over R,G: universe and screening run on DataReadyEvent
+    R->>G: ScreeningEvent (ranking)
+    G->>S: decide(context): ranking, warming_up, history, positions
+    S-->>G: targets
+    G->>G: check targets against the contract
+    G-->>R: SignalEvent per strategy, then SignalsReadyEvent
+```
+
+- **The window.** Each strategy declares a `timeframe` (daily only in Phase 1) and a `lookback`. For every ranked instrument it has `lookback` bars of, the context holds exactly that many, ending at the decision time. Windows are keyed by instrument and timeframe.
+- **Warm-up.** A ranked instrument with fewer bars is not offered. It is listed in `warming_up` and in the strategy's `SignalEvent`, and the history view raises if asked for it. A partial window is never handed out.
+- **One warm-up path.** `SignalsStage.warm_up(histories, through=...)` fills the windows from cached `BarHistory` up to a moment, before the run's first event. The backtest runner (PR 15) uses it so a strategy has full windows on the first measured day; paper and live use it at every start (Phase 2). `history_needed` says how many bars to fetch.
+- **Splits rebuild, dividends do nothing.** A window holds one adjustment basis. A bar on another basis halts the run. Windows are never restated in place: after a split refetch they are rebuilt from the cache.
+- **Positions.** The context's `positions` lists the strategy's own holdings (entry date, entry price, stop), so a stateless strategy can tell an entry from a hold. Nothing fills it until execution exists (PR 14).
+- **Targets.** Weights are exact `Decimal`s from 0 to 1, adding up to at most 1 of the strategy's budget; only offered instruments may be targeted, each once; a stop must be below the last close. An offered instrument left out means zero. A held instrument not offered this cycle (a data gap) keeps its position: portfolio construction carries it over (PR 13).
+- **Failures.** A strategy that raises or breaks the rules is listed in `SignalsReadyEvent.failed` and publishes nothing that cycle. The run goes on.
+
+The benchmark, `BuyAndHold` (`tyche.strategies`), puts its whole budget in one instrument, SPY for the `US` profile, whenever it is eligible.
+
+## 5. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|
@@ -101,3 +130,4 @@ What follows from the rules:
 | **Liquidity** | Volume participation is a cap, not a market-impact model | Never binding at this account's size |
 | **Settlement calendar** | T+n counts exchange sessions; the settlement system's business days may differ on a few dates | See `tyche.core.sim.settlement` |
 | **The open price** | A market order fills at the bar's open, the official opening price. A real order at the open may fill elsewhere | Measured in paper trading (Phase 2) |
+| **Future splits scale backtest windows** | Bars are adjusted for every split known when they were fetched, so before a later split a strategy's window reads lower than the prices that traded. Ratios (returns, crossovers, ranks) are unaffected; a fixed price threshold or a stop is on the adjusted basis, which is consistent with the simulated fills | ADR-0021. Matters only for strategies that compare prices with fixed numbers |
