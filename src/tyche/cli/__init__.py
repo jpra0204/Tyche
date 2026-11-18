@@ -119,6 +119,7 @@ def config_check(home: HomeOption = None) -> None:
 
     typer.echo(f"Configuration is valid: {workspace.root}")
     typer.echo(f"  Market profile: {config.market_profile}")
+    typer.echo(f"  Costs checked:  {config.costs.checked_on.isoformat()}")
     typer.echo(f"  Config hash:    {config.config_hash}")
 
 

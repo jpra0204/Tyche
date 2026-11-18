@@ -1,6 +1,6 @@
 # ADR-0020: The cost and settlement model for the US profile
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-17)
 - **Date:** 2026-11-17
 
 ## Context

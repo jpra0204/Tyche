@@ -41,10 +41,14 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Property-based tests for the ledger. Learning note: property-based testing.
 - Development dependency: `hypothesis` (MPL-2.0).
 
-- IBKR Canada costs and settlement, checked 2026-11-17 and written up with sources; ADR-0020 (cost and settlement model) proposed (Phase 1, PR 9).
+- IBKR Canada costs and settlement, checked 2026-11-17 and written up with sources; ADR-0020 (cost and settlement model) accepted (Phase 1, PR 9).
+- `TradingCosts` in the domain: IBKR Pro Fixed commissions (`CommissionSchedule`), regulatory fees rounded up to the cent (`RegulatoryFees`), adverse slippage, and `TradeCost`. Whole-share sizing with `whole_shares` and `affordable_shares`.
+- `settlement_date` in `tyche.core.sim`: T+n sessions on the trading calendar.
+- Workspace file `config/costs/US.toml` with the rates and the date they were checked; decimals must be quoted strings. `tyche config check` prints that date. Learning note: costs as data.
 
 ### Changed
 
+- `load_config` now also requires `config/costs/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 9 must copy the file from a new one.
 - `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.
 - `BarSource.fetch_daily` returns `SourceData` (bars, distributions, splits and the source's own issues) instead of a list of bars.
 

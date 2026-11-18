@@ -1,0 +1,38 @@
+# Trading costs for the US market profile: IBKR Pro Fixed, US stocks and ETFs.
+#
+# The file name, without .toml, must equal the market profile's name.
+# Every rate below was checked against IBKR Canada's published pricing on `checked_on`.
+# Sources and the full rules: docs/developer-guide/ibkr-canada-costs-and-settlement.md
+# in the Tyche repository. Re-check before paper trading and before going live.
+#
+# Decimals are written as strings, such as "0.005", so that they stay exact: TOML reads
+# 0.005 without quotes as a binary floating-point number, which Tyche refuses.
+
+# When the rates below were last checked against the broker's published schedule.
+checked_on = 2026-11-17
+
+# Currency the commission and fees are charged in.
+currency = "USD"
+
+# Sessions between a trade and its settlement. US stocks settle T+1. In a cash account
+# sale proceeds cannot be spent until they settle (ADR-0020).
+settlement_days = 1
+
+# How far a simulated fill moves against the order, in basis points of the reference
+# price (5 = 0.05%). An assumption, not a broker fact; reports state the value used.
+slippage_bps = "5"
+
+[commission]
+# IBKR Pro Fixed: min(max(per_share x shares, minimum), maximum_rate x trade value).
+per_share = "0.005"
+minimum = "1.00"
+maximum_rate = "0.01"
+
+[regulatory_fees]
+# SEC transaction fee, as a fraction of the value of each sale.
+sec_fee_rate = "0.0000206"
+# FINRA Trading Activity Fee, per share sold. Zero under a fee holiday for trades from
+# 2026-10-01 to 2026-12-31; the rate after that is not published on IBKR's page yet.
+taf_per_share_sold = "0"
+# FINRA Consolidated Audit Trail fees, per share, on buys and sells.
+cat_per_share = "0.000003"

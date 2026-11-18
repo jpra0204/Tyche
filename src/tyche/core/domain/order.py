@@ -94,8 +94,9 @@ class Order:
             adapter can drop the duplicate (brief, section 4.2).
         instrument: What to trade.
         side: Buy or sell.
-        quantity: How many shares. May be fractional; whether the broker allows that
-            is a cost-and-fill rule (PR 9).
+        quantity: How many shares. The type allows fractions, but Tyche sizes
+            orders in whole shares because IBKR's API cannot place fractional
+            orders (ADR-0020).
         order_type: Market or stop.
         time_in_force: Day or good-till-cancelled.
         created_at: When Tyche decided it, in UTC.

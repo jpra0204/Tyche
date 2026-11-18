@@ -28,7 +28,7 @@ Your private config, data and state are not in this repository. They live in the
 ```text
 src/tyche/
 ├── core/                 PURE: no I/O, no wall clock, no vendor imports
-│   ├── domain/             value objects
+│   ├── domain/             value objects, the ledger, trading costs and share sizing
 │   ├── events/             event types and the event bus
 │   ├── ports/              interfaces to the outside world
 │   ├── pipeline/
@@ -41,7 +41,7 @@ src/tyche/
 │   │   └── journal/          stage 8
 │   ├── risk/               stage 5, plus profiles, guardrails and halts
 │   ├── engine/             the run loop shared by all three modes
-│   ├── sim/                SimClock, SimBroker, replay feed, cost and fill models
+│   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
 │   ├── backtest/           runner, metrics, walk-forward, sweeps
 │   ├── improvement/        proposals, gate, approvals, strategy lifecycle
 │   └── agents/             offline LLM-agent workflows

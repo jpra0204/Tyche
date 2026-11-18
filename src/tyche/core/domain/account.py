@@ -9,7 +9,8 @@ Rules the ledger enforces, because Tyche v1 trades a long-only cash account:
 * Selling more than is held is refused: that would be a short sale.
 * A buy that would take cash below zero, counting unsettled amounts, is refused: that
   would be borrowing. Whether unsettled sale proceeds may be spent is a separate
-  broker rule, checked in PR 9 and applied by the simulated broker (PR 10).
+  broker rule: in a cash account they may not (ADR-0020), and the simulated broker
+  applies that before it fills a buy (PR 10).
 * Every fill is applied once.
 
 Positions are valued at their average cost, commissions included. This mirrors the

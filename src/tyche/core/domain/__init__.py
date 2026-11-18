@@ -10,6 +10,10 @@ audit that produces it.
 
 Also the ledger types: ``Order`` with its ``OrderState`` lifecycle, ``Fill``,
 ``Position`` and ``Account`` (cash per currency, settled and unsettled).
+
+And what trading costs (ADR-0020): ``TradingCosts`` with its ``CommissionSchedule``
+and ``RegulatoryFees``, ``TradeCost``, and whole-share sizing with ``whole_shares``
+and ``affordable_shares``.
 """
 
 from tyche.core.domain.account import Account, CashBalance, LedgerError, PendingCash, Position
@@ -22,6 +26,14 @@ from tyche.core.domain.bar_history import (
     audit_daily_bars,
 )
 from tyche.core.domain.corporate_actions import CashDistribution, DistributionKind, Split
+from tyche.core.domain.costs import (
+    CommissionSchedule,
+    RegulatoryFees,
+    TradeCost,
+    TradingCosts,
+    affordable_shares,
+    whole_shares,
+)
 from tyche.core.domain.currency import Currency
 from tyche.core.domain.fill import Fill
 from tyche.core.domain.instrument import AssetClass, Instrument
@@ -47,6 +59,7 @@ __all__ = [
     "BarHistory",
     "CashBalance",
     "CashDistribution",
+    "CommissionSchedule",
     "Currency",
     "CurrencyMismatchError",
     "DataIssue",
@@ -65,11 +78,16 @@ __all__ = [
     "PendingCash",
     "Position",
     "PriceAdjustment",
+    "RegulatoryFees",
     "Session",
     "Side",
     "Split",
     "TimeInForce",
     "Timeframe",
+    "TradeCost",
+    "TradingCosts",
+    "affordable_shares",
     "audit_daily_bars",
     "require_profile_name",
+    "whole_shares",
 ]

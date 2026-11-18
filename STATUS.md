@@ -15,7 +15,7 @@
 - PR 6 is merged: 6a directly, 6b through #9 (it first landed on the 6a branch because its stacked base was not retargeted in time).
 - PR 7 (engine and replay feed) is merged.
 - PR 8 (account ledger) is merged.
-- PR 9 (costs and settlement) is in progress: the research is written up and [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) is proposed. Code waits for Pablo's review of both.
+- PR 9 (costs and settlement) is open for review: IBKR Canada's rules checked and written up, [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted, and the cost, sizing and settlement models built.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -31,6 +31,7 @@
 - Workspace and config (PR 4): `tyche init` creates a private workspace; `tyche config check` validates it and prints the config hash. The CLI is built with Typer.
 - Data layer (PRs 5, 6a and 6b): `DataProvider` port, data-quality audit, Parquet cache, read-through provider, dividends and splits, and the Yahoo Finance source. `tyche data fetch` downloads real data into the workspace.
 - Engine and replay (PR 7): one run loop for every mode; history replayed session by session with no lookahead; an in-memory journal that traces any event to its cause. Checked end to end, from data source to journal.
+- Costs and settlement (PR 9, in review): IBKR Pro Fixed commissions and regulatory fees, adverse slippage, whole-share sizing that leaves room for costs, and T+1 settlement dates, with the rates in a dated `config/costs/US.toml`. `tyche config check` prints when the rates were checked.
 - Account ledger (PR 8): orders with a checked lifecycle, fills, positions at average cost, and cash per currency, settled and unsettled. Refuses short sales, buying beyond the cash, and applying a fill twice.
 
 There is no trading code yet: no strategies, risk, execution or broker. The engine runs replayed history end to end, but nothing reacts to it yet except the journal. Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.risk`, the pipeline stages other than `journal`, `strategies`, and the broker, notifier, LLM, storage and report adapters.
@@ -74,8 +75,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 7 | Engine and replay feed (**merged**) | The run loop, historical replay (`BarEvent`, `DataReadyEvent`), in-memory journal | Also `SessionEvent` (moved from PR 3), `DataQualityEvent`, `RunEvent`, and the `PacedClock` port |
 | 8 | Account ledger (**merged**) | `Order`, `Fill`, `Position`, account with settled and unsettled cash per currency | `AccountEvent` moves to PR 10, where it is first published. Adds `hypothesis` |
-| 9 | Costs and settlement (**in progress**) | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verified 2026-11-17 ([summary](docs/developer-guide/ibkr-canada-costs-and-settlement.md)). Decide: accept [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) |
-| 10 | `SimBroker` | Next-open fills, stops against daily bars, rejections, partial fills, settlement | |
+| 9 | Costs and settlement (**in review**) | A written, dated summary of IBKR Canada's rules, then commission and slippage models and the share-size rule | Verified 2026-11-17 ([summary](docs/developer-guide/ibkr-canada-costs-and-settlement.md)). [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) accepted 2026-11-17 |
+| 10 | `SimBroker` | Next-open fills, stops against daily bars, rejections, partial fills, settlement | Buys from settled cash only; count free-riding violations, including stops triggered on the day of entry (ADR-0020) |
 
 **D. Pipeline, up to the first backtest**
 
@@ -154,6 +155,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews the [IBKR Canada facts](docs/developer-guide/ibkr-canada-costs-and-settlement.md) and decides on [ADR-0020](docs/adr/0020-cost-and-settlement-model.md) (draft PR).
-2. Once ADR-0020 is decided, PR 9's code: the commission model (IBKR Pro Fixed), regulatory fees, slippage, the T+1 settlement rule and whole-share sizing, with the rates in the `US` profile config.
-3. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`.
+1. Pablo reviews and merges PR 9.
+2. Pablo creates his real workspace by following `docs/user-guide/01-installation.md`, then tries `tyche data fetch`. A workspace created before PR 9 needs `config/costs/US.toml` copied in.
+3. Phase 1, PR 10: `SimBroker`, when Pablo says to start it.

@@ -107,6 +107,7 @@ class TestInitWorkspace:
             ".env",
             ".gitignore",
             "README.md",
+            "config/costs/US.toml",
             "config/markets/US.toml",
             "config/tyche.toml",
         ]

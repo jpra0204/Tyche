@@ -2,7 +2,7 @@
 
 **Checked on 2026-11-17** against IBKR's own pages, listed under [Sources](#sources). Nothing here is from memory. IBKR may change any of it at any time; when a number here is used in code, the code cites this page and its date. Re-check before Phase 2 (paper trading) and before going live.
 
-This page records facts. The modelling choices built on them are in [ADR-0020](../adr/0020-cost-and-settlement-model.md).
+This page records facts. The modelling choices built on them are in [ADR-0020](../adr/0020-cost-and-settlement-model.md). The rates Tyche uses live in the workspace, in `config/costs/US.toml`, with the date they were checked; `tyche config check` prints that date.
 
 ## 1. Commissions: US-listed stocks and ETFs
 
