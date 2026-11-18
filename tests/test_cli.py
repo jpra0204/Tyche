@@ -123,6 +123,7 @@ class TestConfigCheck:
         assert result.exit_code == 0, result.output
         assert "Configuration is valid" in result.stdout
         assert "Market profile: US" in result.stdout
+        assert "Costs checked:  2026-11-17" in result.stdout
         assert "Config hash:    sha256:" in result.stdout
 
     def test_an_invalid_configuration_fails_with_the_file_and_key(self, home: Path) -> None:

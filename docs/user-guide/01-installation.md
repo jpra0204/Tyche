@@ -45,6 +45,7 @@ This creates `~/tyche-workspace` with:
 |---|---|
 | `config/tyche.toml` | Workspace settings, including the active market profile |
 | `config/markets/US.toml` | The `US` market profile |
+| `config/costs/US.toml` | What trading costs under the `US` profile (IBKR Pro Fixed), slippage and settlement, with the date the rates were checked |
 | `.env` | Where secrets will go in Phase 2. Empty for now, and readable only by you |
 | `.gitignore` | Keeps `.env`, market data, state and logs out of git |
 | `README.md` | A short description of the folder |
@@ -102,8 +103,11 @@ You should see:
 ```text
 Configuration is valid: /Users/<you>/tyche-workspace
   Market profile: US
+  Costs checked:  2026-11-17
   Config hash:    sha256:…
 ```
+
+`Costs checked` is the date the commission and fee rates in `config/costs/US.toml` were last compared with IBKR's published prices. Check them again before paper trading and before going live; [the facts page](../developer-guide/ibkr-canada-costs-and-settlement.md) lists the sources.
 
 The config hash is a fingerprint of every setting. Tyche will print it in every backtest report and run log, so you can always tell which configuration produced a result. Editing a comment or reordering keys does not change it; changing any value does.
 
@@ -125,3 +129,5 @@ Unknown settings are always an error, so a misspelled key cannot be silently ign
 | `… is not empty; tyche init only creates a new workspace` | You already have a workspace there. Use `tyche config check` instead. |
 | `… is inside ~/Documents, which macOS can sync to iCloud` | Choose a folder outside `~/Public`, `~/Desktop` and `~/Documents`. |
 | `… selects market profile 'CA', but config/markets/CA.toml does not exist` | Only `US` exists for now. `CA` and `CA+US` arrive in Phase 4. |
+| `config/costs/US.toml is missing: every market profile needs a costs file` | Your workspace was created before costs existed. Run `uv run tyche init --home <scratch-folder>` and copy its `config/costs/US.toml` into your workspace. |
+| `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs file: `per_share = "0.005"`, not `per_share = 0.005`. |

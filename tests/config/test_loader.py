@@ -1,9 +1,11 @@
 """Loading the workspace configuration: all valid, or a clear error naming file and key."""
 
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
+from tests.support.costs import US_COSTS
 from tyche.config import (
     ConfigError,
     TycheFile,
@@ -30,6 +32,7 @@ def write(workspace: Workspace, relative: str, text: str) -> None:
 
 TYCHE_TOML = 'schema_version = 1\nmarket_profile = "US"\n'
 US_TOML = 'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
+US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
 
 class TestValidConfig:
@@ -41,6 +44,9 @@ class TestValidConfig:
         assert config.config_hash.startswith("sha256:")
         assert len(config.config_hash) == len("sha256:") + 64
 
+    def test_the_packaged_costs_are_the_checked_ibkr_rates(self, workspace: Workspace) -> None:
+        assert load_config(workspace).costs == US_COSTS
+
     def test_a_combined_profile_loads(self, workspace: Workspace) -> None:
         write(workspace, "config/tyche.toml", 'schema_version = 1\nmarket_profile = "CA+US"\n')
         write(
@@ -48,6 +54,7 @@ class TestValidConfig:
             "config/markets/CA+US.toml",
             'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n',
         )
+        write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
 
         profile = load_config(workspace).market_profile
 
@@ -71,6 +78,12 @@ class TestConfigHash:
     def test_changes_when_any_value_changes(self, workspace: Workspace) -> None:
         before = load_config(workspace).config_hash
         write(workspace, "config/markets/US.toml", US_TOML.replace('["XNYS"]', '["XNYS", "XNAS"]'))
+
+        assert load_config(workspace).config_hash != before
+
+    def test_changes_when_a_cost_changes(self, workspace: Workspace) -> None:
+        before = load_config(workspace).config_hash
+        write(workspace, "config/costs/US.toml", US_COSTS_TOML.replace('"5"', '"10"'))
 
         assert load_config(workspace).config_hash != before
 
@@ -208,4 +221,86 @@ class TestInvalidMarketProfile:
         write(workspace, "config/markets/US.toml", US_TOML.replace('["XNYS"]', "[]"))
 
         with pytest.raises(ConfigError, match="needs at least one calendar"):
+            load_config(workspace)
+
+
+class TestCosts:
+    def test_missing_costs_file(self, workspace: Workspace) -> None:
+        (workspace.costs_dir / "US.toml").unlink()
+
+        with pytest.raises(
+            ConfigError, match=r"config/costs/US.toml is missing: every market profile needs"
+        ):
+            load_config(workspace)
+
+    @pytest.mark.parametrize(
+        ("original", "replacement"),
+        [('per_share = "0.005"', "per_share = 0.005"), ('slippage_bps = "5"', "slippage_bps = 5")],
+    )
+    def test_a_number_without_quotes_is_refused(
+        self, workspace: Workspace, original: str, replacement: str
+    ) -> None:
+        write(workspace, "config/costs/US.toml", US_COSTS_TOML.replace(original, replacement))
+
+        with pytest.raises(ConfigError, match=r"write decimals as strings"):
+            load_config(workspace)
+
+    def test_a_string_that_is_not_a_number_is_refused(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace('minimum = "1.00"', 'minimum = "one"'),
+        )
+
+        with pytest.raises(ConfigError, match=r"commission.minimum: .*not a decimal number"):
+            load_config(workspace)
+
+    def test_infinity_is_refused(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace('slippage_bps = "5"', 'slippage_bps = "Infinity"'),
+        )
+
+        with pytest.raises(ConfigError, match=r"slippage_bps: .*must be a finite number"):
+            load_config(workspace)
+
+    def test_checked_on_must_be_a_date(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace("checked_on = 2026-11-17", "checked_on = 2026-11-17T10:00:00"),
+        )
+
+        with pytest.raises(ConfigError, match=r"checked_on: Input should be a valid date"):
+            load_config(workspace)
+
+    def test_an_impossible_rate_names_the_file(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace('maximum_rate = "0.01"', 'maximum_rate = "2"'),
+        )
+
+        with pytest.raises(
+            ConfigError, match=r"config/costs/US.toml: commission maximum_rate must be at most 1"
+        ):
+            load_config(workspace)
+
+    def test_costs_must_be_in_a_currency_the_profile_holds(self, workspace: Workspace) -> None:
+        write(workspace, "config/costs/US.toml", US_COSTS_TOML.replace('"USD"', '"CAD"'))
+
+        with pytest.raises(
+            ConfigError,
+            match=(
+                r"config/costs/US.toml: costs are in CAD, "
+                r"but market profile US holds cash in USD"
+            ),
+        ):
+            load_config(workspace)
+
+    def test_an_unknown_key_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/costs/US.toml", US_COSTS_TOML + 'plan = "tiered"\n')
+
+        with pytest.raises(ConfigError, match=r"plan: Extra inputs are not permitted"):
             load_config(workspace)

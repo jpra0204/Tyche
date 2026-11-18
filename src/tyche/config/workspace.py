@@ -24,6 +24,7 @@ _UNSAFE_HOME_FOLDERS = {
 _TEMPLATES = {
     "tyche.toml": "config/tyche.toml",
     "markets/US.toml": "config/markets/US.toml",
+    "costs/US.toml": "config/costs/US.toml",
     "env.example": ".env",
     "gitignore": ".gitignore",
     "README.md": "README.md",
@@ -51,6 +52,10 @@ class Workspace:
     @property
     def markets_dir(self) -> Path:
         return self.config_dir / "markets"
+
+    @property
+    def costs_dir(self) -> Path:
+        return self.config_dir / "costs"
 
     @property
     def env_file(self) -> Path:

@@ -22,12 +22,13 @@ class Fill:
         side: Buy or sell.
         quantity: Shares that changed hands.
         price: Price per share, in the instrument's currency.
-        commission: Commission charged, in the same currency. A different currency is
-            refused for now; PR 9 checks how IBKR actually charges.
+        commission: Everything charged on top of the price, in the same currency: the
+            broker's commission plus regulatory fees (``TradeCost.total``). A
+            different currency is refused for now.
         filled_at: When it happened, in UTC.
         trade_date: The exchange's own date for the trade.
         settles_on: The date the cash and shares settle. The broker's settlement rule
-            decides it (PR 9); the ledger only records it.
+            decides it (``settlement_date``, ADR-0020); the ledger only records it.
     """
 
     fill_id: str

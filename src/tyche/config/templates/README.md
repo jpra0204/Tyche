@@ -8,6 +8,7 @@ Keep this folder a **private** git repository. Never push it anywhere public.
 |---|---|---|
 | `config/tyche.toml` | Workspace settings, including the active market profile | Yes |
 | `config/markets/` | One file per market profile | Yes |
+| `config/costs/` | Trading costs and settlement for each market profile, with the date they were checked | Yes |
 | `.env` | Secrets: Discord webhook, broker connection | **Never** |
 
 More folders appear as the features that use them are built.
