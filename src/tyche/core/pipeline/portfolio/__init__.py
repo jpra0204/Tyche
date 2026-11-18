@@ -1,5 +1,11 @@
-"""Stage 4, portfolio construction.
+"""Stage 4, portfolio construction: every strategy's wishes as one proposed portfolio.
 
-Planned (Phase 1): combines signals from several strategies, applies per-strategy
-capital budgets, resolves conflicts and publishes a proposed ``TargetPortfolioEvent``.
+Available now (ADR-0022): ``PortfolioStage``, which turns each cycle's signals into a
+``TargetPortfolioEvent``: one sleeve per strategy with its budget, and per instrument
+the sum of each strategy's ``budget * weight``, each contribution keeping its own
+stop. Weights are fractions of account equity; execution sizes them in shares (PR 14).
 """
+
+from tyche.core.pipeline.portfolio.stage import PortfolioError, PortfolioStage
+
+__all__ = ["PortfolioError", "PortfolioStage"]

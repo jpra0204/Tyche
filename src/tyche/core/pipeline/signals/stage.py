@@ -127,6 +127,7 @@ class SignalsStage:
                     screening.as_of,
                     strategy.strategy_id,
                     strategy.version,
+                    context.instruments,
                     targets,
                     context.warming_up,
                 )

@@ -7,15 +7,26 @@ import pytest
 
 from tests.support.market import QQQ, SPY
 from tyche.core.domain import (
+    Contribution,
     Exclusion,
     ExclusionReason,
+    Instrument,
+    InstrumentTarget,
     ScoredInstrument,
+    Sleeve,
+    SleeveStatus,
     StrategyFailure,
     Target,
     UniverseMember,
     WarmingUp,
 )
-from tyche.core.events import ScreeningEvent, SignalEvent, SignalsReadyEvent, UniverseEvent
+from tyche.core.events import (
+    ScreeningEvent,
+    SignalEvent,
+    SignalsReadyEvent,
+    TargetPortfolioEvent,
+    UniverseEvent,
+)
 
 AS_OF = datetime(2024, 1, 5, 21, 0, tzinfo=UTC)
 SPY_MEMBER = UniverseMember(SPY, 470.0, 3e10)
@@ -59,7 +70,12 @@ class TestScreeningEvent:
 class TestSignalEvent:
     def test_holds_targets_and_instruments_still_warming_up(self) -> None:
         event = SignalEvent(
-            AS_OF, "trend", "1", (Target(SPY, Decimal("0.6"), "up"),), (WarmingUp(QQQ, 3, 10),)
+            AS_OF,
+            "trend",
+            "1",
+            (SPY,),
+            (Target(SPY, Decimal("0.6"), "up"),),
+            (WarmingUp(QQQ, 3, 10),),
         )
 
         assert [t.instrument for t in event.targets] == [SPY]
@@ -69,19 +85,27 @@ class TestSignalEvent:
         targets = (Target(SPY, Decimal("0.6"), "a"), Target(QQQ, Decimal("0.5"), "b"))
 
         with pytest.raises(ValueError, match=r"add up to 1\.1"):
-            SignalEvent(AS_OF, "trend", "1", targets)
+            SignalEvent(AS_OF, "trend", "1", (SPY, QQQ), targets)
 
-    def test_an_instrument_cannot_be_targeted_and_warming_up(self) -> None:
+    def test_an_instrument_cannot_be_offered_and_warming_up(self) -> None:
         with pytest.raises(ValueError, match="more than once"):
-            SignalEvent(
-                AS_OF, "trend", "1", (Target(SPY, Decimal(1), "a"),), (WarmingUp(SPY, 1, 2),)
-            )
+            SignalEvent(AS_OF, "trend", "1", (SPY,), (), (WarmingUp(SPY, 1, 2),))
+
+    def test_targets_only_instruments_it_was_offered(self) -> None:
+        with pytest.raises(ValueError, match="not offered"):
+            SignalEvent(AS_OF, "trend", "1", (QQQ,), (Target(SPY, Decimal(1), "a"),))
+
+    def test_an_instrument_cannot_be_targeted_twice(self) -> None:
+        twice = (Target(SPY, Decimal("0.5"), "a"), Target(SPY, Decimal("0.5"), "b"))
+
+        with pytest.raises(ValueError, match="targeted more than once"):
+            SignalEvent(AS_OF, "trend", "1", (SPY,), twice)
 
     def test_needs_a_valid_id_and_a_version(self) -> None:
         with pytest.raises(ValueError, match="invalid strategy id"):
-            SignalEvent(AS_OF, "Trend", "1", ())
+            SignalEvent(AS_OF, "Trend", "1", (), ())
         with pytest.raises(ValueError, match="version"):
-            SignalEvent(AS_OF, "trend", "", ())
+            SignalEvent(AS_OF, "trend", "", (), ())
 
 
 class TestSignalsReadyEvent:
@@ -92,3 +116,56 @@ class TestSignalsReadyEvent:
     def test_as_of_must_be_utc(self) -> None:
         with pytest.raises(ValueError, match="UTC"):
             SignalsReadyEvent(datetime(2024, 1, 5, 16, 0), ())  # noqa: DTZ001
+
+
+def decided(strategy_id: str, budget: str, *on: Instrument) -> Sleeve:
+    return Sleeve(strategy_id, Decimal(budget), SleeveStatus.DECIDED, on, "1")
+
+
+def target(instrument: Instrument, *parts: tuple[str, str]) -> InstrumentTarget:
+    return InstrumentTarget(instrument, tuple(Contribution(s, Decimal(w), "r") for s, w in parts))
+
+
+class TestTargetPortfolioEvent:
+    def test_holds_sleeves_and_targets(self) -> None:
+        event = TargetPortfolioEvent(
+            AS_OF,
+            (decided("a", "0.6", SPY, QQQ), decided("b", "0.4", SPY)),
+            (target(QQQ, ("a", "0.3")), target(SPY, ("a", "0.3"), ("b", "0.4"))),
+        )
+
+        assert event.sleeve("b").budget == Decimal("0.4")
+        with pytest.raises(KeyError):
+            event.sleeve("c")
+
+    def test_sleeves_and_targets_have_a_fixed_order(self) -> None:
+        with pytest.raises(ValueError, match="by id"):
+            TargetPortfolioEvent(AS_OF, (decided("b", "0.4"), decided("a", "0.4")))
+        with pytest.raises(ValueError, match="by symbol"):
+            TargetPortfolioEvent(
+                AS_OF,
+                (decided("a", "0.6", SPY, QQQ),),
+                (target(SPY, ("a", "0.1")), target(QQQ, ("a", "0.1"))),
+            )
+
+    def test_budgets_cannot_exceed_the_account(self) -> None:
+        with pytest.raises(ValueError, match="budgets add up"):
+            TargetPortfolioEvent(AS_OF, (decided("a", "0.6"), decided("b", "0.6")))
+
+    def test_a_contribution_needs_a_decided_sleeve_that_decided_on_the_instrument(self) -> None:
+        failed = Sleeve("a", Decimal("0.5"), SleeveStatus.FAILED, error="boom")
+
+        with pytest.raises(ValueError, match="without a decided sleeve"):
+            TargetPortfolioEvent(AS_OF, (failed,), (target(SPY, ("a", "0.1")),))
+        with pytest.raises(ValueError, match="without a decided sleeve"):
+            TargetPortfolioEvent(AS_OF, (), (target(SPY, ("a", "0.1")),))
+        with pytest.raises(ValueError, match="did not decide on"):
+            TargetPortfolioEvent(AS_OF, (decided("a", "0.5", QQQ),), (target(SPY, ("a", "0.1")),))
+
+    def test_a_sleeve_cannot_use_more_than_its_budget(self) -> None:
+        with pytest.raises(ValueError, match="more than its budget"):
+            TargetPortfolioEvent(
+                AS_OF,
+                (decided("a", "0.5", SPY, QQQ),),
+                (target(QQQ, ("a", "0.3")), target(SPY, ("a", "0.3"))),
+            )

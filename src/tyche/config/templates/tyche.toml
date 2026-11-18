@@ -8,3 +8,10 @@ schema_version = 1
 
 # The market profile to trade and backtest. It must match a file in config/markets/.
 market_profile = "US"
+
+[strategies]
+# The strategies to run, each with its budget: the fraction of account equity it may
+# use. Budgets are above 0 and at most 1, and add up to at most 1; the rest is cash.
+# Each name needs a file config/strategies/<name>.toml. Decimals are strings so they
+# stay exact.
+buy_and_hold = "1.0"

@@ -20,6 +20,9 @@ and ``affordable_shares``.
 
 The signal types (ADR-0021): ``Target``, ``StrategyPosition``, ``WarmingUp`` and
 ``StrategyFailure``, with ``require_strategy_id``.
+
+The portfolio types (ADR-0022): ``Sleeve`` with its ``SleeveStatus``,
+``Contribution``, ``InstrumentTarget`` and ``require_budgets``.
 """
 
 from tyche.core.domain.account import Account, CashBalance, LedgerError, PendingCash, Position
@@ -54,6 +57,13 @@ from tyche.core.domain.order import (
     Side,
     TimeInForce,
 )
+from tyche.core.domain.portfolio import (
+    Contribution,
+    InstrumentTarget,
+    Sleeve,
+    SleeveStatus,
+    require_budgets,
+)
 from tyche.core.domain.session import Session
 from tyche.core.domain.signals import (
     StrategyFailure,
@@ -82,6 +92,7 @@ __all__ = [
     "CashBalance",
     "CashDistribution",
     "CommissionSchedule",
+    "Contribution",
     "Currency",
     "CurrencyMismatchError",
     "DataIssue",
@@ -91,6 +102,7 @@ __all__ = [
     "ExclusionReason",
     "Fill",
     "Instrument",
+    "InstrumentTarget",
     "LedgerError",
     "MarketProfile",
     "Money",
@@ -106,6 +118,8 @@ __all__ = [
     "ScoredInstrument",
     "Session",
     "Side",
+    "Sleeve",
+    "SleeveStatus",
     "Split",
     "StrategyFailure",
     "StrategyPosition",
@@ -119,6 +133,7 @@ __all__ = [
     "WarmingUp",
     "affordable_shares",
     "audit_daily_bars",
+    "require_budgets",
     "require_profile_name",
     "require_strategy_id",
     "whole_shares",

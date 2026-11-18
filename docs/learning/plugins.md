@@ -14,6 +14,7 @@ So the core must let new strategies in without knowing their names, and must not
 - **Hand in, don't let reach out.** The plugin gets a `StrategyContext`: the ranking, a read-only window of history, its own positions. It gets no bus, no clock, no data provider. What it cannot reach it cannot misuse, and it cannot see the future because the context holds only what was already published ([lookahead bias](lookahead-bias.md)).
 - **Walls checked by CI.** An import-linter contract forbids `tyche.strategies` from importing risk, execution, the engine, the simulator or any port. A strategy that tries to place its own order fails the build, not a code review.
 - **Check what comes back.** The stage refuses targets for instruments the strategy was not offered, weights that add up to more than its budget, a stop above the price. A failing plugin is recorded and skipped for that cycle; the rest of the run goes on. A bug in the stage itself still halts the run, because that is the core's fault, not a plugin's.
+- **Named, not imported.** Config never imports plugin code. A strategy file says `plugin = "buy_and_hold"`; the runtime looks the name up in a registry of built-in plugins, and each plugin validates its own parameters. Only code that ships with Tyche can be named, so a file in the workspace cannot make Tyche run code nobody reviewed.
 - **No state.** A plugin that remembers nothing between calls behaves the same after a restart, so paper and live match the backtest. Its memory is the context.
 
 ```mermaid
@@ -32,6 +33,7 @@ flowchart LR
 | The checks | `SignalsStage` in the same package |
 | The walls | The "Strategies cannot reach..." contract in `pyproject.toml` |
 | A plugin | `BuyAndHold` in `tyche.strategies` |
+| The registry | `PLUGINS` in `tyche.strategies`: config names a plugin, the plugin's own parameter model checks its parameters ([ADR-0022](../adr/0022-portfolio-targets-as-weights-in-sleeves.md)) |
 | The decision | [ADR-0021](../adr/0021-strategies-see-a-window-handed-in.md) |
 | How to write one | [How to add a strategy](../developer-guide/how-to-add-a-strategy.md) |
 

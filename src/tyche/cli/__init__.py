@@ -29,6 +29,7 @@ from tyche.runtime.data import (
     fetch_daily_histories,
     instrument_for,
 )
+from tyche.runtime.strategies import build_strategies
 
 app = typer.Typer(
     name="tyche",
@@ -114,12 +115,19 @@ def config_check(home: HomeOption = None) -> None:
     try:
         workspace = Workspace(resolve_home(home, os.environ))
         config = load_config(workspace)
+        configured = build_strategies(config)
     except (WorkspaceError, ConfigError) as error:
         _fail(str(error))
 
     typer.echo(f"Configuration is valid: {workspace.root}")
     typer.echo(f"  Market profile: {config.market_profile}")
     typer.echo(f"  Costs checked:  {config.costs.checked_on.isoformat()}")
+    typer.echo("  Strategies:")
+    for spec in config.strategies:
+        typer.echo(f"    {spec.strategy_id} ({spec.plugin}), budget {spec.budget}")
+    cash = 1 - sum(configured.budgets.values())
+    if cash:
+        typer.echo(f"    cash: {cash}")
     typer.echo(f"  Config hash:    {config.config_hash}")
 
 

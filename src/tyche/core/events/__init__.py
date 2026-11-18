@@ -5,7 +5,8 @@ event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
 (``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``),
 ``RunEvent``, the trading events (``OrderEvent``, ``FillEvent``,
 ``DistributionEvent``), and the first decision-cycle events (``UniverseEvent``,
-``ScreeningEvent``, ``SignalEvent``, ``SignalsReadyEvent``).
+``ScreeningEvent``, ``SignalEvent``, ``SignalsReadyEvent``,
+``TargetPortfolioEvent``).
 
 Planned (Phase 1 onward): the other events listed in
 ``docs/architecture/event-catalog.md``, each added by the PR that first publishes it.
@@ -23,6 +24,7 @@ from tyche.core.events.decision import (
     ScreeningEvent,
     SignalEvent,
     SignalsReadyEvent,
+    TargetPortfolioEvent,
     UniverseEvent,
 )
 from tyche.core.events.event import Envelope, Event
@@ -59,5 +61,6 @@ __all__ = [
     "SessionPhase",
     "SignalEvent",
     "SignalsReadyEvent",
+    "TargetPortfolioEvent",
     "UniverseEvent",
 ]

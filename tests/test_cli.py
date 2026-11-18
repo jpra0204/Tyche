@@ -124,7 +124,33 @@ class TestConfigCheck:
         assert "Configuration is valid" in result.stdout
         assert "Market profile: US" in result.stdout
         assert "Costs checked:  2026-11-17" in result.stdout
+        assert "buy_and_hold (buy_and_hold), budget 1.0" in result.stdout
+        assert "cash:" not in result.stdout
         assert "Config hash:    sha256:" in result.stdout
+
+    def test_lists_the_cash_left_after_budgets(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+        config_file = home / "tyche-workspace" / "config" / "tyche.toml"
+        config_file.write_text(
+            'schema_version = 1\nmarket_profile = "US"\n[strategies]\nbuy_and_hold = "0.8"\n'
+        )
+
+        result = runner.invoke(app, ["config", "check"])
+
+        assert result.exit_code == 0, result.output
+        assert "budget 0.8" in result.stdout
+        assert "cash: 0.2" in result.stdout
+
+    def test_invalid_strategy_parameters_fail_with_the_file_and_key(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+        strategy_file = home / "tyche-workspace" / "config" / "strategies" / "buy_and_hold.toml"
+        strategy_file.write_text('plugin = "buy_and_hold"\n[parameters]\nsymbol = "SPY"\n')
+
+        result = runner.invoke(app, ["config", "check"])
+
+        assert result.exit_code == 1
+        assert "config/strategies/buy_and_hold.toml: 2 invalid parameter(s)" in result.stderr
+        assert "parameters.exchange: Field required" in result.stderr
 
     def test_an_invalid_configuration_fails_with_the_file_and_key(self, home: Path) -> None:
         runner.invoke(app, ["init"])
