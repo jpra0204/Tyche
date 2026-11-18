@@ -35,12 +35,14 @@ from pydantic.types import Strict
 
 from tyche.config.workspace import Workspace
 from tyche.core.domain import (
+    AssetClass,
     CommissionSchedule,
     Currency,
     MarketProfile,
     Money,
     RegulatoryFees,
     TradingCosts,
+    UniverseRules,
     require_profile_name,
 )
 
@@ -71,21 +73,6 @@ class TycheFile(_ConfigFile):
     market_profile: StrictStr
 
 
-class MarketProfileFile(_ConfigFile):
-    """``config/markets/<NAME>.toml``."""
-
-    name: StrictStr
-    cash_currencies: tuple[Currency, ...]
-    calendars: tuple[StrictStr, ...]
-
-    def to_domain(self) -> MarketProfile:
-        return MarketProfile(
-            name=self.name,
-            cash_currencies=self.cash_currencies,
-            calendars=self.calendars,
-        )
-
-
 def _exact_decimal(value: object) -> Decimal:
     """Accept a decimal written as a string, and nothing else.
 
@@ -106,6 +93,43 @@ def _exact_decimal(value: object) -> Decimal:
 
 ExactDecimal = Annotated[Decimal, BeforeValidator(_exact_decimal)]
 StrictDate = Annotated[date, Strict()]
+
+
+class UniverseFile(_ConfigFile):
+    """The ``[universe]`` table of a market profile file."""
+
+    asset_classes: tuple[AssetClass, ...]
+    currency: Currency
+    min_price: ExactDecimal
+    min_average_dollar_volume: ExactDecimal
+    liquidity_sessions: StrictInt
+    quality_sessions: StrictInt
+
+    def to_domain(self) -> UniverseRules:
+        return UniverseRules(
+            asset_classes=self.asset_classes,
+            min_price=Money(self.min_price, self.currency),
+            min_average_dollar_volume=Money(self.min_average_dollar_volume, self.currency),
+            liquidity_sessions=self.liquidity_sessions,
+            quality_sessions=self.quality_sessions,
+        )
+
+
+class MarketProfileFile(_ConfigFile):
+    """``config/markets/<NAME>.toml``."""
+
+    name: StrictStr
+    cash_currencies: tuple[Currency, ...]
+    calendars: tuple[StrictStr, ...]
+    universe: UniverseFile
+
+    def to_domain(self) -> MarketProfile:
+        return MarketProfile(
+            name=self.name,
+            cash_currencies=self.cash_currencies,
+            calendars=self.calendars,
+            universe=self.universe.to_domain(),
+        )
 
 
 class CommissionFile(_ConfigFile):

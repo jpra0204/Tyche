@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tests.support.costs import US_COSTS
+from tests.support.profiles import US_PROFILE
 from tyche.config import (
     ConfigError,
     TycheFile,
@@ -14,7 +15,7 @@ from tyche.config import (
     init_workspace,
     load_config,
 )
-from tyche.core.domain import Currency, MarketProfile
+from tyche.core.domain import Currency
 
 
 @pytest.fixture
@@ -31,7 +32,16 @@ def write(workspace: Workspace, relative: str, text: str) -> None:
 
 
 TYCHE_TOML = 'schema_version = 1\nmarket_profile = "US"\n'
-US_TOML = 'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
+UNIVERSE_TOML = """
+[universe]
+asset_classes = ["stock", "etf"]
+currency = "USD"
+min_price = "5.00"
+min_average_dollar_volume = "10000000"
+liquidity_sessions = 20
+quality_sessions = 5
+"""
+US_TOML = 'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n' + UNIVERSE_TOML
 US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
 
@@ -40,7 +50,7 @@ class TestValidConfig:
         config = load_config(workspace)
 
         assert config.workspace == workspace
-        assert config.market_profile == MarketProfile("US", (Currency.USD,), ("XNYS",))
+        assert config.market_profile == US_PROFILE
         assert config.config_hash.startswith("sha256:")
         assert len(config.config_hash) == len("sha256:") + 64
 
@@ -52,7 +62,8 @@ class TestValidConfig:
         write(
             workspace,
             "config/markets/CA+US.toml",
-            'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n',
+            'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n'
+            + UNIVERSE_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
 
@@ -303,4 +314,60 @@ class TestCosts:
         write(workspace, "config/costs/US.toml", US_COSTS_TOML + 'plan = "tiered"\n')
 
         with pytest.raises(ConfigError, match=r"plan: Extra inputs are not permitted"):
+            load_config(workspace)
+
+
+class TestUniverseRules:
+    def test_the_packaged_profile_has_the_documented_rules(self, workspace: Workspace) -> None:
+        assert load_config(workspace).market_profile.universe == US_PROFILE.universe
+
+    def test_a_profile_without_a_universe_table_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace(UNIVERSE_TOML, ""))
+
+        with pytest.raises(ConfigError, match=r"US.toml: .*\n  universe: Field required"):
+            load_config(workspace)
+
+    def test_changing_a_threshold_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"5.00"', '"10.00"'))
+
+        assert load_config(workspace).config_hash != before
+
+    def test_a_price_without_quotes_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"5.00"', "5.00"))
+
+        with pytest.raises(ConfigError, match=r"universe.min_price: .*write decimals as strings"):
+            load_config(workspace)
+
+    def test_an_unknown_asset_class_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"etf"]', '"bond"]'))
+
+        with pytest.raises(ConfigError, match=r"universe.asset_classes.1: Input should be"):
+            load_config(workspace)
+
+    def test_an_impossible_rule_names_the_file(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace("liquidity_sessions = 20", "liquidity_sessions = 0"),
+        )
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/markets/US.toml: universe rules: liquidity_sessions must be at least 1",
+        ):
+            load_config(workspace)
+
+    def test_thresholds_must_be_in_a_currency_the_profile_holds(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace('currency = "USD"', 'currency = "CAD"'),
+        )
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/markets/US.toml: market profile US: universe thresholds are in CAD",
+        ):
             load_config(workspace)

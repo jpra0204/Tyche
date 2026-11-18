@@ -51,7 +51,13 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `Account.receive_distribution` and `Account.distributions_received`: dividends are income, kept apart from deposits.
 - Developer guide: backtesting internals.
 
+- Universe and screening (Phase 1, PR 11): `UniverseStage` publishes a `UniverseEvent` at every decision cycle, listing each expected instrument as eligible (with its last close and average dollar volume) or excluded with an `ExclusionReason`: outside the profile, no bar, a recent data problem, too little history, price below the minimum, or too little dollar volume. `ScreeningStage` ranks the eligible instruments with a `Screen` and publishes a `ScreeningEvent`; `DollarVolumeScreen` ranks by liquidity.
+- `UniverseRules`, `UniverseMember`, `Exclusion`, `ScoredInstrument` and `DISQUALIFYING_ISSUES` in the domain.
+- Backtesting internals: which instruments are considered. Learning note: state built from events.
+
 ### Changed
+
+- `MarketProfile` has a required `universe` (`UniverseRules`), read from a new `[universe]` table in `config/markets/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 11 must copy the table from a new one.
 
 - `load_config` now also requires `config/costs/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 9 must copy the file from a new one.
 - `Bar.is_adjusted` (a yes/no flag) is replaced by `Bar.adjustment`, a `PriceAdjustment`. Cache files move to format 2.

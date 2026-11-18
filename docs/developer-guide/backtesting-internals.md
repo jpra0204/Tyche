@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
 
 ## 1. How time moves
 
@@ -68,7 +68,31 @@ At the open of an ex-date, holders at the previous close are credited `amount_pe
 - The payment date is not known (Yahoo does not report it), so the cash arrives days or weeks early ([ADR-0019](../adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 - No withholding tax is deducted. US dividends paid to a Canadian resident are subject to it; the rate and IBKR's handling are verified before it is modelled (Phase 2 or 4).
 
-## 3. Known limits
+## 3. Which instruments are considered
+
+Before any strategy sees an instrument, the universe stage (`tyche.core.pipeline.universe`) decides whether it is eligible at that decision time, using the `[universe]` rules of the market profile (`config/markets/<PROFILE>.toml`). It decides from the bars and data issues already published, never by asking the data provider, so it cannot see the future ([state built from events](../learning/state-built-from-events.md)).
+
+The rules are checked in this order. The first one an instrument fails is its reason in the `UniverseEvent`:
+
+| # | Rule | Excluded as | `US` default |
+|---|---|---|---|
+| 1 | Calendar is one of the profile's, quoted in the thresholds' currency, asset class allowed | `not_in_profile` | XNYS; USD; stocks and ETFs |
+| 2 | Has a bar for this decision time | `no_bar` | |
+| 3 | No disqualifying data issue (missing session, conflicting or invalid bars, suspect move) reported in this cycle or the previous `quality_sessions - 1` ([ADR-0018](../adr/0018-audit-market-data.md)) | `data_issue` | 5 cycles |
+| 4 | At least `liquidity_sessions` bars so far | `insufficient_history` | 20 bars |
+| 5 | Last close at least `min_price` | `price_too_low` | USD 5.00 |
+| 6 | Mean of close × volume over the last `liquidity_sessions` bars at least `min_average_dollar_volume` | `illiquid` | USD 10,000,000 |
+
+The thresholds are choices, not market facts. Screening (`tyche.core.pipeline.screening`) then ranks the eligible instruments; the only screen so far, `dollar_volume`, ranks by liquidity and says nothing about which instrument will do well.
+
+What follows from the rules:
+
+- **Warm-up.** Nothing is eligible until `liquidity_sessions` bars have arrived. A backtest must start its replay that many sessions before the first day it measures (PR 15).
+- **Split-adjusted minimum price.** Prices before a split are divided by its ratio, so a share that traded above the minimum can read below it and be excluded. This errs towards excluding. Dollar volume is not affected: the split adjustment cancels out in close × volume.
+- **Survivorship.** The universe can only choose among the instruments the replay was given. Yahoo lists only instruments that still exist, so a backtest over today's symbols never meets a company that failed.
+- **Old gaps are forgiven.** A bar missing more than `quality_sessions` cycles ago no longer excludes the instrument, and its liquidity average then spans a few more sessions than `liquidity_sessions`.
+
+## 4. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

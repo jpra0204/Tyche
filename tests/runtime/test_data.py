@@ -7,10 +7,11 @@ import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
 from tests.support.market import JANUARY_2024
+from tests.support.profiles import CA_PROFILE, US_PROFILE
 from tyche.adapters.data import YFinanceSource
 from tyche.adapters.data.yfinance_source import UnknownSymbolError
 from tyche.config import TycheConfig, init_workspace, load_config
-from tyche.core.domain import AssetClass, Currency, Instrument, MarketProfile
+from tyche.core.domain import AssetClass, Currency, Instrument
 from tyche.core.ports import Calendar
 from tyche.core.sim import SimClock
 from tyche.runtime.data import (
@@ -20,8 +21,8 @@ from tyche.runtime.data import (
     instrument_for,
 )
 
-US = MarketProfile("US", (Currency.USD,), ("XNYS",))
-CA = MarketProfile("CA", (Currency.CAD,), ("XTSE",))
+US = US_PROFILE
+CA = CA_PROFILE
 AFTER_JANUARY_16 = SimClock(datetime(2024, 1, 17, 12, 0, tzinfo=UTC))
 
 

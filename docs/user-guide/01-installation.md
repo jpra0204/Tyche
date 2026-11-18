@@ -44,7 +44,7 @@ This creates `~/tyche-workspace` with:
 | File | What it is |
 |---|---|
 | `config/tyche.toml` | Workspace settings, including the active market profile |
-| `config/markets/US.toml` | The `US` market profile |
+| `config/markets/US.toml` | The `US` market profile, including its universe rules: which instruments may be traded (asset classes, a minimum price, a minimum average dollar volume, and how long data problems keep an instrument out) |
 | `config/costs/US.toml` | What trading costs under the `US` profile (IBKR Pro Fixed), slippage and settlement, with the date the rates were checked |
 | `.env` | Where secrets will go in Phase 2. Empty for now, and readable only by you |
 | `.gitignore` | Keeps `.env`, market data, state and logs out of git |
@@ -130,4 +130,5 @@ Unknown settings are always an error, so a misspelled key cannot be silently ign
 | `… is inside ~/Documents, which macOS can sync to iCloud` | Choose a folder outside `~/Public`, `~/Desktop` and `~/Documents`. |
 | `… selects market profile 'CA', but config/markets/CA.toml does not exist` | Only `US` exists for now. `CA` and `CA+US` arrive in Phase 4. |
 | `config/costs/US.toml is missing: every market profile needs a costs file` | Your workspace was created before costs existed. Run `uv run tyche init --home <scratch-folder>` and copy its `config/costs/US.toml` into your workspace. |
-| `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs file: `per_share = "0.005"`, not `per_share = 0.005`. |
+| `config/markets/US.toml: … universe: Field required` | Your workspace was created before the universe rules existed. Run `uv run tyche init --home <scratch-folder>` and copy the `[universe]` table from its `config/markets/US.toml` into yours. |
+| `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs or market profile file: `per_share = "0.005"`, not `per_share = 0.005`. |

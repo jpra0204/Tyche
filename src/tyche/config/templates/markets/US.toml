@@ -10,3 +10,28 @@ cash_currencies = ["USD"]
 # Trading calendars of the profile's markets, as market identifier codes.
 # XNYS covers every US exchange, including NASDAQ and NYSE Arca.
 calendars = ["XNYS"]
+
+[universe]
+# What an instrument must look like to be traded under this profile. The thresholds
+# are choices, not market facts: they keep out shares whose prices cannot be trusted
+# or traded at a fair price. Decimals are written as strings so they stay exact.
+
+# Kinds of instrument allowed: "stock", "etf" or both.
+asset_classes = ["stock", "etf"]
+
+# Currency of the two thresholds below. Only instruments quoted in it are eligible.
+currency = "USD"
+
+# Lowest last close allowed. Prices are split-adjusted, so before a split they read
+# lower than what traded at the time; this errs on the side of leaving a share out.
+min_price = "5.00"
+
+# Lowest average of close x volume over the last `liquidity_sessions` bars.
+min_average_dollar_volume = "10000000"
+
+# Bars the liquidity average needs. An instrument with fewer bars is left out.
+liquidity_sessions = 20
+
+# Decision cycles an instrument stays out after a data problem is reported about it
+# (a missing session, conflicting or invalid bars, a suspect price move).
+quality_sessions = 5
