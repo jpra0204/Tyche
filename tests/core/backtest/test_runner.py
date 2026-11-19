@@ -200,3 +200,46 @@ class TestRefusedSetups:
     def test_a_missing_calendar(self) -> None:
         with pytest.raises(BacktestError, match="no calendar loaded for XNYS"):
             run_backtest(spec(), SyntheticData(), {})
+
+
+class TestTheBenchmark:
+    def test_a_benchmark_that_is_a_candidate_is_loaded_once(self) -> None:
+        data = SyntheticData()
+
+        result = run_backtest(spec(), data, calendars())
+
+        assert result.benchmark.instrument == SPY
+        assert [instrument for instrument, _, _ in data.calls].count(SPY) == 1
+        assert result.benchmark in result.histories
+
+    def test_a_benchmark_that_is_not_a_candidate_is_loaded_over_the_same_days(self) -> None:
+        profile = replace(
+            US_PROFILE,
+            universe=replace(US_PROFILE.universe, instruments=(SPY,)),
+            benchmark=QQQ,
+        )
+        data = SyntheticData()
+
+        result = run_backtest(spec(profile=profile), data, calendars())
+
+        assert result.benchmark.instrument == QQQ
+        assert result.benchmark not in result.histories
+        (_, spy_first, spy_last), (_, qqq_first, qqq_last) = data.calls
+        assert (qqq_first, qqq_last) == (spy_first, spy_last)
+
+    def test_a_benchmark_without_a_bar_to_start_from_is_refused(self) -> None:
+        @dataclass
+        class NoBenchmarkData(SyntheticData):
+            def daily_bars(self, instrument: Instrument, first: date, last: date) -> BarHistory:
+                if instrument == QQQ:
+                    return BarHistory(QQQ, ())
+                return super().daily_bars(instrument, first, last)
+
+        profile = replace(
+            US_PROFILE,
+            universe=replace(US_PROFILE.universe, instruments=(SPY,)),
+            benchmark=QQQ,
+        )
+
+        with pytest.raises(BacktestError, match="no bar of the benchmark QQQ@XNAS on or before"):
+            run_backtest(spec(profile=profile), NoBenchmarkData(), calendars())

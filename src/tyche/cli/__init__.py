@@ -22,7 +22,7 @@ from tyche.config import (
     load_config,
     resolve_home,
 )
-from tyche.core.backtest import BacktestError, HoldoutError
+from tyche.core.backtest import BacktestError, BacktestMetrics, HoldoutError, SeriesMetrics
 from tyche.core.domain import AssetClass, Money
 from tyche.core.ports import DataError
 from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
@@ -316,6 +316,10 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
     issues = sum(len(h.issues) for h in result.histories)
     if issues:
         lines.append(f"  Data issues:   {issues}, listed by `tyche data fetch`")
+    if outcome.metrics is not None:
+        lines.extend(_describe_metrics(outcome.metrics))
+    else:
+        lines.append(f"  Metrics:       not measured: {outcome.metrics_error}")
     lines.append(f"  Code:          {outcome.code}")
     lines.append(f"  Record:        {record}")
     if outcome.code.dirty:
@@ -324,6 +328,44 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
             "reproduce this run."
         )
     return lines
+
+
+def _describe_metrics(metrics: BacktestMetrics) -> list[str]:
+    """The run beside its benchmark's total return, one figure per line."""
+    strategy, bench = metrics.strategy, metrics.benchmark
+    benchmark = f"{metrics.benchmark_instrument} total return"
+    rows = [
+        ("CAGR", _percent(strategy.cagr), _percent(bench.cagr)),
+        ("Volatility", _percent(strategy.volatility), _percent(bench.volatility)),
+        ("Sharpe (rf 0)", _ratio(strategy.sharpe), _ratio(bench.sharpe)),
+        ("Sortino (rf 0)", _ratio(strategy.sortino), _ratio(bench.sortino)),
+        ("Max drawdown", _percent(_depth(strategy)), _percent(_depth(bench))),
+        ("Exposure", _percent(strategy.exposure), _percent(bench.exposure)),
+    ]
+    lines = [f"  {'Metrics':<16}{'strategy':>10}  {benchmark}"]
+    lines.extend(f"    {name:<14}{mine:>10}  {theirs:>10}" for name, mine, theirs in rows)
+    trades = metrics.trades
+    win_rate = _percent(trades.win_rate)
+    lines.append(
+        f"  Turnover:      {_ratio(metrics.turnover)} a year; costs {metrics.costs.round_to(2)}"
+    )
+    lines.append(
+        f"  Trades:        {len(trades.closed)} closed, win rate {win_rate}; "
+        f"{trades.still_open} still open"
+    )
+    return lines
+
+
+def _percent(value: Decimal | None) -> str:
+    return "n/a" if value is None else f"{(value * 100).quantize(Decimal('0.01'))}%"
+
+
+def _ratio(value: Decimal | None) -> str:
+    return "n/a" if value is None else f"{value.quantize(Decimal('0.01'))}"
+
+
+def _depth(series: SeriesMetrics) -> Decimal:
+    return series.max_drawdown.depth if series.max_drawdown is not None else Decimal(0)
 
 
 def _count(number: int, noun: str) -> str:

@@ -7,8 +7,10 @@ writes what happened to ``reports/backtests/<run id>/`` in the workspace:
 
 * ``run.json``: the run record. The code version, the config hash and every setting
   behind it, the range, the warm-up, the holdout, the data used and the outcome.
-* ``equity.csv``: Tyche's account at every session close.
+* ``equity.csv``: Tyche's account at every session close, and the benchmark's equity
+  at the same close.
 * ``fills.csv``: every fill, with its costs.
+* ``metrics.json``: the run measured against the benchmark (ADR-0025).
 
 A run that halts is recorded too: every run is a trial, and Phase 1 PR 21 and the
 Phase 3 gate count trials.
@@ -21,6 +23,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -35,14 +38,30 @@ from tyche.adapters.data import (
 )
 from tyche.adapters.data.yfinance_source import SOURCE_NAME
 from tyche.config import TycheConfig
-from tyche.core.backtest import BacktestResult, BacktestSpec, run_backtest
-from tyche.core.domain import AssetClass, Currency, Money, PriceAdjustment
+from tyche.core.backtest import (
+    BacktestMetrics,
+    BacktestResult,
+    BacktestSpec,
+    Drawdown,
+    MetricsError,
+    SeriesMetrics,
+    measure_backtest,
+    run_backtest,
+)
+from tyche.core.backtest.metrics import DAYS_PER_YEAR, RISK_FREE_RATE, SESSIONS_PER_YEAR
+from tyche.core.domain import AssetClass, BarHistory, Currency, Money, PriceAdjustment
 from tyche.core.ports import Calendar, Clock
 from tyche.runtime.data import CALENDAR_START
 from tyche.runtime.strategies import build_strategies
 
 RECORD_FORMAT = 1
 """Version of ``run.json``'s layout. Raised when a field changes meaning or goes away."""
+
+METRICS_FORMAT = 1
+"""Version of ``metrics.json``'s layout. Raised when a field changes meaning or goes away."""
+
+FRACTION_PLACES = Decimal("0.000001")
+"""Fractions and ratios in ``metrics.json`` are rounded to six decimal places."""
 
 CALENDAR_MARGIN = timedelta(days=31)
 """How far past the last day the calendar is loaded: settlement looks a session ahead."""
@@ -107,7 +126,11 @@ def current_code_version(git: GitRunner = _git) -> CodeVersion:
 
 @dataclass(frozen=True, slots=True)
 class BacktestOutcome:
-    """A finished backtest and where its record was written."""
+    """A finished backtest, how it measured up, and where its record was written.
+
+    ``metrics`` is ``None`` only when the run could not be measured, such as a run that
+    halted before its first close; ``metrics_error`` then says why.
+    """
 
     run_id: str
     result: BacktestResult
@@ -115,6 +138,8 @@ class BacktestOutcome:
     code: CodeVersion
     first: date
     last: date
+    metrics: BacktestMetrics | None
+    metrics_error: str | None
 
 
 def run_configured_backtest(
@@ -178,10 +203,19 @@ def run_configured_backtest(
         raise BacktestRequestError(_fetch_hint(error)) from None
     finished = clock.now()
 
-    record = run_record(config, spec, result, code, started=started, finished=finished)
+    currency = profile.cash_currencies[0]
+    metrics: BacktestMetrics | None = None
+    metrics_error: str | None = None
+    try:
+        metrics = measure_backtest(result, currency)
+    except MetricsError as error:
+        metrics_error = str(error)
+    record = run_record(
+        config, spec, result, code, started=started, finished=finished, metrics_error=metrics_error
+    )
     record_dir = backtests / run_id
-    write_run_record(record_dir, record, result, profile.cash_currencies[0])
-    return BacktestOutcome(run_id, result, record_dir, code, first, last)
+    write_run_record(record_dir, record, result, currency, metrics)
+    return BacktestOutcome(run_id, result, record_dir, code, first, last, metrics, metrics_error)
 
 
 def _new_run_id(folder: Path, started: datetime, config_hash: str) -> str:
@@ -218,6 +252,7 @@ def run_record(
     *,
     started: datetime,
     finished: datetime,
+    metrics_error: str | None = None,
 ) -> dict[str, Any]:
     """The run record: everything needed to reproduce the run and judge what it used."""
     currency = spec.profile.cash_currencies[0]
@@ -267,21 +302,12 @@ def run_record(
             }
             for strategy in spec.strategies
         ],
-        "data": [
-            {
-                "instrument": str(history.instrument),
-                "source": SOURCE_NAME,
-                "bars": len(history.bars),
-                "first_bar": history.bars[0].timestamp.isoformat() if history.bars else None,
-                "last_bar": history.bars[-1].timestamp.isoformat() if history.bars else None,
-                "fetched_from": history.fetched[0].isoformat() if history.fetched else None,
-                "fetched_to": history.fetched[1].isoformat() if history.fetched else None,
-                "issues": len(history.issues),
-                "distributions": len(history.distributions),
-                "splits": len(history.splits),
-            }
-            for history in result.histories
-        ],
+        "data": [_data_used(history) for history in result.histories],
+        "benchmark": {
+            "instrument": str(result.benchmark.instrument),
+            "method": BENCHMARK_METHOD,
+            "data": _data_used(result.benchmark),
+        },
         "outcome": {
             "completed": run.completed,
             "failure": run.failure,
@@ -292,26 +318,46 @@ def run_record(
             "final_equity": _money(result.account.equity(currency)),
             "final_cash": _money(result.account.cash(currency).total),
             "agrees_with_broker": result.account == result.broker_account,
+            "metrics": "metrics.json" if metrics_error is None else None,
+            "metrics_error": metrics_error,
         },
         "config": config.snapshot,
     }
 
 
 def write_run_record(
-    folder: Path, record: dict[str, Any], result: BacktestResult, currency: Currency
+    folder: Path,
+    record: dict[str, Any],
+    result: BacktestResult,
+    currency: Currency,
+    metrics: BacktestMetrics | None = None,
 ) -> None:
-    """Write ``run.json``, ``equity.csv`` and ``fills.csv`` into a new ``folder``."""
+    """Write ``run.json``, ``equity.csv``, ``fills.csv`` and ``metrics.json`` into a new
+    ``folder``. Without ``metrics``, ``metrics.json`` is not written and the benchmark
+    column of ``equity.csv`` is empty."""
     folder.mkdir(parents=True, exist_ok=False)
-    (folder / "run.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    _write_json(folder / "run.json", record)
+    if metrics is not None:
+        _write_json(folder / "metrics.json", metrics_record(record["run_id"], metrics))
 
+    benchmark = {point.at: point.equity for point in metrics.benchmark_equity} if metrics else {}
     with (folder / "equity.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["close_utc", "equity", "cash", "settled_cash", "invested", "currency"])
+        writer.writerow(
+            [
+                "close_utc",
+                "equity",
+                "cash",
+                "settled_cash",
+                "invested",
+                "benchmark_equity",
+                "currency",
+            ]
+        )
         for close in result.closes:
             account = close.account
             cash = account.cash(currency)
+            bench = benchmark.get(close.as_of)
             writer.writerow(
                 [
                     close.as_of.isoformat(),
@@ -319,6 +365,7 @@ def write_run_record(
                     cash.total.amount,
                     cash.settled.amount,
                     account.market_value(currency).amount,
+                    _cents(bench) if bench is not None else "",
                     currency.value,
                 ]
             )
@@ -356,3 +403,107 @@ def write_run_record(
                     fill.fill_id,
                 ]
             )
+
+
+def _write_json(path: Path, content: dict[str, Any]) -> None:
+    path.write_text(json.dumps(content, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _data_used(history: BarHistory) -> dict[str, Any]:
+    return {
+        "instrument": str(history.instrument),
+        "source": SOURCE_NAME,
+        "bars": len(history.bars),
+        "first_bar": history.bars[0].timestamp.isoformat() if history.bars else None,
+        "last_bar": history.bars[-1].timestamp.isoformat() if history.bars else None,
+        "fetched_from": history.fetched[0].isoformat() if history.fetched else None,
+        "fetched_to": history.fetched[1].isoformat() if history.fetched else None,
+        "issues": len(history.issues),
+        "distributions": len(history.distributions),
+        "splits": len(history.splits),
+    }
+
+
+# --- the metrics ---------------------------------------------------------------------
+
+BENCHMARK_METHOD = "total return: distributions reinvested at the ex-date close, no costs, no cash"
+
+
+def _fraction(value: Decimal | None) -> str | None:
+    return None if value is None else str(value.quantize(FRACTION_PLACES))
+
+
+def _cents(value: Decimal) -> str:
+    return str(value.quantize(Decimal("0.01")))
+
+
+def _drawdown(drawdown: Drawdown | None) -> dict[str, Any] | None:
+    if drawdown is None:
+        return None
+    return {
+        "depth": _fraction(drawdown.depth),
+        "peak": drawdown.peak.isoformat(),
+        "trough": drawdown.trough.isoformat(),
+        "recovered": drawdown.recovered.isoformat() if drawdown.recovered else None,
+    }
+
+
+def _series(series: SeriesMetrics) -> dict[str, Any]:
+    return {
+        "first_close": series.first.isoformat(),
+        "last_close": series.last.isoformat(),
+        "sessions": series.sessions,
+        "years": _fraction(series.years),
+        "start_equity": _cents(series.start_equity),
+        "end_equity": _cents(series.end_equity),
+        "total_return": _fraction(series.total_return),
+        "cagr": _fraction(series.cagr),
+        "volatility": _fraction(series.volatility),
+        "sharpe": _fraction(series.sharpe),
+        "sortino": _fraction(series.sortino),
+        "max_drawdown": _drawdown(series.max_drawdown),
+        "exposure": _fraction(series.exposure),
+    }
+
+
+def metrics_record(run_id: str, metrics: BacktestMetrics) -> dict[str, Any]:
+    """``metrics.json``: the run and its benchmark, measured the same way (ADR-0025).
+
+    Fractions and ratios are strings rounded to six places (``"0.081234"`` is 8.12%);
+    amounts are strings in cents. ``null`` means the figure cannot be computed.
+    """
+    versus = metrics.versus_benchmark
+    trades = metrics.trades
+    return {
+        "metrics_format": METRICS_FORMAT,
+        "run_id": run_id,
+        "currency": metrics.currency.value,
+        "conventions": {
+            "sessions_per_year": SESSIONS_PER_YEAR,
+            "days_per_year": str(DAYS_PER_YEAR),
+            "risk_free_rate": str(RISK_FREE_RATE),
+        },
+        "strategy": _series(metrics.strategy),
+        "benchmark": {
+            "instrument": str(metrics.benchmark_instrument),
+            "method": BENCHMARK_METHOD,
+            **_series(metrics.benchmark),
+        },
+        "versus_benchmark": {
+            "total_return": _fraction(versus.total_return),
+            "cagr": _fraction(versus.cagr),
+            "volatility": _fraction(versus.volatility),
+            "sharpe": _fraction(versus.sharpe),
+            "sortino": _fraction(versus.sortino),
+            "max_drawdown": _fraction(versus.max_drawdown),
+        },
+        "trading": {
+            "turnover": _fraction(metrics.turnover),
+            "traded": _cents(metrics.traded.amount),
+            "costs": _cents(metrics.costs.amount),
+            "closed_trades": len(trades.closed),
+            "wins": trades.wins,
+            "win_rate": _fraction(trades.win_rate),
+            "still_open": trades.still_open,
+        },
+    }

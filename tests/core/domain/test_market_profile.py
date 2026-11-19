@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.support.profiles import US_EXECUTION, US_RULES
+from tests.support.profiles import US_BENCHMARK, US_EXECUTION, US_RULES
 from tyche.core.domain import (
     AssetClass,
     Currency,
@@ -21,6 +21,7 @@ US = MarketProfile(
     calendars=("XNYS",),
     universe=US_RULES,
     execution=US_EXECUTION,
+    benchmark=US_BENCHMARK,
 )
 
 
@@ -39,7 +40,12 @@ def test_is_immutable() -> None:
 
 def test_a_combined_profile_holds_both_currencies_and_calendars() -> None:
     both = MarketProfile(
-        "CA+US", (Currency.CAD, Currency.USD), ("XTSE", "XNYS"), US_RULES, US_EXECUTION
+        "CA+US",
+        (Currency.CAD, Currency.USD),
+        ("XTSE", "XNYS"),
+        US_RULES,
+        US_EXECUTION,
+        US_BENCHMARK,
     )
 
     assert both.cash_currencies == (Currency.CAD, Currency.USD)
@@ -110,3 +116,21 @@ def test_every_instrument_must_follow_one_of_the_profiles_calendars() -> None:
 
     with pytest.raises(ValueError, match="QQQ@XNAS follows calendar XNAS, which is not one"):
         replace(US, universe=rules)
+
+
+def test_holds_its_benchmark() -> None:
+    assert US.benchmark == US_BENCHMARK
+
+
+def test_the_benchmark_must_follow_one_of_its_calendars() -> None:
+    tsx = Instrument("XIC", "XTSE", Currency.USD, "XTSE", AssetClass.ETF)
+
+    with pytest.raises(ValueError, match="benchmark XIC@XTSE follows calendar XTSE"):
+        replace(US, benchmark=tsx)
+
+
+def test_the_benchmark_must_trade_in_one_of_its_cash_currencies() -> None:
+    cad = Instrument("SPY", "ARCX", Currency.CAD, "XNYS", AssetClass.ETF)
+
+    with pytest.raises(ValueError, match="benchmark SPY@ARCX trades in CAD"):
+        replace(US, benchmark=cad)

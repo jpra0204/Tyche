@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from tyche.core.domain.currency import Currency
 from tyche.core.domain.execution import ExecutionRules
+from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.universe import UniverseRules
 from tyche.core.domain.validation import require_mic
 
@@ -32,8 +33,8 @@ class MarketProfile:
     Selecting a profile is how a run says "US only", "Canada only" or "both". Every
     strategy can be backtested under each profile, so their results can be compared.
 
-    Phase 1 builds only ``US``. The benchmark and the currency conversion policy are
-    added to the profile in the PRs that first use them.
+    Phase 1 builds only ``US``. The currency conversion policy is added to the profile
+    in the PR that first uses it.
 
     Attributes:
         name: Upper-case name, e.g. ``US`` or ``CA+US``.
@@ -46,6 +47,8 @@ class MarketProfile:
             are eligible; a profile with two currencies needs thresholds per currency,
             which comes with the ``CA+US`` profile in Phase 4.
         execution: How approved weights become orders: the rebalance band (ADR-0023).
+        benchmark: The index ETF every strategy is measured against, by its total
+            return with dividends reinvested (ADR-0025). It need not be a candidate.
     """
 
     name: str
@@ -53,6 +56,7 @@ class MarketProfile:
     calendars: tuple[str, ...]
     universe: UniverseRules
     execution: ExecutionRules
+    benchmark: Instrument
 
     def __post_init__(self) -> None:
         require_profile_name(self.name)
@@ -77,6 +81,16 @@ class MarketProfile:
                     f"market profile {self.name}: {instrument} follows calendar "
                     f"{instrument.calendar}, which is not one of the profile's"
                 )
+        if self.benchmark.calendar not in self.calendars:
+            raise ValueError(
+                f"market profile {self.name}: the benchmark {self.benchmark} follows "
+                f"calendar {self.benchmark.calendar}, which is not one of the profile's"
+            )
+        if self.benchmark.currency not in self.cash_currencies:
+            raise ValueError(
+                f"market profile {self.name}: the benchmark {self.benchmark} trades in "
+                f"{self.benchmark.currency}, which is not one of its cash currencies"
+            )
 
     def __str__(self) -> str:
         return self.name

@@ -1,0 +1,69 @@
+{
+  "metrics_format": 1,
+  "run_id": "golden",
+  "currency": "USD",
+  "conventions": {
+    "sessions_per_year": 252,
+    "days_per_year": "365.25",
+    "risk_free_rate": "0"
+  },
+  "strategy": {
+    "first_close": "2023-07-03T17:00:00+00:00",
+    "last_close": "2023-12-29T21:00:00+00:00",
+    "sessions": 126,
+    "years": "0.490532",
+    "start_equity": "10000.00",
+    "end_equity": "10022.59",
+    "total_return": "0.002259",
+    "cagr": "0.004612",
+    "volatility": "0.083376",
+    "sharpe": "0.095899",
+    "sortino": "0.141983",
+    "max_drawdown": {
+      "depth": "0.097331",
+      "peak": "2023-11-27T21:00:00+00:00",
+      "trough": "2023-12-27T21:00:00+00:00",
+      "recovered": null
+    },
+    "exposure": "0.710141"
+  },
+  "benchmark": {
+    "instrument": "SPY@ARCX",
+    "method": "total return: distributions reinvested at the ex-date close, no costs, no cash",
+    "first_close": "2023-07-03T17:00:00+00:00",
+    "last_close": "2023-12-29T21:00:00+00:00",
+    "sessions": 126,
+    "years": "0.490532",
+    "start_equity": "10000.00",
+    "end_equity": "9870.27",
+    "total_return": "-0.012973",
+    "cagr": "-0.026269",
+    "volatility": "0.074290",
+    "sharpe": "-0.317502",
+    "sortino": "-0.455155",
+    "max_drawdown": {
+      "depth": "0.099814",
+      "peak": "2023-09-15T20:00:00+00:00",
+      "trough": "2023-10-23T20:00:00+00:00",
+      "recovered": "2023-11-22T21:00:00+00:00"
+    },
+    "exposure": "1.000000"
+  },
+  "versus_benchmark": {
+    "total_return": "0.015233",
+    "cagr": "0.030881",
+    "volatility": "0.009086",
+    "sharpe": "0.413401",
+    "sortino": "0.597139",
+    "max_drawdown": "-0.002484"
+  },
+  "trading": {
+    "turnover": "14.152910",
+    "traded": "71396.48",
+    "costs": "15.80",
+    "closed_trades": 7,
+    "wins": 3,
+    "win_rate": "0.428571",
+    "still_open": 1
+  }
+}

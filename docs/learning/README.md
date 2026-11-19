@@ -23,6 +23,8 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Plugins](plugins.md) | The core defines a small contract, hands the plugin only what it allows, and checks everything that comes back |
 | [Sub-ledgers that add up](sub-ledgers.md) | Each strategy keeps its own book of shares, they must always sum to the real account, and only the difference is traded |
 | [The holdout and the run record](holdout-and-run-records.md) | Keep the most recent history away from every experiment, and record every run with its code, config and data |
+| [Measuring against a benchmark](measuring-against-a-benchmark.md) | Compare with what simply holding the index paid, dividends reinvested, measured the same way on the same days |
+| [Golden-file tests](golden-files.md) | Save every number of a fixed run, and make any change to them a deliberate, reviewed step |
 
 ## Planned
 

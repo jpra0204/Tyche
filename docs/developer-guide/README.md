@@ -10,7 +10,7 @@ For Pablo as a developer, and for any Claude Code session working on the code.
 | [How to add a data source](how-to-add-a-data-source.md) | Writing a `BarSource` adapter, with yfinance as the worked example |
 | [How to add a strategy](how-to-add-a-strategy.md) | The strategy contract in practice: one class, the rules it must keep, testing it without the engine |
 | [Conventions](conventions.md) | Coding rules, testing strategy, git workflow, definition of done |
-| [Backtesting internals](backtesting-internals.md) | How the replay, the universe rules, what a strategy sees and the simulated broker turn history into fills, and the known limits |
+| [Backtesting internals](backtesting-internals.md) | How the replay, the universe rules, what a strategy sees and the simulated broker turn history into fills, how a run is measured, and the known limits |
 | [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md) | Commissions, fractional shares, cash-account settlement and currency conversion, checked against IBKR's pages and dated |
 
 For the end-to-end flow of an event from data to fill, see the [system overview](../architecture/system-overview.md#5-the-event-flow) and the [event catalog](../architecture/event-catalog.md).
