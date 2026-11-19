@@ -24,6 +24,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "backtesting>=0.6.6",
     "hypothesis>=6.170.15",
     "import-linter>=2.16",
     "mypy>=2.4.1",
@@ -78,6 +79,12 @@ ignore_missing_imports = true
 module = ["yfinance", "yfinance.*"]
 ignore_missing_imports = true
 
+# backtesting.py ships no type information. It is a dev dependency used only by the
+# reference comparison in tests/reference (ADR-0026); no module of Tyche may import it.
+[[tool.mypy.overrides]]
+module = ["backtesting", "backtesting.*"]
+ignore_missing_imports = true
+
 # --- pytest -------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -95,6 +102,10 @@ filterwarnings = [
     # and tests/adapters/calendars pins exact UTC session times, so a real breakage would
     # fail there. Remove once an exchange_calendars release stops triggering it.
     "ignore:Series.values returning an ndarray that drops timezone information:pandas.errors.Pandas4Warning",
+    # Raised inside backtesting.py 0.6.6 (_stats.compute_stats reads
+    # DatetimeIndex.dayofweek) under pandas 3.1, in the reference comparison only
+    # (tests/reference). Remove once a backtesting.py release uses day_of_week.
+    "ignore:DatetimeIndex.dayofweek is deprecated:pandas.errors.Pandas4Warning",
 ]
 
 [tool.coverage.run]
@@ -148,6 +159,14 @@ forbidden_modules = [
     "apscheduler",
     "subprocess",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Tyche never imports the reference backtester"
+# backtesting.py is AGPL-3.0 and a dev dependency only: tests compare against it, and
+# Tyche itself must never import it or ship with it (ADR-0026).
+type = "forbidden"
+source_modules = ["tyche"]
+forbidden_modules = ["backtesting"]
 
 [[tool.importlinter.contracts]]
 name = "No LLM code in the trading path"

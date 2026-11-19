@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15. Sections on metrics and walk-forward are added by PRs 16 and 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15, the metrics section in PR 16 and the reference check in PR 17. A section on walk-forward is added by PR 20.*
 
 ## 1. How time moves
 
@@ -219,6 +219,10 @@ What follows from the rules:
 `measure` takes plain inputs, so a later tool can measure a record from `equity.csv` and `fills.csv` without rerunning it. Arithmetic is `Decimal` in a fixed 28-digit context; ratios that cannot be computed are `None`.
 
 The golden-file test `tests/integration/test_backtest_to_metrics.py` pins every figure of a fixed run. A change anywhere in the trading path that moves a number fails it; regenerate it only on purpose (learning note: [golden-file tests](../learning/golden-files.md)).
+
+### Checked against an independent engine
+
+`tests/reference/` runs one simple strategy through Tyche and through backtesting.py on the same bars and compares every fill, the equity at every close, every closed trade and the metrics ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md), learning note: [reference validation](../learning/reference-validation.md)). They agree to within 10⁻⁹ USD. What the comparison covers: next-open fills, whole-share sizing from the last close, IBKR Pro Fixed commissions, slippage on both sides, cash and equity accounting, trades and the metrics. What it does not, because backtesting.py does not model it: dividends, T+1 settlement, regulatory fees, the volume cap, stops, and more than one instrument or sleeve.
 
 ## 9. Known limits
 

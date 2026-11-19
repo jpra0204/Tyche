@@ -84,6 +84,11 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - A golden-file regression test pins every metric of a fixed backtest.
 - ADR-0025. Backtesting internals: metrics. Learning notes: measuring against a benchmark, golden-file tests.
 
+- Reference validation (Phase 1, PR 17): `tests/reference/` runs one strategy through Tyche and through backtesting.py on the same bars and compares every fill, the equity at every close, every closed trade and the metrics. In CI on a seeded random walk at USD 10,000 and USD 1,000,000; on demand (`-m network`) on real SPY bars from 2005 to 2023. They agree to within 10⁻⁹ USD.
+- An import-linter contract: Tyche never imports the reference backtester.
+- ADR-0026. Backtesting internals: checked against an independent engine. Learning note: reference validation.
+- Development dependency: `backtesting` (AGPL-3.0), test-only and never imported by Tyche.
+
 ### Changed
 
 - `config/markets/<PROFILE>.toml` requires a `[benchmark]` table (`symbol`, `exchange`, `asset_class`), and `MarketProfile` gains a required `benchmark`, which must follow one of the profile's calendars and trade in one of its cash currencies. A workspace created before PR 16 must copy the table from a new one (user guide, running a backtest, troubleshooting).

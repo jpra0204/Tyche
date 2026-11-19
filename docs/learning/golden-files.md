@@ -31,6 +31,6 @@ Three conditions make it work:
 
 ## What does it cost
 
-- **It says that something changed, not whether it is right.** The golden file's numbers were checked by hand and against an independent calculation once; after that, it only guards against change.
+- **It says that something changed, not whether it is right.** The golden file's numbers were checked by hand and against an independent calculation once; after that, it only guards against change. [Reference validation](reference-validation.md) covers the other half: it compares Tyche with an independent engine on every run.
 - **Regenerating can become a reflex.** If every failing run is "fixed" by regenerating, the test protects nothing. Each regeneration needs a reason in the pull request.
 - **It is brittle on purpose.** Any rounding change touches it. That is the point.
