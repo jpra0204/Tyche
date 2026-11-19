@@ -21,6 +21,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Costs as data](costs-as-data.md) | Keep broker prices in dated config, use the broker's own formula, and round every doubt against yourself |
 | [State built from events](state-built-from-events.md) | A stage remembers only what it has been told, so it cannot see the future and behaves the same in every mode |
 | [Plugins](plugins.md) | The core defines a small contract, hands the plugin only what it allows, and checks everything that comes back |
+| [Sub-ledgers that add up](sub-ledgers.md) | Each strategy keeps its own book of shares, they must always sum to the real account, and only the difference is traded |
 
 ## Planned
 

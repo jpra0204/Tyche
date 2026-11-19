@@ -66,8 +66,8 @@ class SignalsStage:
         bus: The run's event bus.
         strategies: The strategies to ask, in the order they are asked. Their
             identifiers must be unique.
-        positions: Where each strategy's current positions come from. Empty until
-            execution exists (PR 14).
+        positions: Where each strategy's current positions come from: execution's
+            ``SleeveBook``. Without one, every strategy holds nothing.
     """
 
     def __init__(

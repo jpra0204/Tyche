@@ -35,3 +35,19 @@ liquidity_sessions = 20
 # Decision cycles an instrument stays out after a data problem is reported about it
 # (a missing session, conflicting or invalid bars, a suspect price move).
 quality_sessions = 5
+
+[execution]
+# How approved weights become orders (ADR-0023). A choice, not a market fact.
+
+# How far a held position may drift from its target before it is resized, as a
+# fraction of the target ("0.10" is 10%). A resize pays at least the minimum
+# commission, so a small drift costs less than fixing it. Entries and full exits always
+# trade. "0" trades to the exact target at every decision. Reports state the value.
+rebalance_band = "0.10"
+
+# How far above the last close the next open may be and the cycle's purchases still be
+# paid for ("0.02" is 2%). Orders are sized at the close and fill at the next open; a
+# purchase settled cash cannot pay for at the open is cancelled whole, as the broker
+# would reject it. Binds only when cash is short, so a fully invested strategy holds
+# about this fraction in cash. Reports state the value.
+price_buffer = "0.02"

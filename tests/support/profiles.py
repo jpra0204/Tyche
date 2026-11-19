@@ -5,8 +5,16 @@ checks that the two agree, so neither can drift without a test failing.
 """
 
 from dataclasses import replace
+from decimal import Decimal
 
-from tyche.core.domain import AssetClass, Currency, MarketProfile, Money, UniverseRules
+from tyche.core.domain import (
+    AssetClass,
+    Currency,
+    ExecutionRules,
+    MarketProfile,
+    Money,
+    UniverseRules,
+)
 
 
 def usd(amount: str) -> Money:
@@ -21,7 +29,9 @@ US_RULES = UniverseRules(
     quality_sessions=5,
 )
 
-US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES)
+US_EXECUTION = ExecutionRules(rebalance_band=Decimal("0.10"), price_buffer=Decimal("0.02"))
+
+US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION)
 
 CA_RULES = replace(
     US_RULES,
@@ -29,4 +39,4 @@ CA_RULES = replace(
     min_average_dollar_volume=Money.of("10000000", Currency.CAD),
 )
 
-CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES)
+CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION)

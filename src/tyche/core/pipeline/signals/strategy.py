@@ -38,8 +38,8 @@ class StrategyContext:
         warming_up: Ranked instruments left out because the strategy does not have
             ``lookback`` bars for them yet. Recorded in its ``SignalEvent``.
         history: Exactly ``lookback`` bars for each instrument in ``ranked``.
-        positions: The strategy's own current positions. Empty until execution exists
-            (PR 14); see ADR-0021.
+        positions: The strategy's own current positions, from execution's sleeve book,
+            with the stop resting for each (ADR-0021, ADR-0023).
     """
 
     as_of: datetime
@@ -112,8 +112,8 @@ class Strategy(Protocol):
 class PositionBook(Protocol):
     """Where the signals stage gets each strategy's current positions.
 
-    Execution builds the real one from fills in PR 14, once portfolio construction
-    records which strategy each order was for (PR 13).
+    Execution's ``SleeveBook`` is the real one: it gives each strategy its own share of
+    every position, kept from fills and crossings between sleeves (ADR-0023).
     """
 
     def positions_of(self, strategy_id: str) -> tuple[StrategyPosition, ...]: ...

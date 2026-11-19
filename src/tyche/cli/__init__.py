@@ -122,6 +122,11 @@ def config_check(home: HomeOption = None) -> None:
     typer.echo(f"Configuration is valid: {workspace.root}")
     typer.echo(f"  Market profile: {config.market_profile}")
     typer.echo(f"  Costs checked:  {config.costs.checked_on.isoformat()}")
+    execution = config.market_profile.execution
+    typer.echo(
+        f"  Execution:      rebalance band {execution.rebalance_band}, "
+        f"price buffer {execution.price_buffer}"
+    )
     typer.echo("  Strategies:")
     for spec in config.strategies:
         typer.echo(f"    {spec.strategy_id} ({spec.plugin}), budget {spec.budget}")

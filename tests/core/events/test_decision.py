@@ -21,6 +21,8 @@ from tyche.core.domain import (
     WarmingUp,
 )
 from tyche.core.events import (
+    KEEP,
+    ApprovedPortfolioEvent,
     ScreeningEvent,
     SignalEvent,
     SignalsReadyEvent,
@@ -169,3 +171,39 @@ class TestTargetPortfolioEvent:
                 (decided("a", "0.5", SPY, QQQ),),
                 (target(QQQ, ("a", "0.3")), target(SPY, ("a", "0.3"))),
             )
+
+
+class TestApprovedPortfolioEvent:
+    def approved(self, *targets: InstrumentTarget, **kwargs: object) -> ApprovedPortfolioEvent:
+        sleeves = (
+            decided("a", "0.6", SPY, QQQ),
+            Sleeve("b", Decimal("0.4"), SleeveStatus.FAILED, error="boom"),
+        )
+        return ApprovedPortfolioEvent(AS_OF, sleeves, targets, "pass-through")
+
+    def test_reads_each_sleeve_and_instrument_as_adr_0022_says(self) -> None:
+        event = self.approved(target(SPY, ("a", "0.6")))
+
+        contribution = event.wanted("a", SPY)
+        assert contribution is not None
+        assert contribution is not KEEP
+        assert contribution.weight == Decimal("0.6")
+        assert event.wanted("a", QQQ) is None  # decided on, not targeted: zero
+        assert event.wanted("b", SPY) is KEEP  # the sleeve failed
+
+    def test_an_instrument_not_offered_is_kept(self) -> None:
+        other = Instrument("IWM", "ARCX", SPY.currency, "XNYS", SPY.asset_class)
+
+        assert self.approved().wanted("a", other) is KEEP
+
+    def test_follows_the_same_rules_as_a_proposed_portfolio(self) -> None:
+        with pytest.raises(ValueError, match=r"ApprovedPortfolioEvent: .* more than its budget"):
+            self.approved(target(QQQ, ("a", "0.3")), target(SPY, ("a", "0.4")))
+
+    def test_needs_a_profile_name(self) -> None:
+        with pytest.raises(ValueError, match="risk profile"):
+            ApprovedPortfolioEvent(AS_OF, (decided("a", "1"),), (), " ")
+
+    def test_an_unknown_sleeve_is_a_key_error(self) -> None:
+        with pytest.raises(KeyError):
+            self.approved().wanted("z", SPY)

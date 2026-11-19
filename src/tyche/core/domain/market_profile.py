@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from tyche.core.domain.currency import Currency
+from tyche.core.domain.execution import ExecutionRules
 from tyche.core.domain.universe import UniverseRules
 from tyche.core.domain.validation import require_mic
 
@@ -44,12 +45,14 @@ class MarketProfile:
             in one of the cash currencies, and only instruments quoted in that currency
             are eligible; a profile with two currencies needs thresholds per currency,
             which comes with the ``CA+US`` profile in Phase 4.
+        execution: How approved weights become orders: the rebalance band (ADR-0023).
     """
 
     name: str
     cash_currencies: tuple[Currency, ...]
     calendars: tuple[str, ...]
     universe: UniverseRules
+    execution: ExecutionRules
 
     def __post_init__(self) -> None:
         require_profile_name(self.name)

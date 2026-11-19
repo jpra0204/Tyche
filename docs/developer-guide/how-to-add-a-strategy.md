@@ -41,7 +41,7 @@ class AboveAverage:
 | Rule | Why |
 |---|---|
 | Keep no state between calls; the same context must give the same targets | A restart in paper or live must behave exactly like the backtest |
-| Use `context.positions` (or `context.position(instrument)`) to tell an entry from a hold | It is the only memory a strategy has; it is empty until execution exists (PR 14) |
+| Use `context.positions` (or `context.position(instrument)`) to tell an entry from a hold | It is the only memory a strategy has. Each strategy sees only its own share of a position, with its entry date, average entry price and resting stop |
 | Target only instruments in `context.ranked`, each at most once | The others failed the universe rules or are still warming up |
 | Weights are `Decimal` from 0 to 1 and add up to at most 1 | They are fractions of the strategy's own budget; the rest is cash |
 | A stop, if any, is below the instrument's last close | Tyche is long only; a stop at or above the price would trigger at once |
@@ -49,7 +49,7 @@ class AboveAverage:
 
 Instruments with fewer bars than `lookback` are listed in `context.warming_up` and have no window: `context.history.bars(...)` raises for them. Breaking any rule, or raising, makes the strategy fail for that cycle: it is listed in `SignalsReadyEvent.failed`, publishes nothing, and the other strategies carry on.
 
-On stops: a target with a stop is sized by risk per trade, one without a stop is not ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)). Prices in a backtest are split-adjusted to the fetch date, so a stop computed before a later split is on the adjusted basis; that is consistent with the simulated fills ([backtesting internals](backtesting-internals.md#4-what-a-strategy-sees)).
+On stops: a target with a stop is sized by risk per trade, one without a stop is not ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)). The stop order is placed when the entry fills and works from the next session, so the entry session itself is unprotected; returning a different stop price later moves it ([ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md)). Prices in a backtest are split-adjusted to the fetch date, so a stop computed before a later split is on the adjusted basis; that is consistent with the simulated fills ([backtesting internals](backtesting-internals.md#4-what-a-strategy-sees)).
 
 ## 3. Test it without the engine
 

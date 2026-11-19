@@ -9,8 +9,8 @@ Rules the ledger enforces, because Tyche v1 trades a long-only cash account:
 * Selling more than is held is refused: that would be a short sale.
 * A buy that would take cash below zero, counting unsettled amounts, is refused: that
   would be borrowing. Whether unsettled sale proceeds may be spent is a separate
-  broker rule: in a cash account they may not (ADR-0020), and the simulated broker
-  applies that before it fills a buy (PR 10).
+  broker rule: in a cash account they may not (ADR-0020). ``CashBalance.buying_power``
+  says what a cash account can spend; the simulated broker and execution both use it.
 * Every fill is applied once.
 
 Positions are valued at their average cost, commissions included. This mirrors the
@@ -30,6 +30,8 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 
+from tyche.core.domain.corporate_actions import CashDistribution
+from tyche.core.domain.costs import CENT_PLACES
 from tyche.core.domain.currency import Currency
 from tyche.core.domain.fill import Fill
 from tyche.core.domain.instrument import Instrument
@@ -104,13 +106,26 @@ class CashBalance:
         """Settled plus unsettled: the cash the account will have once everything settles."""
         return self.settled + self.unsettled
 
+    def buying_power(self, on: date) -> Money:
+        """What a cash account can spend on purchases on session ``on`` (ADR-0020).
+
+        Settled cash as it will be on ``on``, after everything due by then has settled,
+        minus every purchase not settled by then: those shares are already bought, and
+        their cost is already spent. Sale proceeds count only once they have settled.
+        """
+        total = self.settled
+        for item in self.pending:
+            if item.settles_on <= on or item.amount.is_negative:
+                total += item.amount
+        return total
+
 
 @dataclass(frozen=True, slots=True)
 class Account:
     """A snapshot of the account. Operations return a new snapshot.
 
     Build one with ``Account.empty()`` and ``deposit``; change it only with
-    ``apply_fill``, ``receive_distribution``, ``settle`` and ``mark``.
+    ``apply_fill``, ``receive_distribution`` (or ``credit``), ``settle`` and ``mark``.
     """
 
     _settled: Mapping[Currency, Money] = field(default_factory=dict)
@@ -210,6 +225,25 @@ class Account:
             _distributions=_add(self._distributions, amount),
             _applied=self._applied | {payment_id},
         )
+
+    def credit(self, distribution: CashDistribution) -> Account:
+        """Credit what ``distribution`` pays on the shares held now, at its ex-date open.
+
+        Holders at the previous close are paid ``amount_per_share`` times their shares,
+        rounded to the cent, as settled cash (ADR-0019). Returns the account unchanged
+        if nothing is held or the amount rounds to zero. The simulated broker and
+        Tyche's own view of the account both use this, so they cannot disagree.
+        """
+        held = self.position(distribution.instrument)
+        if held is None:
+            return self
+        amount = (distribution.amount_per_share * held.quantity).round_to(CENT_PLACES)
+        if not amount.is_positive:
+            return self
+        payment_id = (
+            f"{distribution.instrument}:{distribution.ex_date.isoformat()}:{distribution.kind}"
+        )
+        return self.receive_distribution(payment_id, amount)
 
     def settle(self, through: date) -> Account:
         """Settle every pending amount due on or before ``through``."""

@@ -33,6 +33,7 @@ from tyche.core.domain import (
 from tyche.core.engine import Engine
 from tyche.core.events import (
     BarEvent,
+    CancelRequestEvent,
     DataReadyEvent,
     DistributionEvent,
     Envelope,
@@ -301,7 +302,7 @@ class TestSettledCash:
         assert market.statuses("sell")[-1] is OrderStatus.FILLED
         state = market.state("buy")
         assert state.status is OrderStatus.CANCELLED
-        assert "insufficient settled cash at the open: needs 251.00 USD, has 100 USD" in state.note
+        assert "insufficient settled cash at the open: needs 251.00 USD, has 100.00" in state.note
 
     def test_the_proceeds_can_be_spent_once_settled(self) -> None:
         market = Market(holding("10", cash="100"))
@@ -312,6 +313,18 @@ class TestSettledCash:
 
         assert market.statuses("buy")[-1] is OrderStatus.FILLED
 
+    def test_two_purchases_at_one_open_cannot_spend_the_same_cash(self) -> None:
+        market = Market(Account.empty().deposit(usd("1000")))
+        market.submit(
+            order("buy-spy", quantity="6"), order("buy-qqq", quantity="6", instrument=QQQ)
+        )
+        market.trade(WED, ohlc(WED, "100"), ohlc(WED, "100", instrument=QQQ))
+
+        assert market.state("buy-spy").status is OrderStatus.FILLED
+        state = market.state("buy-qqq")
+        assert state.status is OrderStatus.CANCELLED
+        assert "needs 601.00 USD, has 399.00 USD" in state.note
+
     def test_the_whole_order_is_cancelled_rather_than_shrunk(self) -> None:
         market = Market(Account.empty().deposit(usd("1000")))
         market.submit(order("buy", quantity="10"))
@@ -319,6 +332,38 @@ class TestSettledCash:
 
         assert market.state("buy").status is OrderStatus.CANCELLED
         assert market.fills() == []
+
+
+class TestCancellation:
+    def cancel(self, market: Market, order_id: str, reason: str = "replaced") -> None:
+        market.bus.publish(CancelRequestEvent(order_id, reason), source="execution")
+        market.bus.drain()
+
+    def test_an_open_order_is_cancelled_at_once_with_the_reason(self) -> None:
+        market = Market(holding("10"))
+        market.submit(order("stop", Side.SELL, stop="95", tif=TimeInForce.GTC))
+        self.cancel(market, "stop", "the strategy moved its stop")
+
+        state = market.state("stop")
+        assert (state.status, state.note) == (OrderStatus.CANCELLED, "the strategy moved its stop")
+        market.trade(WED, ohlc(WED, "100", low="90"))
+        assert market.fills() == []
+
+    def test_a_request_for_a_finished_order_is_ignored(self) -> None:
+        market = Market()
+        market.submit(order("buy"))
+        market.trade(WED, ohlc(WED, "100"))
+        self.cancel(market, "buy")
+
+        assert market.statuses("buy")[-1] is OrderStatus.FILLED
+        assert market.state("buy").status is OrderStatus.FILLED
+
+    def test_a_request_for_an_unknown_order_halts_the_run(self) -> None:
+        market = Market()
+
+        with pytest.raises(HandlerError, match="sim-broker") as raised:
+            self.cancel(market, "ghost")
+        assert "never submitted" in str(raised.value.__cause__)
 
 
 class TestPartialFills:

@@ -5,11 +5,15 @@ from typing import Any
 
 import pytest
 
-from tests.support.profiles import US_RULES
+from tests.support.profiles import US_EXECUTION, US_RULES
 from tyche.core.domain import Currency, MarketProfile, Money, require_profile_name
 
 US = MarketProfile(
-    name="US", cash_currencies=(Currency.USD,), calendars=("XNYS",), universe=US_RULES
+    name="US",
+    cash_currencies=(Currency.USD,),
+    calendars=("XNYS",),
+    universe=US_RULES,
+    execution=US_EXECUTION,
 )
 
 
@@ -27,7 +31,9 @@ def test_is_immutable() -> None:
 
 
 def test_a_combined_profile_holds_both_currencies_and_calendars() -> None:
-    both = MarketProfile("CA+US", (Currency.CAD, Currency.USD), ("XTSE", "XNYS"), US_RULES)
+    both = MarketProfile(
+        "CA+US", (Currency.CAD, Currency.USD), ("XTSE", "XNYS"), US_RULES, US_EXECUTION
+    )
 
     assert both.cash_currencies == (Currency.CAD, Currency.USD)
     assert both.calendars == ("XTSE", "XNYS")
