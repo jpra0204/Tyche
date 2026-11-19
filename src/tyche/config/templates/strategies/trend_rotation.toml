@@ -1,0 +1,33 @@
+# Strategy instance: an example ETF trend rotation (ADR-0027).
+#
+# Once a month, at the close of the month's first session, it ranks its ETFs by their
+# price return over the last `momentum_sessions` sessions and holds the top `holdings`,
+# each with an equal share of the budget, but only those whose close is above their
+# `trend_sessions` average; the others' shares stay in cash.
+#
+# It exists to exercise Tyche, not to make money. Its parameters were fixed before any
+# backtest ran; changing them after seeing a result, then testing again, is how a
+# backtest gets fitted to the past. Every ETF must also be a candidate in
+# config/markets/US.toml, fetched with `tyche data fetch`.
+#
+# The file name, without .toml, is the strategy's id. It runs only with a budget under
+# [strategies] in config/tyche.toml.
+
+plugin = "trend_rotation"
+
+[parameters]
+holdings = 3            # how many ETFs to hold at most
+momentum_sessions = 126 # about six months of sessions to rank on
+trend_sessions = 200    # the average a holding's close must be above
+
+instruments = [
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+    { symbol = "IWM", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "EFA", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "EEM", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "TLT", exchange = "XNAS", asset_class = "etf" },
+    { symbol = "IEF", exchange = "XNAS", asset_class = "etf" },
+    { symbol = "GLD", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "VNQ", exchange = "ARCX", asset_class = "etf" },
+]

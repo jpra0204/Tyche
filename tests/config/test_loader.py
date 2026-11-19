@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tests.support.costs import US_COSTS
-from tests.support.profiles import US_PROFILE
+from tests.support.profiles import US_PROFILE, US_TEMPLATE_PROFILE
 from tests.support.workspace import BACKTEST
 from tyche.config import (
     BacktestFile,
@@ -78,7 +78,7 @@ class TestValidConfig:
         config = load_config(workspace)
 
         assert config.workspace == workspace
-        assert config.market_profile == US_PROFILE
+        assert config.market_profile == US_TEMPLATE_PROFILE
         assert config.config_hash.startswith("sha256:")
         assert len(config.config_hash) == len("sha256:") + 64
 
@@ -380,13 +380,22 @@ class TestCosts:
 
 class TestUniverseRules:
     def test_the_packaged_profile_has_the_documented_rules(self, workspace: Workspace) -> None:
-        assert load_config(workspace).market_profile.universe == US_PROFILE.universe
+        assert load_config(workspace).market_profile.universe == US_TEMPLATE_PROFILE.universe
 
     def test_instruments_are_built_from_their_exchange(self, workspace: Workspace) -> None:
-        [spy, qqq] = load_config(workspace).market_profile.universe.instruments
+        spy, qqq, *others = load_config(workspace).market_profile.universe.instruments
 
         assert (str(spy), spy.calendar, spy.currency) == ("SPY@ARCX", "XNYS", Currency.USD)
         assert str(qqq) == "QQQ@XNAS"
+        assert [str(i) for i in others] == [
+            "IWM@ARCX",
+            "EFA@ARCX",
+            "EEM@ARCX",
+            "TLT@XNAS",
+            "IEF@XNAS",
+            "GLD@ARCX",
+            "VNQ@ARCX",
+        ]
 
     def test_an_unknown_exchange_is_refused_with_the_known_ones(self, workspace: Workspace) -> None:
         write(

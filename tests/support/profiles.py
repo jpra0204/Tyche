@@ -1,7 +1,10 @@
 """Market profiles for tests: the packaged ``US`` profile and a Canadian one.
 
-``US_PROFILE`` matches the packaged ``config/markets/US.toml`` template; a loader test
-checks that the two agree, so neither can drift without a test failing.
+``US_TEMPLATE_PROFILE`` matches the packaged ``config/markets/US.toml`` template; a
+loader test checks that the two agree, so neither can drift without a test failing.
+
+``US_PROFILE`` is the same profile with only two candidates, SPY and QQQ, so that a
+test replaying it needs made-up data for two instruments, not nine.
 """
 
 from dataclasses import replace
@@ -39,6 +42,29 @@ US_EXECUTION = ExecutionRules(rebalance_band=Decimal("0.10"), price_buffer=Decim
 US_BENCHMARK = Instrument("SPY", "ARCX", Currency.USD, "XNYS", AssetClass.ETF)
 
 US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION, US_BENCHMARK)
+
+
+def _etf(symbol: str, exchange: str) -> Instrument:
+    return Instrument(symbol, exchange, Currency.USD, "XNYS", AssetClass.ETF)
+
+
+US_TEMPLATE_PROFILE = replace(
+    US_PROFILE,
+    universe=replace(
+        US_RULES,
+        instruments=(
+            _etf("SPY", "ARCX"),
+            _etf("QQQ", "XNAS"),
+            _etf("IWM", "ARCX"),
+            _etf("EFA", "ARCX"),
+            _etf("EEM", "ARCX"),
+            _etf("TLT", "XNAS"),
+            _etf("IEF", "XNAS"),
+            _etf("GLD", "ARCX"),
+            _etf("VNQ", "ARCX"),
+        ),
+    ),
+)
 
 CA_RULES = replace(
     US_RULES,

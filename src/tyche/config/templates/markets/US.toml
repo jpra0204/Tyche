@@ -41,9 +41,21 @@ quality_sessions = 5
 # each decision which are eligible. A strategy can only trade an instrument listed here.
 # The exchange is where it is listed, as a market identifier code: ARCX, XNAS, XNYS,
 # BATS or XASE.
+#
+# The nine ETFs below span US large and small caps, developed and emerging markets
+# outside the US, Treasuries, gold and real estate: what the example trend rotation
+# chooses from (config/strategies/trend_rotation.toml). Listing exchanges checked on
+# Yahoo Finance on 2026-11-19.
 instruments = [
-    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
-    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" }, # US large caps (S&P 500)
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" }, # US large caps (Nasdaq-100)
+    { symbol = "IWM", exchange = "ARCX", asset_class = "etf" }, # US small caps (Russell 2000)
+    { symbol = "EFA", exchange = "ARCX", asset_class = "etf" }, # developed markets outside North America
+    { symbol = "EEM", exchange = "ARCX", asset_class = "etf" }, # emerging markets
+    { symbol = "TLT", exchange = "XNAS", asset_class = "etf" }, # US Treasuries, 20+ years
+    { symbol = "IEF", exchange = "XNAS", asset_class = "etf" }, # US Treasuries, 7-10 years
+    { symbol = "GLD", exchange = "ARCX", asset_class = "etf" }, # gold
+    { symbol = "VNQ", exchange = "ARCX", asset_class = "etf" }, # US real estate (REITs)
 ]
 
 [execution]

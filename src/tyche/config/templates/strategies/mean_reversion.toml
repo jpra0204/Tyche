@@ -1,0 +1,29 @@
+# Strategy instance: an example mean reversion with a protective stop (ADR-0027).
+#
+# For each instrument, with an equal share of the budget: buy when the close is above
+# its `trend_sessions` average and its `rsi_sessions` RSI is below `entry_rsi`; sell
+# when the close rises above its `exit_sessions` average. At entry it sets a stop
+# `stop_atrs` average true ranges (over `atr_sessions`) below the close, and keeps it
+# there for the life of the trade.
+#
+# It exists to exercise Tyche's stops, not to make money. Its parameters were fixed
+# before any backtest ran; changing them after seeing a result, then testing again, is
+# how a backtest gets fitted to the past.
+#
+# The file name, without .toml, is the strategy's id. It runs only with a budget under
+# [strategies] in config/tyche.toml.
+
+plugin = "mean_reversion"
+
+[parameters]
+trend_sessions = 200 # buy dips only while the close is above this average
+rsi_sessions = 2
+entry_rsi = "10"     # decimals are strings, so they stay exact
+exit_sessions = 5    # sell when the close rises above this average
+atr_sessions = 14
+stop_atrs = "2.5"
+
+instruments = [
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+]

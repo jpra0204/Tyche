@@ -110,6 +110,8 @@ class TestInitWorkspace:
             "config/costs/US.toml",
             "config/markets/US.toml",
             "config/strategies/buy_and_hold.toml",
+            "config/strategies/mean_reversion.toml",
+            "config/strategies/trend_rotation.toml",
             "config/tyche.toml",
         ]
 

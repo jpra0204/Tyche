@@ -159,7 +159,7 @@ Error: config/strategies/buy_and_hold.toml: 1 invalid parameter(s)
   parameters.exchange: Field required
 ```
 
-Only Tyche's built-in strategies can be named for now. How the budgets combine is explained in [backtesting internals](../developer-guide/backtesting-internals.md#5-how-strategies-share-the-account).
+Only Tyche's built-in strategies can be named for now. Besides `buy_and_hold`, a new workspace has two example strategies, `trend_rotation` and `mean_reversion`, whose files are there but which have no budget, so they do not run; [running a backtest](03-running-a-backtest.md#trying-the-example-strategies) shows how to try them. How the budgets combine is explained in [backtesting internals](../developer-guide/backtesting-internals.md#5-how-strategies-share-the-account).
 
 **A workspace created before PR 13** has no `[strategies]` table, and `tyche config check` reports `strategies: Field required`. Add the table above to `config/tyche.toml` and copy `config/strategies/buy_and_hold.toml` from a new workspace (`tyche init --home <scratch-folder>`).
 
