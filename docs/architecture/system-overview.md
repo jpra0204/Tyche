@@ -83,7 +83,7 @@ flowchart LR
 
 The simulated clock, feed and broker are pure code we write ourselves, so they live in `tyche.core.sim`, not in `tyche.adapters`.
 
-Five import-linter contracts in `pyproject.toml` turn these rules into CI failures. The folder-by-folder map is in the [repo map](../developer-guide/repo-map.md).
+Six import-linter contracts in `pyproject.toml` turn these rules into CI failures. The folder-by-folder map is in the [repo map](../developer-guide/repo-map.md).
 
 ## 4. One engine, three modes
 

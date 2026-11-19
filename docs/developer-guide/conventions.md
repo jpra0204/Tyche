@@ -40,8 +40,8 @@ Further rules checked in review:
 |---|---|---|---|
 | Unit | Every core module, tested through its public interface with fakes for ports | `tests/core/...` | 1 onward |
 | Property-based (hypothesis) | Rules that must hold for any input. The ledger: cash conserved exactly, no short positions, settlement never changes the total (PR 8). The risk layer: no generated input may produce an order that breaks the active profile or the guardrails (Phase 2) | `tests/core/domain/`, `tests/core/risk/` | 1, 2 |
-| Golden-file regression | A fixed backtest must reproduce its stored event log and metrics exactly | `tests/core/backtest/` | 1 |
-| Reference validation | Our backtester agrees with an independent library on a simple strategy | `tests/core/backtest/` | 1 |
+| Golden-file regression | A fixed backtest must reproduce its stored metrics exactly | `tests/integration/` | 1 |
+| Reference validation | Our backtester agrees with backtesting.py on a simple strategy: every fill, the equity at every close, every trade ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md)) | `tests/reference/` | 1 |
 | Simulator | `SimBroker` fills, partial fills, rejections, stops, settlement, currency | `tests/core/sim/` | 1, 4 |
 | Architecture | Import contracts | `make imports` | 0 |
 | IBKR paper integration | Real calls against the paper account; opt-in | marked `ibkr_paper` | 2 |

@@ -116,9 +116,10 @@ Defined in `pyproject.toml` under `[tool.importlinter]`, run with `make imports`
 | The core never imports a vendor or I/O library | `ib_async`, `yfinance`, `httpx`, `sqlite3`, `subprocess` and others leaking into pure code |
 | No LLM code in the trading path | Pipeline, risk, engine, simulator or strategies importing agent or LLM code |
 | Strategies cannot reach risk, execution, the engine or any port | A strategy adjusting its own limits or talking to a broker |
+| Tyche never imports the reference backtester | backtesting.py (AGPL-3.0, a test-only dependency) becoming part of Tyche ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md)) |
 
 When a contract fails, the fix is almost always to move the code or add a port, not to edit the contract. Changing a contract needs Pablo's agreement in the PR.
 
 ## Tests
 
-`tests/` mirrors `src/tyche/`: the tests for `tyche/core/risk/` live in `tests/core/risk/`. Test categories are described in [conventions](conventions.md#testing).
+`tests/` mirrors `src/tyche/`: the tests for `tyche/core/risk/` live in `tests/core/risk/`. Three folders do not mirror a package: `tests/support/` (builders shared by tests), `tests/integration/` (paths through several packages, and the golden file) and `tests/reference/` (the comparison with backtesting.py). Test categories are described in [conventions](conventions.md#testing).

@@ -22,14 +22,15 @@
 - PR 13 (portfolio construction and strategy config) is merged; ADR-0022 accepted.
 - PR 14 (risk gate and execution) is merged; ADR-0023 accepted.
 - PR 15 (backtest runner) is merged; ADR-0024 accepted. **Milestone reached: the first end-to-end backtest.**
-- PR 16 (metrics) is open for review; ADR-0025 accepted: strategies are measured against the benchmark ETF's total return (dividends reinvested, no costs, no cash), with a risk-free rate of zero.
+- PR 16 (metrics) is merged; ADR-0025 accepted.
+- PR 17 (reference validation) is open for review; ADR-0026 accepted: backtesting.py is the reference, as a test-only dependency.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
 ## What works today
 
 - `uv sync` installs a pinned Python 3.14 environment.
-- `make check` passes: ruff lint and format, mypy strict, five import-linter architecture contracts, pytest.
+- `make check` passes: ruff lint and format, mypy strict, six import-linter architecture contracts, pytest.
 - `tyche --version` runs.
 - CI runs the same checks on every pull request and on `main`.
 - Domain types (PR 1): `Currency`, `Money`, `Timeframe`, `Instrument`, `Bar`.
@@ -49,9 +50,11 @@
 
 - Backtest runner (PR 15): `tyche backtest --from <date>` runs the configured strategies on cached history through the whole trading path ([ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md)). It replays the candidates now listed under `[universe]` in `config/markets/US.toml`, warms up the universe and the strategies on the sessions before the first day, reads the cache only (missing history stops it with the `tyche data fetch` command to run), and refuses any range reaching the holdout (`holdout_starts = 2024-01-01` under `[backtest]` in `tyche.toml`, with `starting_cash`). Every run writes `reports/backtests/<run id>/`: `run.json` (code version and commit, config hash and every setting, range, warm-up, data used, outcome), `equity.csv` and `fills.csv`. Checked on real Yahoo data in a scratch workspace: SPY buy-and-hold from 2005-01-03 to 2023-12-29, 4,781 sessions in about 6 seconds, 10,000 to 52,168 USD, three fills, no free riding, Tyche's account view equal to the broker's.
 
-- Metrics (PR 16, in review): every backtest is measured against the benchmark named in the new `[benchmark]` table of `config/markets/US.toml` (SPY): its total return, with distributions reinvested at the ex-date close, no costs and no cash, from the same equity on the same closes ([ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md)). CAGR, volatility, Sharpe and Sortino (risk-free rate zero), maximum drawdown with its dates, exposure, turnover, costs, closed trades and win rate, and each difference from the benchmark. `tyche backtest` prints them; the record gains `metrics.json` and a `benchmark_equity` column. A golden-file test pins every figure of a fixed run. Checked on real data, SPY 2005 to 2023: Tyche's buy-and-hold 9.09% a year against the benchmark's 9.59% (the cash drag); the benchmark grows 5.6875 times against 5.6839 for Yahoo's own adjusted close.
+- Metrics (PR 16): every backtest is measured against the benchmark named in the new `[benchmark]` table of `config/markets/US.toml` (SPY): its total return, with distributions reinvested at the ex-date close, no costs and no cash, from the same equity on the same closes ([ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md)). CAGR, volatility, Sharpe and Sortino (risk-free rate zero), maximum drawdown with its dates, exposure, turnover, costs, closed trades and win rate, and each difference from the benchmark. `tyche backtest` prints them; the record gains `metrics.json` and a `benchmark_equity` column. A golden-file test pins every figure of a fixed run. Checked on real data, SPY 2005 to 2023: Tyche's buy-and-hold 9.09% a year against the benchmark's 9.59% (the cash drag); the benchmark grows 5.6875 times against 5.6839 for Yahoo's own adjusted close.
 
-What is missing before judging a strategy: an independent check of the backtester (PR 17), strategies worth testing (PR 18), the report (PR 19) and out-of-sample testing (PRs 20 and 21). Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM, storage and report adapters.
+- Reference validation (PR 17, in review): one strategy (hold 95% of equity while the close is above its recent average) runs through Tyche and through backtesting.py on the same bars, and every fill, the equity at every close, every closed trade and the metrics are compared ([ADR-0026](docs/adr/0026-reference-validation-against-backtesting-py.md)). Tyche runs as the `US` profile configures it, without regulatory fees, which backtesting.py cannot model; slippage is charged to backtesting.py as commission. In CI: a seeded random walk, 2021 to 2023, at USD 10,000 and USD 1,000,000, 53 round trips each. Opt-in: real SPY from 2005 to 2023, 173 round trips over 4,781 sessions, final equity equal to 11 decimal places. Not covered, because backtesting.py does not model them: dividends, settlement, regulatory fees, the volume cap, stops, several instruments or sleeves. backtesting.py is AGPL-3.0, so it is a dev dependency only, and a new import contract fails CI if Tyche imports it.
+
+What is missing before judging a strategy: strategies worth testing (PR 18), the report (PR 19) and out-of-sample testing (PRs 20 and 21). Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM, storage and report adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -109,8 +112,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 16 | Metrics (**in review**) | CAGR, volatility, Sharpe, Sortino, max drawdown, turnover, win rate, exposure, all against the benchmark; golden-file regression test | Decided 2026-11-19 ([ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md)): the benchmark is the ETF's total return computed from the cache, not the simulated buy-and-hold; the risk-free rate is zero for now. The benchmark ETF is a new `[benchmark]` table in the market profile |
-| 17 | Reference validation | Our backtester compared with an independent library on a simple strategy, kept as a regression test | Decide: `backtesting.py` or `vectorbt`, after checking their licences |
+| 16 | Metrics (**merged**) | CAGR, volatility, Sharpe, Sortino, max drawdown, turnover, win rate, exposure, all against the benchmark; golden-file regression test | Decided 2026-11-19 ([ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md)): the benchmark is the ETF's total return computed from the cache, not the simulated buy-and-hold; the risk-free rate is zero for now. The benchmark ETF is a new `[benchmark]` table in the market profile |
+| 17 | Reference validation (**in review**) | Our backtester compared with an independent library on a simple strategy, kept as a regression test | Decided 2026-11-19 ([ADR-0026](docs/adr/0026-reference-validation-against-backtesting-py.md)): backtesting.py (AGPL-3.0), as a test-only dependency fenced off by an import contract; vectorbt (Apache-2.0 with the Commons Clause, about 60 packages) was the alternative. Licences checked on PyPI and in both repositories |
 | 18 | Example strategies | An ETF trend rotation and a mean-reversion strategy that uses a stop | |
 | 19 | Backtest report | HTML or Markdown with charts, a cost-drag section, the data-limits statement | Decide: chart library |
 
@@ -170,7 +173,7 @@ Decisions that belong to a Phase 1 PR are listed in the plan above.
 | Whether GST or PST applies to stock commissions for a Canadian resident | Phase 2, first statement |
 | FINRA Trading Activity Fee rate after its holiday ends on 2026-12-31 | Before Phase 2 |
 | ~~yfinance limits, terms and adjusted-price behaviour~~ Done 2026-11-17: personal use only, no documented rate limit, "unadjusted" prices are split-adjusted (ADR-0019) | Phase 1, PR 6 |
-| Licences of the candidate reference backtesters | Phase 1, PR 17 |
+| ~~Licences of the candidate reference backtesters~~ Done 2026-11-19: backtesting.py 0.6.6 AGPL-3.0; vectorbt 1.2.1 Apache-2.0 with the Commons Clause | Phase 1, PR 17 |
 | Linux wheels for all dependencies on Python 3.14 (Docker) | Phase 2 |
 | IB Gateway ports, account-id formats, IBC behaviour, 2FA flow | Phase 2 |
 | `claude -p` flags, output format and plan limits | Phase 3 |
@@ -181,6 +184,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 16. Worth a look in [ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md): the section "Implementation choices made in PR 16, for review there" lists what I decided inside your two answers: the conventions (252 sessions, 365.25 days, sample deviation, Sortino over every day), the benchmark starting at the first close, how data gaps are handled, trades counted flat to flat without dividends, two-sided turnover, and no pass or fail verdict.
-2. **Your workspace needs one change for PR 16.** `tyche config check` will report `benchmark: Field required`. Copy the `[benchmark]` table from a new workspace's `config/markets/US.toml` (`tyche init --home <scratch-folder>`). The benchmark (SPY) must be fetched like a candidate; the template already lists it. Earlier notes still apply to older workspaces (`[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
-3. Phase 1, PR 17: reference validation against an independent backtester, when Pablo says to start it.
+1. Pablo reviews and merges PR 17. Worth a look in [ADR-0026](docs/adr/0026-reference-validation-against-backtesting-py.md): "Implementation choices made in PR 17, for review there" (95% positions so both engines place the same orders, slippage charged to backtesting.py as commission, regulatory fees left out, the tolerances) and "What this does not check". No workspace change is needed for PR 17.
+2. If not done yet, your workspace still needs PR 16's change: `tyche config check` reports `benchmark: Field required` until you copy the `[benchmark]` table from a new workspace's `config/markets/US.toml` (`tyche init --home <scratch-folder>`). Earlier notes still apply to older workspaces (`[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
+3. Phase 1, PR 18: example strategies (an ETF trend rotation and a mean-reversion strategy with a stop), when Pablo says to start it.
