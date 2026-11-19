@@ -109,6 +109,7 @@ class TestInitWorkspace:
             "README.md",
             "config/costs/US.toml",
             "config/markets/US.toml",
+            "config/strategies/buy_and_hold.toml",
             "config/tyche.toml",
         ]
 

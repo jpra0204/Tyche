@@ -59,8 +59,14 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `BuyAndHold`, the benchmark strategy, in `tyche.strategies`.
 - ADR-0021 (strategies see a window handed in). Developer guide: how to add a strategy. Learning note: plugins.
 
+- Portfolio construction (Phase 1, PR 13): `PortfolioStage` publishes a `TargetPortfolioEvent` per cycle, in weights of account equity: one `Sleeve` per strategy and one `InstrumentTarget` per instrument, made of `Contribution`s that each keep their strategy's stop (ADR-0022).
+- Strategy config: a `[strategies]` table of budgets in `config/tyche.toml` and one `config/strategies/<id>.toml` per instance; the `PLUGINS` registry in `tyche.strategies`, each plugin with a strict parameter model; `tyche.runtime.strategies.build_strategies`. `tyche config check` builds every strategy and prints the budgets and the cash left.
+- ADR-0022. User guide: choose your strategies. Backtesting internals: how strategies share the account.
+
 ### Changed
 
+- `config/tyche.toml` requires a `[strategies]` table, and each strategy named there needs its file in `config/strategies/`. A workspace created before PR 13 must add both (user guide, installation, section 5).
+- `SignalEvent` gains `offered`, the instruments the strategy decided on.
 - `MarketProfile` has a required `universe` (`UniverseRules`), read from a new `[universe]` table in `config/markets/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 11 must copy the table from a new one.
 
 - `load_config` now also requires `config/costs/<PROFILE>.toml`, and the config hash covers it. A workspace created before PR 9 must copy the file from a new one.

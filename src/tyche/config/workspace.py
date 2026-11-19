@@ -25,6 +25,7 @@ _TEMPLATES = {
     "tyche.toml": "config/tyche.toml",
     "markets/US.toml": "config/markets/US.toml",
     "costs/US.toml": "config/costs/US.toml",
+    "strategies/buy_and_hold.toml": "config/strategies/buy_and_hold.toml",
     "env.example": ".env",
     "gitignore": ".gitignore",
     "README.md": "README.md",
@@ -56,6 +57,11 @@ class Workspace:
     @property
     def costs_dir(self) -> Path:
         return self.config_dir / "costs"
+
+    @property
+    def strategies_dir(self) -> Path:
+        """One file per strategy instance: its plugin and parameters (ADR-0022)."""
+        return self.config_dir / "strategies"
 
     @property
     def env_file(self) -> Path:

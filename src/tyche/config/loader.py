@@ -43,7 +43,9 @@ from tyche.core.domain import (
     RegulatoryFees,
     TradingCosts,
     UniverseRules,
+    require_budgets,
     require_profile_name,
+    require_strategy_id,
 )
 
 SCHEMA_VERSION = 1
@@ -66,13 +68,6 @@ class _ConfigFile(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class TycheFile(_ConfigFile):
-    """``config/tyche.toml``."""
-
-    schema_version: StrictInt
-    market_profile: StrictStr
-
-
 def _exact_decimal(value: object) -> Decimal:
     """Accept a decimal written as a string, and nothing else.
 
@@ -93,6 +88,26 @@ def _exact_decimal(value: object) -> Decimal:
 
 ExactDecimal = Annotated[Decimal, BeforeValidator(_exact_decimal)]
 StrictDate = Annotated[date, Strict()]
+
+
+class TycheFile(_ConfigFile):
+    """``config/tyche.toml``."""
+
+    schema_version: StrictInt
+    market_profile: StrictStr
+    strategies: dict[StrictStr, ExactDecimal]
+    """Strategy id to budget, a fraction of account equity (ADR-0022)."""
+
+
+class StrategyFile(_ConfigFile):
+    """``config/strategies/<id>.toml``: which plugin a strategy instance uses, and how.
+
+    The parameters are checked here only as a TOML table; the plugin's own model
+    checks their names and types when the runtime builds the strategy (ADR-0022).
+    """
+
+    plugin: StrictStr
+    parameters: dict[StrictStr, Any] = {}
 
 
 class UniverseFile(_ConfigFile):
@@ -183,6 +198,25 @@ class CostsFile(_ConfigFile):
 
 
 @dataclass(frozen=True, slots=True)
+class StrategySpec:
+    """One configured strategy instance, before its plugin builds it.
+
+    Attributes:
+        strategy_id: The instance's identifier, from ``[strategies]`` in ``tyche.toml``.
+        budget: Its fraction of account equity.
+        plugin: The built-in plugin it uses.
+        parameters: The plugin's parameters, as read from the file.
+        source: The strategy file, relative to the workspace, for messages.
+    """
+
+    strategy_id: str
+    budget: Decimal
+    plugin: str
+    parameters: Mapping[str, Any]
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
 class TycheConfig:
     """The validated configuration of one workspace.
 
@@ -190,6 +224,7 @@ class TycheConfig:
         workspace: Where the configuration was loaded from.
         market_profile: The active market profile.
         costs: What trading costs under that profile, and when trades settle.
+        strategies: The configured strategy instances, ordered by id.
         config_hash: Fingerprint of every loaded setting. Two runs with the same hash
             used the same configuration. Comments, blank lines and key order do not
             affect it; any change of value does.
@@ -198,7 +233,13 @@ class TycheConfig:
     workspace: Workspace
     market_profile: MarketProfile
     costs: TradingCosts
+    strategies: tuple[StrategySpec, ...]
     config_hash: str
+
+    @property
+    def budgets(self) -> dict[str, Decimal]:
+        """Each strategy's budget, by id."""
+        return {spec.strategy_id: spec.budget for spec in self.strategies}
 
 
 def load_config(workspace: Workspace) -> TycheConfig:
@@ -254,14 +295,58 @@ def load_config(workspace: Workspace) -> TycheConfig:
             f"{profile.name} holds cash in {', '.join(profile.cash_currencies)}"
         )
 
+    strategies, strategy_files = _load_strategies(workspace, tyche, tyche_name)
+
     return TycheConfig(
         workspace=workspace,
         market_profile=profile,
         costs=costs,
+        strategies=strategies,
         config_hash=config_hash(
-            {tyche_name: tyche, profile_name: profile_file, costs_name: costs_file}
+            {
+                tyche_name: tyche,
+                profile_name: profile_file,
+                costs_name: costs_file,
+                **strategy_files,
+            }
         ),
     )
+
+
+def _load_strategies(
+    workspace: Workspace, tyche: TycheFile, tyche_name: str
+) -> tuple[tuple[StrategySpec, ...], dict[str, StrategyFile]]:
+    for strategy_id in tyche.strategies:
+        try:
+            require_strategy_id(strategy_id)
+        except ValueError as error:
+            raise ConfigError(f"{tyche_name}: strategies: {error}") from None
+    try:
+        require_budgets(tyche.strategies)
+    except ValueError as error:
+        raise ConfigError(f"{tyche_name}: strategies: {error}") from None
+
+    specs: list[StrategySpec] = []
+    files: dict[str, StrategyFile] = {}
+    for strategy_id in sorted(tyche.strategies):
+        path = workspace.strategies_dir / f"{strategy_id}.toml"
+        name = workspace.relative(path)
+        if not path.is_file():
+            raise ConfigError(
+                f"{tyche_name} gives strategy {strategy_id!r} a budget, but {name} does not exist"
+            )
+        strategy_file = _read(workspace, path, StrategyFile)
+        files[name] = strategy_file
+        specs.append(
+            StrategySpec(
+                strategy_id,
+                tyche.strategies[strategy_id],
+                strategy_file.plugin,
+                strategy_file.parameters,
+                name,
+            )
+        )
+    return tuple(specs), files
 
 
 def config_hash(files: Mapping[str, BaseModel]) -> str:

@@ -2,7 +2,7 @@
 
 A strategy is one class that turns a `StrategyContext` into targets. It needs no change to the core. The contract is [ADR-0021](../adr/0021-strategies-see-a-window-handed-in.md); this page is the practical version.
 
-*Written in PR 12. In PR 12 strategies are constructed in code; loading instances and parameters from `config/strategies/` in the workspace comes with per-strategy budgets in PR 13, and this page will gain that step.*
+*Written in PR 12; the config and registry steps added in PR 13 ([ADR-0022](../adr/0022-portfolio-targets-as-weights-in-sleeves.md)).*
 
 ## 1. Write the class
 
@@ -63,6 +63,56 @@ assert strategy.decide(context) == (Target(SPY, Decimal(1), "..."),)
 
 Then add it to an end-to-end test like `tests/integration/test_replay_to_signals.py` to see it on the real calendar.
 
-## 4. Export it
+## 4. Register it and give it parameters
 
-Add it to `src/tyche/strategies/__init__.py`. If pandas makes the maths clearer, use it inside `decide`; a helper that turns a history view into a frame arrives with the first strategy that needs one (PR 18).
+A workspace names a plugin and gives its parameters in `config/strategies/<id>.toml`. Declare them as a strict model, with a build function and a `Plugin`, next to the class:
+
+```python
+from pydantic import StrictStr
+
+from tyche.core.domain import AssetClass
+from tyche.strategies.registry import InstrumentLookup, Parameters, Plugin
+
+
+class AboveAverageParameters(Parameters):  # unknown keys are refused
+    symbol: StrictStr
+    exchange: StrictStr
+    asset_class: AssetClass
+
+
+def _build(
+    strategy_id: str, parameters: AboveAverageParameters, lookup: InstrumentLookup
+) -> AboveAverage:
+    instrument = lookup(parameters.symbol, parameters.exchange, parameters.asset_class)
+    return AboveAverage(instrument, strategy_id=strategy_id)
+
+
+PLUGIN = Plugin("above_average", AboveAverageParameters, _build)
+```
+
+`lookup` builds the instrument and checks it against the market profile; a strategy never reads the config itself. Then add `PLUGIN` to `PLUGINS` in `src/tyche/strategies/__init__.py`, and test it as `tests/strategies/test_registry.py` does.
+
+## 5. Configure it
+
+In the workspace, give it a budget and a file of the same name:
+
+```toml
+# config/tyche.toml
+[strategies]
+buy_and_hold = "0.5"
+above_average = "0.5"
+```
+
+```toml
+# config/strategies/above_average.toml
+plugin = "above_average"
+
+[parameters]
+symbol = "QQQ"
+exchange = "XNAS"
+asset_class = "etf"
+```
+
+`tyche config check` builds every strategy and names the file and key of any mistake. Its weights are fractions of its budget; how budgets combine is in [backtesting internals](backtesting-internals.md#5-how-strategies-share-the-account).
+
+If pandas makes the maths clearer, use it inside `decide`; a helper that turns a history view into a frame arrives with the first strategy that needs one (PR 18).

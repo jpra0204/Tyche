@@ -104,6 +104,8 @@ You should see:
 Configuration is valid: /Users/<you>/tyche-workspace
   Market profile: US
   Costs checked:  2026-11-17
+  Strategies:
+    buy_and_hold (buy_and_hold), budget 1.0
   Config hash:    sha256:…
 ```
 
@@ -120,6 +122,41 @@ Error: config/tyche.toml: 1 invalid setting(s)
 
 Unknown settings are always an error, so a misspelled key cannot be silently ignored.
 
+## 5. Choose your strategies
+
+A new workspace runs one strategy: the buy-and-hold benchmark on SPY, with the whole account. Two files say so.
+
+`config/tyche.toml` lists each strategy with its **budget**, the fraction of the account it may use:
+
+```toml
+[strategies]
+buy_and_hold = "1.0"
+```
+
+Budgets are above 0 and at most 1, and add up to at most 1; whatever is left stays as cash, and `tyche config check` prints it. Write them as strings (`"0.5"`, not `0.5`) so they stay exact.
+
+Each name has its own file, `config/strategies/<name>.toml`, saying which built-in strategy to run and with what parameters:
+
+```toml
+plugin = "buy_and_hold"
+
+[parameters]
+symbol = "SPY"
+exchange = "ARCX"
+asset_class = "etf"
+```
+
+To run a second strategy, add a line under `[strategies]` and a file with the same name. `tyche config check` builds every strategy, so a misspelled parameter, an unknown plugin or an exchange outside the market profile is reported with the file and the key:
+
+```text
+Error: config/strategies/buy_and_hold.toml: 1 invalid parameter(s)
+  parameters.exchange: Field required
+```
+
+Only Tyche's built-in strategies can be named for now. How the budgets combine is explained in [backtesting internals](../developer-guide/backtesting-internals.md#5-how-strategies-share-the-account).
+
+**A workspace created before PR 13** has no `[strategies]` table, and `tyche config check` reports `strategies: Field required`. Add the table above to `config/tyche.toml` and copy `config/strategies/buy_and_hold.toml` from a new workspace (`tyche init --home <scratch-folder>`).
+
 ## Troubleshooting
 
 | Message | What to do |
@@ -131,4 +168,5 @@ Unknown settings are always an error, so a misspelled key cannot be silently ign
 | `… selects market profile 'CA', but config/markets/CA.toml does not exist` | Only `US` exists for now. `CA` and `CA+US` arrive in Phase 4. |
 | `config/costs/US.toml is missing: every market profile needs a costs file` | Your workspace was created before costs existed. Run `uv run tyche init --home <scratch-folder>` and copy its `config/costs/US.toml` into your workspace. |
 | `config/markets/US.toml: … universe: Field required` | Your workspace was created before the universe rules existed. Run `uv run tyche init --home <scratch-folder>` and copy the `[universe]` table from its `config/markets/US.toml` into yours. |
-| `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs or market profile file: `per_share = "0.005"`, not `per_share = 0.005`. |
+| `config/tyche.toml: … strategies: Field required` | Your workspace was created before strategies were configured. See [Choose your strategies](#5-choose-your-strategies) for the table to add and the file to copy. |
+| `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs, market profile or `[strategies]` table: `per_share = "0.005"`, not `per_share = 0.005`. |

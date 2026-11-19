@@ -11,8 +11,11 @@ returns nothing, and the position is kept rather than sold (ADR-0021).
 from collections.abc import Sequence
 from decimal import Decimal
 
-from tyche.core.domain import Instrument, Target, Timeframe
+from pydantic import StrictStr
+
+from tyche.core.domain import AssetClass, Instrument, Target, Timeframe
 from tyche.core.pipeline.signals import StrategyContext
+from tyche.strategies.registry import InstrumentLookup, Parameters, Plugin
 
 
 class BuyAndHold:
@@ -40,3 +43,21 @@ class BuyAndHold:
         else:
             reason = f"buy and hold {self.instrument}: hold since {held.entry_date.isoformat()}"
         return (Target(self.instrument, Decimal(1), reason),)
+
+
+class BuyAndHoldParameters(Parameters):
+    """``[parameters]`` of a ``buy_and_hold`` strategy file."""
+
+    symbol: StrictStr
+    exchange: StrictStr
+    asset_class: AssetClass
+
+
+def _build(
+    strategy_id: str, parameters: BuyAndHoldParameters, lookup: InstrumentLookup
+) -> BuyAndHold:
+    instrument = lookup(parameters.symbol, parameters.exchange, parameters.asset_class)
+    return BuyAndHold(instrument, strategy_id=strategy_id)
+
+
+PLUGIN = Plugin("buy_and_hold", BuyAndHoldParameters, _build)

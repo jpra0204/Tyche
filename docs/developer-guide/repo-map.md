@@ -35,7 +35,7 @@ src/tyche/
 │   │   ├── universe/         stage 1: UniverseStage applies the profile's universe rules
 │   │   ├── screening/        stage 2: ScreeningStage ranks the universe with a Screen
 │   │   ├── signals/          stage 3: strategy contract, history windows, the signals stage
-│   │   ├── portfolio/        stage 4
+│   │   ├── portfolio/        stage 4: budgets, sleeves, the proposed portfolio in weights
 │   │   ├── execution/        stage 6
 │   │   ├── reconciliation/   stage 7
 │   │   └── journal/          stage 8

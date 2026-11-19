@@ -1,0 +1,14 @@
+# Strategy instance: the buy-and-hold benchmark.
+#
+# The file name, without .toml, is the strategy's id. Its budget is set under
+# [strategies] in config/tyche.toml.
+
+# Which built-in strategy to run.
+plugin = "buy_and_hold"
+
+[parameters]
+# The instrument to hold: an index ETF for the US profile. Every other strategy has to
+# beat this, after costs, to be worth running.
+symbol = "SPY"
+exchange = "ARCX"
+asset_class = "etf"

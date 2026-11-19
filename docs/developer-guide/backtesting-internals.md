@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
 
 ## 1. How time moves
 
@@ -121,7 +121,17 @@ sequenceDiagram
 
 The benchmark, `BuyAndHold` (`tyche.strategies`), puts its whole budget in one instrument, SPY for the `US` profile, whenever it is eligible.
 
-## 5. Known limits
+## 5. How strategies share the account
+
+Portfolio construction (`tyche.core.pipeline.portfolio`) turns each cycle's signals into one proposed `TargetPortfolioEvent`, in **weights of account equity**, not shares ([ADR-0022](../adr/0022-portfolio-targets-as-weights-in-sleeves.md)).
+
+- **Budgets.** Each strategy has a budget in `config/tyche.toml`, a fraction of equity; together at most 1, the rest is cash. A strategy's weight is a fraction of its own budget, so its contribution to an instrument is `budget × weight`.
+- **Sleeves.** Each strategy has a sleeve: its budget, whether it decided or failed this cycle, and the instruments it decided on. Holdings will be tracked per sleeve; orders are netted across sleeves (PR 14).
+- **Shared instruments add up.** Buy-and-hold SPY with 0.4 and a trend strategy wanting half of its 0.6 budget in SPY give SPY a target of 0.7, as two contributions. Each keeps its own stop, so only the trend strategy's shares get a stop order.
+- **Keep, zero or weight.** For each sleeve and instrument: a contribution gives its weight; an instrument the sleeve decided on without a contribution gives zero; anything else the sleeve holds (not offered this cycle, or the strategy failed) is kept. The stage keeps nothing between cycles, so a restart cannot turn a keep into a sale.
+- **Sizing comes last.** Risk (PR 14 pass-through, Phase 2 rules) works in weights. Execution turns approved weights into whole shares from the account's equity, settled cash and costs, rounding down, so rounding can never push a position past a risk limit.
+
+## 6. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

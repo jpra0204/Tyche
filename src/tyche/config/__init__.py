@@ -7,7 +7,9 @@ Available now:
 * ``load_config``: reads the workspace's TOML files, validates them with pydantic,
   converts them to domain objects and fingerprints them. Invalid config raises
   ``ConfigError`` and Tyche refuses to start (ADR-0010). The active market profile
-  comes with its trading costs (``config/costs/<PROFILE>.toml``, ADR-0020).
+  comes with its trading costs (``config/costs/<PROFILE>.toml``, ADR-0020), and the
+  strategy instances with their budgets (``[strategies]`` in ``tyche.toml``) and
+  plugin parameters (``config/strategies/<id>.toml``), as ``StrategySpec``s (ADR-0022).
 
 The file schemas live here; the core only receives domain objects (ADR-0017).
 """
@@ -18,6 +20,8 @@ from tyche.config.loader import (
     ConfigError,
     CostsFile,
     MarketProfileFile,
+    StrategyFile,
+    StrategySpec,
     TycheConfig,
     TycheFile,
     config_hash,
@@ -42,6 +46,8 @@ __all__ = [
     "CostsFile",
     "ExchangeInfo",
     "MarketProfileFile",
+    "StrategyFile",
+    "StrategySpec",
     "TycheConfig",
     "TycheFile",
     "Workspace",

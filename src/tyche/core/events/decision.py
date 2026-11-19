@@ -10,7 +10,10 @@ from decimal import Decimal
 from tyche.core.domain import (
     Exclusion,
     Instrument,
+    InstrumentTarget,
     ScoredInstrument,
+    Sleeve,
+    SleeveStatus,
     StrategyFailure,
     Target,
     UniverseMember,
@@ -96,6 +99,8 @@ class SignalEvent(Event):
         strategy_id: The strategy instance.
         strategy_version: The version of its code, recorded so a result can be traced
             to the code that produced it.
+        offered: The instruments the strategy was offered, and so decided on, best
+            ranked first. Every target is one of them.
         targets: Weights within the strategy's budget, adding up to at most 1, in the
             order the strategy returned them.
         warming_up: Ranked instruments the strategy was not offered because it does
@@ -105,6 +110,7 @@ class SignalEvent(Event):
     as_of: datetime
     strategy_id: str
     strategy_version: str
+    offered: tuple[Instrument, ...]
     targets: tuple[Target, ...]
     warming_up: tuple[WarmingUp, ...] = ()
 
@@ -113,16 +119,18 @@ class SignalEvent(Event):
         require_strategy_id(self.strategy_id)
         if not self.strategy_version.strip():
             raise ValueError(f"SignalEvent of {self.strategy_id}: needs a strategy version")
-        instruments = [t.instrument for t in self.targets] + [w.instrument for w in self.warming_up]
-        if len(set(instruments)) != len(instruments):
-            raise ValueError(
-                f"SignalEvent of {self.strategy_id}: an instrument appears more than once"
-            )
+        label = f"SignalEvent of {self.strategy_id}"
+        targeted = [t.instrument for t in self.targets]
+        if len(set(targeted)) != len(targeted):
+            raise ValueError(f"{label}: an instrument is targeted more than once")
+        if not set(targeted) <= set(self.offered):
+            raise ValueError(f"{label}: a target is for an instrument it was not offered")
+        listed = list(self.offered) + [w.instrument for w in self.warming_up]
+        if len(set(listed)) != len(listed):
+            raise ValueError(f"{label}: an instrument appears more than once")
         total = sum((t.weight for t in self.targets), start=Decimal(0))
         if total > 1:
-            raise ValueError(
-                f"SignalEvent of {self.strategy_id}: weights add up to {total}, more than 1"
-            )
+            raise ValueError(f"{label}: weights add up to {total}, more than 1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,3 +154,69 @@ class SignalsReadyEvent(Event):
         ids = list(self.reported) + [f.strategy_id for f in self.failed]
         if len(set(ids)) != len(ids):
             raise ValueError("SignalsReadyEvent: a strategy appears more than once")
+
+
+@dataclass(frozen=True, slots=True)
+class TargetPortfolioEvent(Event):
+    """The proposed portfolio at one decision time, as weights of account equity (ADR-0022).
+
+    Proposed, not approved: only the risk gate consumes it, and only the risk gate can
+    publish the ``ApprovedPortfolioEvent`` that execution acts on.
+
+    For each sleeve and instrument, execution reads it this way: a contribution from
+    the sleeve gives its weight; an instrument in the sleeve's ``decided_on`` without
+    one gives zero; anything else the sleeve holds is kept.
+
+    Attributes:
+        as_of: The decision time.
+        sleeves: One per strategy with a budget, ordered by strategy id.
+        targets: One per instrument some sleeve targeted, ordered by symbol and exchange.
+    """
+
+    as_of: datetime
+    sleeves: tuple[Sleeve, ...]
+    targets: tuple[InstrumentTarget, ...] = ()
+
+    def __post_init__(self) -> None:
+        require_utc(self.as_of, "TargetPortfolioEvent as_of")
+        ids = [s.strategy_id for s in self.sleeves]
+        if ids != sorted(set(ids)):
+            raise ValueError("TargetPortfolioEvent: sleeves must be one per strategy, by id")
+        total_budget = sum((s.budget for s in self.sleeves), start=Decimal(0))
+        if total_budget > 1:
+            raise ValueError(f"TargetPortfolioEvent: budgets add up to {total_budget}")
+        keys = [(t.instrument.symbol, t.instrument.exchange) for t in self.targets]
+        if keys != sorted(set(keys)):
+            raise ValueError(
+                "TargetPortfolioEvent: targets must be one per instrument, by symbol and exchange"
+            )
+        sleeves = {s.strategy_id: s for s in self.sleeves}
+        used: dict[str, Decimal] = {}
+        for target in self.targets:
+            for contribution in target.contributions:
+                sleeve = sleeves.get(contribution.strategy_id)
+                if sleeve is None or sleeve.status is not SleeveStatus.DECIDED:
+                    raise ValueError(
+                        f"TargetPortfolioEvent: {contribution.strategy_id} contributes to "
+                        f"{target.instrument} without a decided sleeve"
+                    )
+                if target.instrument not in sleeve.decided_on:
+                    raise ValueError(
+                        f"TargetPortfolioEvent: {sleeve.strategy_id} contributes to "
+                        f"{target.instrument}, which it did not decide on"
+                    )
+                used[sleeve.strategy_id] = used.get(sleeve.strategy_id, Decimal(0)) + (
+                    contribution.weight
+                )
+        for strategy_id, weight in used.items():
+            if weight > sleeves[strategy_id].budget:
+                raise ValueError(
+                    f"TargetPortfolioEvent: {strategy_id} uses {weight}, more than its "
+                    f"budget {sleeves[strategy_id].budget}"
+                )
+
+    def sleeve(self, strategy_id: str) -> Sleeve:
+        for sleeve in self.sleeves:
+            if sleeve.strategy_id == strategy_id:
+                return sleeve
+        raise KeyError(strategy_id)

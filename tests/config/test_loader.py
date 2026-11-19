@@ -1,5 +1,6 @@
 """Loading the workspace configuration: all valid, or a clear error naming file and key."""
 
+from decimal import Decimal
 from importlib.resources import files
 from pathlib import Path
 
@@ -32,6 +33,10 @@ def write(workspace: Workspace, relative: str, text: str) -> None:
 
 
 TYCHE_TOML = 'schema_version = 1\nmarket_profile = "US"\n'
+STRATEGIES = '\n[strategies]\nbuy_and_hold = "1.0"\n'
+BUY_AND_HOLD_TOML = (
+    files("tyche.config") / "templates" / "strategies" / "buy_and_hold.toml"
+).read_text()
 UNIVERSE_TOML = """
 [universe]
 asset_classes = ["stock", "etf"]
@@ -58,7 +63,11 @@ class TestValidConfig:
         assert load_config(workspace).costs == US_COSTS
 
     def test_a_combined_profile_loads(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", 'schema_version = 1\nmarket_profile = "CA+US"\n')
+        write(
+            workspace,
+            "config/tyche.toml",
+            'schema_version = 1\nmarket_profile = "CA+US"\n' + STRATEGIES,
+        )
         write(
             workspace,
             "config/markets/CA+US.toml",
@@ -81,7 +90,7 @@ class TestConfigHash:
         write(
             workspace,
             "config/tyche.toml",
-            '# rewritten\n\nmarket_profile = "US"   # same\nschema_version = 1\n',
+            '# rewritten\n\nmarket_profile = "US"   # same\nschema_version = 1\n' + STRATEGIES,
         )
 
         assert load_config(workspace).config_hash == before
@@ -114,13 +123,13 @@ class TestConfigHash:
         assert load_config(workspace).config_hash == before
 
     def test_includes_a_scheme_so_a_new_hashing_method_changes_every_hash(self) -> None:
-        model = TycheFile(schema_version=1, market_profile="US")
-        same = config_hash({"config/tyche.toml": model})
+        def model() -> TycheFile:
+            return TycheFile(schema_version=1, market_profile="US", strategies={})
 
-        assert same == config_hash(
-            {"config/tyche.toml": TycheFile(schema_version=1, market_profile="US")}
-        )
-        assert same != config_hash({"config/other.toml": model})
+        same = config_hash({"config/tyche.toml": model()})
+
+        assert same == config_hash({"config/tyche.toml": model()})
+        assert same != config_hash({"config/other.toml": model()})
 
 
 class TestMissingFiles:
@@ -137,7 +146,11 @@ class TestMissingFiles:
             load_config(Workspace(tmp_path))
 
     def test_selected_profile_has_no_file(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", 'schema_version = 1\nmarket_profile = "CA"\n')
+        write(
+            workspace,
+            "config/tyche.toml",
+            'schema_version = 1\nmarket_profile = "CA"\n' + STRATEGIES,
+        )
 
         with pytest.raises(
             ConfigError,
@@ -154,26 +167,34 @@ class TestInvalidTyche:
             load_config(workspace)
 
     def test_unknown_key(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", TYCHE_TOML + "risk_profle = 'default'\n")
+        write(workspace, "config/tyche.toml", TYCHE_TOML + "risk_profle = 'default'\n" + STRATEGIES)
 
         with pytest.raises(ConfigError, match=r"risk_profle: Extra inputs are not permitted"):
             load_config(workspace)
 
     def test_missing_key(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", "schema_version = 1\n")
+        write(workspace, "config/tyche.toml", "schema_version = 1\n" + STRATEGIES)
 
         with pytest.raises(ConfigError, match=r"market_profile: Field required"):
             load_config(workspace)
 
     @pytest.mark.parametrize("value", ['"1"', "true", "1.0"])
     def test_schema_version_is_never_converted(self, workspace: Workspace, value: str) -> None:
-        write(workspace, "config/tyche.toml", f'schema_version = {value}\nmarket_profile = "US"\n')
+        write(
+            workspace,
+            "config/tyche.toml",
+            f'schema_version = {value}\nmarket_profile = "US"\n' + STRATEGIES,
+        )
 
         with pytest.raises(ConfigError, match=r"schema_version: Input should be a valid integer"):
             load_config(workspace)
 
     def test_unsupported_schema_version(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", 'schema_version = 2\nmarket_profile = "US"\n')
+        write(
+            workspace,
+            "config/tyche.toml",
+            'schema_version = 2\nmarket_profile = "US"\n' + STRATEGIES,
+        )
 
         with pytest.raises(
             ConfigError, match="schema_version is 2, but this version of Tyche reads version 1"
@@ -183,17 +204,22 @@ class TestInvalidTyche:
     def test_every_problem_is_reported_at_once(self, workspace: Workspace) -> None:
         write(workspace, "config/tyche.toml", 'schema_version = "x"\nextra = 1\n')
 
-        with pytest.raises(ConfigError, match=r"3 invalid setting\(s\)") as caught:
+        with pytest.raises(ConfigError, match=r"4 invalid setting\(s\)") as caught:
             load_config(workspace)
 
         message = str(caught.value)
         assert "schema_version:" in message
         assert "market_profile:" in message
         assert "extra:" in message
+        assert "strategies:" in message
 
     @pytest.mark.parametrize("name", ["../secrets", "us", "US/CA"])
     def test_a_profile_name_can_never_become_a_path(self, workspace: Workspace, name: str) -> None:
-        write(workspace, "config/tyche.toml", f'schema_version = 1\nmarket_profile = "{name}"\n')
+        write(
+            workspace,
+            "config/tyche.toml",
+            f'schema_version = 1\nmarket_profile = "{name}"\n' + STRATEGIES,
+        )
 
         with pytest.raises(ConfigError, match="market_profile: invalid market profile name"):
             load_config(workspace)
@@ -371,3 +397,77 @@ class TestUniverseRules:
             match=r"config/markets/US.toml: market profile US: universe thresholds are in CAD",
         ):
             load_config(workspace)
+
+
+class TestStrategies:
+    def test_the_template_runs_buy_and_hold_on_the_whole_budget(self, workspace: Workspace) -> None:
+        config = load_config(workspace)
+
+        [spec] = config.strategies
+        assert (spec.strategy_id, spec.plugin, spec.budget) == (
+            "buy_and_hold",
+            "buy_and_hold",
+            Decimal(1),
+        )
+        assert spec.parameters == {"symbol": "SPY", "exchange": "ARCX", "asset_class": "etf"}
+        assert spec.source == "config/strategies/buy_and_hold.toml"
+        assert config.budgets == {"buy_and_hold": Decimal("1.0")}
+
+    def test_strategies_are_ordered_by_id(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/tyche.toml",
+            TYCHE_TOML + '[strategies]\nzeta = "0.3"\nalpha = "0.4"\n',
+        )
+        write(workspace, "config/strategies/zeta.toml", BUY_AND_HOLD_TOML)
+        write(workspace, "config/strategies/alpha.toml", BUY_AND_HOLD_TOML)
+
+        assert [s.strategy_id for s in load_config(workspace).strategies] == ["alpha", "zeta"]
+
+    def test_a_strategy_needs_its_file(self, workspace: Workspace) -> None:
+        write(workspace, "config/tyche.toml", TYCHE_TOML + '[strategies]\ntrend = "0.5"\n')
+
+        with pytest.raises(
+            ConfigError,
+            match=r"strategy 'trend' a budget, but config/strategies/trend.toml does not exist",
+        ):
+            load_config(workspace)
+
+    @pytest.mark.parametrize(
+        ("table", "message"),
+        [
+            ('buy_and_hold = "0.7"\nother = "0.4"', "budgets add up to 1.1, more than 1"),
+            ('buy_and_hold = "0"', "must be above 0"),
+            ("buy_and_hold = 0.5", "write decimals as strings"),
+            ('"Buy And Hold" = "0.5"', "invalid strategy id"),
+            ("", "need at least one strategy"),
+        ],
+    )
+    def test_invalid_budgets(self, workspace: Workspace, table: str, message: str) -> None:
+        write(workspace, "config/tyche.toml", TYCHE_TOML + "[strategies]\n" + table + "\n")
+        write(workspace, "config/strategies/other.toml", BUY_AND_HOLD_TOML)
+
+        with pytest.raises(ConfigError, match=message):
+            load_config(workspace)
+
+    def test_a_strategy_file_needs_a_plugin_and_no_unknown_keys(self, workspace: Workspace) -> None:
+        write(workspace, "config/strategies/buy_and_hold.toml", 'plugn = "buy_and_hold"\n')
+
+        with pytest.raises(ConfigError, match=r"buy_and_hold.toml: 2 invalid") as caught:
+            load_config(workspace)
+
+        assert "plugin: Field required" in str(caught.value)
+        assert "plugn: Extra inputs are not permitted" in str(caught.value)
+
+    def test_the_hash_covers_budgets_and_parameters(self, workspace: Workspace) -> None:
+        before = load_config(workspace).config_hash
+        write(workspace, "config/tyche.toml", TYCHE_TOML + '[strategies]\nbuy_and_hold = "0.9"\n')
+        budget_changed = load_config(workspace).config_hash
+        write(workspace, "config/tyche.toml", TYCHE_TOML + STRATEGIES)
+        write(
+            workspace,
+            "config/strategies/buy_and_hold.toml",
+            BUY_AND_HOLD_TOML.replace("SPY", "QQQ"),
+        )
+
+        assert len({before, budget_changed, load_config(workspace).config_hash}) == 3
