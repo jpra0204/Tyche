@@ -124,6 +124,7 @@ class TestConfigCheck:
         assert "Configuration is valid" in result.stdout
         assert "Market profile: US" in result.stdout
         assert "Costs checked:  2026-11-17" in result.stdout
+        assert "Execution:      rebalance band 0.10, price buffer 0.02" in result.stdout
         assert "buy_and_hold (buy_and_hold), budget 1.0" in result.stdout
         assert "cash:" not in result.stdout
         assert "Config hash:    sha256:" in result.stdout

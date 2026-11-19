@@ -3,10 +3,11 @@
 Available now: the ``Event`` base class, the ``Envelope`` the bus wraps around every
 event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
 (``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``),
-``RunEvent``, the trading events (``OrderEvent``, ``FillEvent``,
-``DistributionEvent``), and the first decision-cycle events (``UniverseEvent``,
-``ScreeningEvent``, ``SignalEvent``, ``SignalsReadyEvent``,
-``TargetPortfolioEvent``).
+``RunEvent``, the trading events (``ExecutionPlanEvent``, ``OrderEvent``,
+``CancelRequestEvent``, ``FillEvent``, ``AccountEvent``, ``DistributionEvent``), and
+the decision-cycle events (``UniverseEvent``, ``ScreeningEvent``, ``SignalEvent``,
+``SignalsReadyEvent``, ``TargetPortfolioEvent``, ``ApprovedPortfolioEvent`` with its
+``KEEP`` marker).
 
 Planned (Phase 1 onward): the other events listed in
 ``docs/architecture/event-catalog.md``, each added by the PR that first publishes it.
@@ -21,6 +22,9 @@ from tyche.core.events.bus import (
     RunawayDispatchError,
 )
 from tyche.core.events.decision import (
+    KEEP,
+    ApprovedPortfolioEvent,
+    Keep,
     ScreeningEvent,
     SignalEvent,
     SignalsReadyEvent,
@@ -36,21 +40,34 @@ from tyche.core.events.market import (
     SessionPhase,
 )
 from tyche.core.events.system import RunEvent, RunMode, RunStage
-from tyche.core.events.trading import DistributionEvent, FillEvent, OrderEvent
+from tyche.core.events.trading import (
+    AccountEvent,
+    CancelRequestEvent,
+    DistributionEvent,
+    ExecutionPlanEvent,
+    FillEvent,
+    OrderEvent,
+)
 
 __all__ = [
+    "KEEP",
+    "AccountEvent",
+    "ApprovedPortfolioEvent",
     "BarEvent",
     "BusError",
     "BusHaltedError",
+    "CancelRequestEvent",
     "DataQualityEvent",
     "DataReadyEvent",
     "DistributionEvent",
     "Envelope",
     "Event",
     "EventBus",
+    "ExecutionPlanEvent",
     "FillEvent",
     "Handler",
     "HandlerError",
+    "Keep",
     "OrderEvent",
     "RunEvent",
     "RunMode",

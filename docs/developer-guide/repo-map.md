@@ -36,10 +36,10 @@ src/tyche/
 │   │   ├── screening/        stage 2: ScreeningStage ranks the universe with a Screen
 │   │   ├── signals/          stage 3: strategy contract, history windows, the signals stage
 │   │   ├── portfolio/        stage 4: budgets, sleeves, the proposed portfolio in weights
-│   │   ├── execution/        stage 6
+│   │   ├── execution/        stage 6: account state, sleeve book, sizing, netting, orders, stops
 │   │   ├── reconciliation/   stage 7
 │   │   └── journal/          stage 8
-│   ├── risk/               stage 5, plus profiles, guardrails and halts
+│   ├── risk/               stage 5: the gate (pass-through in Phase 1); later profiles, guardrails, halts
 │   ├── engine/             the run loop shared by all three modes
 │   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
 │   ├── backtest/           runner, metrics, walk-forward, sweeps

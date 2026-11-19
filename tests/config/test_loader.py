@@ -46,7 +46,16 @@ min_average_dollar_volume = "10000000"
 liquidity_sessions = 20
 quality_sessions = 5
 """
-US_TOML = 'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n' + UNIVERSE_TOML
+EXECUTION_TOML = """
+[execution]
+rebalance_band = "0.10"
+price_buffer = "0.02"
+"""
+US_TOML = (
+    'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
+    + UNIVERSE_TOML
+    + EXECUTION_TOML
+)
 US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
 
@@ -72,7 +81,8 @@ class TestValidConfig:
             workspace,
             "config/markets/CA+US.toml",
             'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n'
-            + UNIVERSE_TOML,
+            + UNIVERSE_TOML
+            + EXECUTION_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
 
@@ -471,3 +481,52 @@ class TestStrategies:
         )
 
         assert len({before, budget_changed, load_config(workspace).config_hash}) == 3
+
+
+class TestExecutionRules:
+    def test_the_packaged_profile_has_the_documented_band(self, workspace: Workspace) -> None:
+        execution = load_config(workspace).market_profile.execution
+
+        assert execution == US_PROFILE.execution
+        assert execution.rebalance_band == Decimal("0.10")
+        assert execution.price_buffer == Decimal("0.02")
+
+    def test_a_profile_without_an_execution_table_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace(EXECUTION_TOML, ""))
+
+        with pytest.raises(ConfigError, match=r"US.toml: .*\n  execution: Field required"):
+            load_config(workspace)
+
+    def test_a_band_without_quotes_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"0.10"', "0.10"))
+
+        with pytest.raises(
+            ConfigError, match=r"execution.rebalance_band: .*write decimals as strings"
+        ):
+            load_config(workspace)
+
+    def test_an_impossible_band_names_the_file(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"0.10"', '"1"'))
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/markets/US.toml: rebalance_band must be at least 0 and below 1",
+        ):
+            load_config(workspace)
+
+    def test_a_profile_without_a_price_buffer_is_refused(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace('price_buffer = "0.02"\n', ""),
+        )
+
+        with pytest.raises(ConfigError, match=r"execution.price_buffer: Field required"):
+            load_config(workspace)
+
+    def test_changing_the_band_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"0.10"', '"0.05"'))
+
+        assert load_config(workspace).config_hash != before

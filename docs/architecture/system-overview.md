@@ -142,6 +142,8 @@ sequenceDiagram
     Note over F,J: Session t+1 has closed (plus the configured buffer)
     F->>B: BarEvent for session t+1, per instrument
     B->>J: FillEvent for orders decided at close t (filled at the open of t+1), and any stop that triggered
+    B->>X: FillEvent: split between sleeves; a filled entry gets its protective stop, working from t+2
+    X->>R: AccountEvent at the close of t+1 (Tyche's own view of the account)
     F->>P: DataReadyEvent (all bars for t+1 delivered and quality-checked)
     P->>R: TargetPortfolioEvent (proposed), using data up to the close of t+1 only
     R->>X: ApprovedPortfolioEvent (shrunk, blocked or flattened as needed)

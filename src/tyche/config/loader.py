@@ -38,6 +38,7 @@ from tyche.core.domain import (
     AssetClass,
     CommissionSchedule,
     Currency,
+    ExecutionRules,
     MarketProfile,
     Money,
     RegulatoryFees,
@@ -130,6 +131,16 @@ class UniverseFile(_ConfigFile):
         )
 
 
+class ExecutionFile(_ConfigFile):
+    """The ``[execution]`` table of a market profile file (ADR-0023)."""
+
+    rebalance_band: ExactDecimal
+    price_buffer: ExactDecimal
+
+    def to_domain(self) -> ExecutionRules:
+        return ExecutionRules(rebalance_band=self.rebalance_band, price_buffer=self.price_buffer)
+
+
 class MarketProfileFile(_ConfigFile):
     """``config/markets/<NAME>.toml``."""
 
@@ -137,6 +148,7 @@ class MarketProfileFile(_ConfigFile):
     cash_currencies: tuple[Currency, ...]
     calendars: tuple[StrictStr, ...]
     universe: UniverseFile
+    execution: ExecutionFile
 
     def to_domain(self) -> MarketProfile:
         return MarketProfile(
@@ -144,6 +156,7 @@ class MarketProfileFile(_ConfigFile):
             cash_currencies=self.cash_currencies,
             calendars=self.calendars,
             universe=self.universe.to_domain(),
+            execution=self.execution.to_domain(),
         )
 
 

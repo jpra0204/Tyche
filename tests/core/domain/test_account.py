@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from tests.support.ledger import TRADE_DAY, fill
-from tests.support.market import QQQ, SPY
+from tests.support.market import QQQ, SPY, dividend
 from tyche.core.domain import (
     Account,
     AssetClass,
@@ -253,3 +253,50 @@ class TestDistributions:
     def test_the_amount_must_be_positive(self, amount: str) -> None:
         with pytest.raises(LedgerError, match="amount must be positive"):
             funded().receive_distribution("p-1", usd(amount))
+
+
+class TestBuyingPower:
+    def test_is_settled_cash_when_nothing_is_pending(self) -> None:
+        assert funded("1000").cash(Currency.USD).buying_power(TRADE_DAY) == usd("1000")
+
+    def test_purchases_not_settled_yet_are_already_spent(self) -> None:
+        account = funded("1000").apply_fill(fill(Side.BUY, "6", "100", commission="1"))
+        cash = account.cash(Currency.USD)
+
+        assert cash.settled == usd("1000")
+        assert cash.buying_power(TRADE_DAY) == usd("399")
+
+    def test_sale_proceeds_count_from_their_settlement_date(self) -> None:
+        bought = funded("1000").apply_fill(
+            fill(Side.BUY, "5", "100", commission="1", trade_date=date(2023, 12, 28))
+        )
+        account = bought.settle(date(2023, 12, 29)).apply_fill(
+            fill(Side.SELL, "5", "100", commission="1")
+        )
+        cash = account.cash(Currency.USD)
+
+        assert cash.buying_power(TRADE_DAY) == usd("499")
+        assert cash.buying_power(NEXT_DAY) == usd("998")
+
+
+class TestCredit:
+    def test_pays_the_shares_held_rounded_to_the_cent(self) -> None:
+        account = funded().apply_fill(fill(Side.BUY, "3", "100", commission="1"))
+
+        credited = account.credit(dividend(NEXT_DAY, "0.333"))
+
+        assert credited.distributions_received(Currency.USD) == usd("1.00")
+        assert credited.cash(Currency.USD).settled == usd("10001.00")
+
+    def test_does_nothing_when_nothing_is_held_or_it_rounds_to_zero(self) -> None:
+        account = funded().apply_fill(fill(Side.BUY, "1", "100", commission="1"))
+
+        assert funded().credit(dividend(NEXT_DAY, "1")) == funded()
+        assert account.credit(dividend(NEXT_DAY, "0.001")) == account
+
+    def test_the_same_distribution_cannot_be_credited_twice(self) -> None:
+        account = funded().apply_fill(fill(Side.BUY, "1", "100", commission="1"))
+        once = account.credit(dividend(NEXT_DAY, "1"))
+
+        with pytest.raises(LedgerError, match="already been received"):
+            once.credit(dividend(NEXT_DAY, "1"))

@@ -6,8 +6,10 @@ See ``docs/architecture/event-catalog.md`` for who publishes and who consumes ea
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 
 from tyche.core.domain import (
+    Contribution,
     Exclusion,
     Instrument,
     InstrumentTarget,
@@ -156,6 +158,65 @@ class SignalsReadyEvent(Event):
             raise ValueError("SignalsReadyEvent: a strategy appears more than once")
 
 
+class Keep(Enum):
+    """The marker ``ApprovedPortfolioEvent.wanted`` returns for "keep what it holds"."""
+
+    KEEP = "keep"
+
+
+KEEP = Keep.KEEP
+
+
+def _require_portfolio(
+    label: str,
+    as_of: datetime,
+    sleeves: tuple[Sleeve, ...],
+    targets: tuple[InstrumentTarget, ...],
+) -> None:
+    """The rules a proposed and an approved portfolio share (ADR-0022)."""
+    require_utc(as_of, f"{label} as_of")
+    ids = [s.strategy_id for s in sleeves]
+    if ids != sorted(set(ids)):
+        raise ValueError(f"{label}: sleeves must be one per strategy, by id")
+    total_budget = sum((s.budget for s in sleeves), start=Decimal(0))
+    if total_budget > 1:
+        raise ValueError(f"{label}: budgets add up to {total_budget}")
+    keys = [(t.instrument.symbol, t.instrument.exchange) for t in targets]
+    if keys != sorted(set(keys)):
+        raise ValueError(f"{label}: targets must be one per instrument, by symbol and exchange")
+    by_id = {s.strategy_id: s for s in sleeves}
+    used: dict[str, Decimal] = {}
+    for target in targets:
+        for contribution in target.contributions:
+            sleeve = by_id.get(contribution.strategy_id)
+            if sleeve is None or sleeve.status is not SleeveStatus.DECIDED:
+                raise ValueError(
+                    f"{label}: {contribution.strategy_id} contributes to "
+                    f"{target.instrument} without a decided sleeve"
+                )
+            if target.instrument not in sleeve.decided_on:
+                raise ValueError(
+                    f"{label}: {sleeve.strategy_id} contributes to "
+                    f"{target.instrument}, which it did not decide on"
+                )
+            used[sleeve.strategy_id] = used.get(sleeve.strategy_id, Decimal(0)) + (
+                contribution.weight
+            )
+    for strategy_id, weight in used.items():
+        if weight > by_id[strategy_id].budget:
+            raise ValueError(
+                f"{label}: {strategy_id} uses {weight}, more than its "
+                f"budget {by_id[strategy_id].budget}"
+            )
+
+
+def _sleeve(sleeves: tuple[Sleeve, ...], strategy_id: str) -> Sleeve:
+    for sleeve in sleeves:
+        if sleeve.strategy_id == strategy_id:
+            return sleeve
+    raise KeyError(strategy_id)
+
+
 @dataclass(frozen=True, slots=True)
 class TargetPortfolioEvent(Event):
     """The proposed portfolio at one decision time, as weights of account equity (ADR-0022).
@@ -178,45 +239,56 @@ class TargetPortfolioEvent(Event):
     targets: tuple[InstrumentTarget, ...] = ()
 
     def __post_init__(self) -> None:
-        require_utc(self.as_of, "TargetPortfolioEvent as_of")
-        ids = [s.strategy_id for s in self.sleeves]
-        if ids != sorted(set(ids)):
-            raise ValueError("TargetPortfolioEvent: sleeves must be one per strategy, by id")
-        total_budget = sum((s.budget for s in self.sleeves), start=Decimal(0))
-        if total_budget > 1:
-            raise ValueError(f"TargetPortfolioEvent: budgets add up to {total_budget}")
-        keys = [(t.instrument.symbol, t.instrument.exchange) for t in self.targets]
-        if keys != sorted(set(keys)):
-            raise ValueError(
-                "TargetPortfolioEvent: targets must be one per instrument, by symbol and exchange"
-            )
-        sleeves = {s.strategy_id: s for s in self.sleeves}
-        used: dict[str, Decimal] = {}
-        for target in self.targets:
-            for contribution in target.contributions:
-                sleeve = sleeves.get(contribution.strategy_id)
-                if sleeve is None or sleeve.status is not SleeveStatus.DECIDED:
-                    raise ValueError(
-                        f"TargetPortfolioEvent: {contribution.strategy_id} contributes to "
-                        f"{target.instrument} without a decided sleeve"
-                    )
-                if target.instrument not in sleeve.decided_on:
-                    raise ValueError(
-                        f"TargetPortfolioEvent: {sleeve.strategy_id} contributes to "
-                        f"{target.instrument}, which it did not decide on"
-                    )
-                used[sleeve.strategy_id] = used.get(sleeve.strategy_id, Decimal(0)) + (
-                    contribution.weight
-                )
-        for strategy_id, weight in used.items():
-            if weight > sleeves[strategy_id].budget:
-                raise ValueError(
-                    f"TargetPortfolioEvent: {strategy_id} uses {weight}, more than its "
-                    f"budget {sleeves[strategy_id].budget}"
-                )
+        _require_portfolio("TargetPortfolioEvent", self.as_of, self.sleeves, self.targets)
 
     def sleeve(self, strategy_id: str) -> Sleeve:
-        for sleeve in self.sleeves:
-            if sleeve.strategy_id == strategy_id:
-                return sleeve
-        raise KeyError(strategy_id)
+        return _sleeve(self.sleeves, strategy_id)
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedPortfolioEvent(Event):
+    """The portfolio the risk gate approved at one decision time (ADR-0006, ADR-0022).
+
+    The only event execution acts on, and only the risk gate publishes it. It has the
+    shape of the ``TargetPortfolioEvent`` it approves, and is read the same way: per
+    sleeve and instrument, a contribution gives its weight, ``decided_on`` without one
+    gives zero, and anything else the sleeve holds is kept.
+
+    In Phase 1 the gate has no rules, so the approved portfolio is the proposed one.
+    The ``RiskEvent``s that explain each change are added with the rules in Phase 2.
+
+    Attributes:
+        as_of: The decision time.
+        sleeves: One per strategy with a budget, ordered by strategy id.
+        targets: One per instrument with an approved contribution, ordered by symbol
+            and exchange.
+        profile: The risk profile the gate applied. ``"pass-through"`` in Phase 1.
+    """
+
+    as_of: datetime
+    sleeves: tuple[Sleeve, ...]
+    targets: tuple[InstrumentTarget, ...]
+    profile: str
+
+    def __post_init__(self) -> None:
+        _require_portfolio("ApprovedPortfolioEvent", self.as_of, self.sleeves, self.targets)
+        if not self.profile.strip():
+            raise ValueError("ApprovedPortfolioEvent: needs the name of the risk profile")
+
+    def sleeve(self, strategy_id: str) -> Sleeve:
+        return _sleeve(self.sleeves, strategy_id)
+
+    def wanted(self, strategy_id: str, instrument: Instrument) -> Contribution | Keep | None:
+        """How execution reads one sleeve and one instrument (ADR-0022, decision 4).
+
+        Returns the sleeve's contribution if it has one; ``None`` if it decided on the
+        instrument and did not target it (a target of zero); ``KEEP`` otherwise (not
+        offered this cycle, or the sleeve failed): keep what it holds.
+        """
+        sleeve = self.sleeve(strategy_id)
+        if sleeve.status is not SleeveStatus.DECIDED or instrument not in sleeve.decided_on:
+            return KEEP
+        for target in self.targets:
+            if target.instrument == instrument:
+                return target.contribution_of(strategy_id)
+        return None

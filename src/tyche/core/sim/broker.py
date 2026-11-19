@@ -20,6 +20,11 @@ expires; a good-till-cancelled stop keeps working.
 A ``client_order_id`` the broker has already seen is ignored, so sending the same
 decision twice cannot trade twice. Ignored ids are listed in ``ignored_duplicates``.
 
+**Cancellation.** A ``CancelRequestEvent`` for an open order cancels it at once, with
+the request's reason in the note. A request for an order that has already finished is
+ignored, as a real broker would when the order filled first. A request for an order
+the broker has never seen is a bug and halts the run.
+
 **Fills** (the bar for a session arrives at its close, with that session's prices):
 
 * A market order fills at the bar's open.
@@ -30,8 +35,10 @@ decision twice cannot trade twice. Ignored ids are listed in ``ignored_duplicate
 * Slippage moves every fill price against the order (ADR-0020).
 * One bar can fill at most ``max_volume_participation`` of its volume across all of an
   instrument's orders. The rest of a day order expires at the close: a partial fill.
-* A purchase is paid from settled cash only (ADR-0020). If settled cash cannot pay for
-  the whole order at the open, including costs, the order is cancelled, not shrunk.
+* A purchase is paid from settled cash only (ADR-0020): the account's buying power,
+  which is settled cash minus purchases not settled yet, so two purchases at one open
+  cannot spend the same cash. If it cannot pay for the whole order at the open,
+  including costs, the order is cancelled, not shrunk.
 * A sale for more shares than are held when it fills is cancelled.
 * Commission and regulatory fees are charged per fill (``TradingCosts.cost_of``) and
   recorded as the fill's commission.
@@ -76,6 +83,7 @@ from tyche.core.domain import (
 from tyche.core.domain.costs import CENT_PLACES
 from tyche.core.events import (
     BarEvent,
+    CancelRequestEvent,
     DistributionEvent,
     Envelope,
     EventBus,
@@ -177,6 +185,7 @@ class SimBroker:
         self._duplicates: list[str] = []
 
         bus.subscribe(OrderEvent, self._on_order, name=SUBSCRIBER)
+        bus.subscribe(CancelRequestEvent, self._on_cancel, name=SUBSCRIBER)
         bus.subscribe(SessionEvent, self._on_session, name=SUBSCRIBER)
         bus.subscribe(DistributionEvent, self._on_distribution, name=SUBSCRIBER)
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
@@ -224,6 +233,17 @@ class SimBroker:
         self._orders[order_id] = _Working(accepted)
         self._bus.publish(OrderEvent(accepted))
 
+    def _on_cancel(self, envelope: Envelope[CancelRequestEvent]) -> None:
+        request = envelope.event
+        working = self._orders.get(request.client_order_id)
+        if working is None:
+            raise SimBrokerError(
+                f"cancel requested for order {request.client_order_id}, which was never submitted"
+            )
+        if working.state.status.is_terminal:
+            return  # it finished first; nothing left to cancel
+        self._update(working, working.state.cancel(request.reason))
+
     def _on_session(self, envelope: Envelope[SessionEvent]) -> None:
         session = envelope.event.session
         if envelope.event.phase is SessionPhase.OPEN:
@@ -242,17 +262,7 @@ class SimBroker:
                 self._update(working, working.state.expire())
 
     def _on_distribution(self, envelope: Envelope[DistributionEvent]) -> None:
-        distribution = envelope.event.distribution
-        held = self._account.position(distribution.instrument)
-        if held is None:
-            return
-        amount = (distribution.amount_per_share * held.quantity).round_to(CENT_PLACES)
-        if not amount.is_positive:
-            return
-        payment_id = (
-            f"{distribution.instrument}:{distribution.ex_date.isoformat()}:{distribution.kind}"
-        )
-        self._account = self._account.receive_distribution(payment_id, amount)
+        self._account = self._account.credit(envelope.event.distribution)
 
     def _on_bar(self, envelope: Envelope[BarEvent]) -> None:
         bar = envelope.event.bar
@@ -308,12 +318,13 @@ class SimBroker:
         cost = self._costs.cost_of(order.side, quantity, price).total
 
         if order.side is Side.BUY:
-            settled = self._account.cash(order.instrument.currency).settled
+            cash = self._account.cash(order.instrument.currency)
+            available = cash.buying_power(session.day)
             needed = price * quantity + cost
-            if needed > settled:
+            if needed > available:
                 note = (
                     "insufficient settled cash at the open: "
-                    f"needs {needed.round_to(CENT_PLACES)}, has {settled}"
+                    f"needs {needed.round_to(CENT_PLACES)}, has {available.round_to(CENT_PLACES)}"
                 )
                 self._update(working, working.state.cancel(note))
                 return

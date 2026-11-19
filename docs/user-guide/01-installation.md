@@ -104,12 +104,18 @@ You should see:
 Configuration is valid: /Users/<you>/tyche-workspace
   Market profile: US
   Costs checked:  2026-11-17
+  Execution:      rebalance band 0.10, price buffer 0.02
   Strategies:
     buy_and_hold (buy_and_hold), budget 1.0
   Config hash:    sha256:…
 ```
 
 `Costs checked` is the date the commission and fee rates in `config/costs/US.toml` were last compared with IBKR's published prices. Check them again before paper trading and before going live; [the facts page](../developer-guide/ibkr-canada-costs-and-settlement.md) lists the sources.
+
+`Execution` shows two choices in `config/markets/US.toml` that change every result, so reports will state them too ([ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md)):
+
+- **Rebalance band**: a holding is resized only when it has drifted more than this fraction from its target (0.10 is 10%). Each trade pays at least the USD 1.00 minimum commission, so small drifts are cheaper to leave alone. Buying and selling a whole position always happens.
+- **Price buffer**: purchases are sized at the close but fill at the next open, so Tyche leaves this much room (0.02 is 2%) for the open to be higher. A purchase the cash cannot pay for at the open is rejected whole. A fully invested strategy therefore holds about 2% in cash.
 
 The config hash is a fingerprint of every setting. Tyche will print it in every backtest report and run log, so you can always tell which configuration produced a result. Editing a comment or reordering keys does not change it; changing any value does.
 
@@ -168,5 +174,6 @@ Only Tyche's built-in strategies can be named for now. How the budgets combine i
 | `… selects market profile 'CA', but config/markets/CA.toml does not exist` | Only `US` exists for now. `CA` and `CA+US` arrive in Phase 4. |
 | `config/costs/US.toml is missing: every market profile needs a costs file` | Your workspace was created before costs existed. Run `uv run tyche init --home <scratch-folder>` and copy its `config/costs/US.toml` into your workspace. |
 | `config/markets/US.toml: … universe: Field required` | Your workspace was created before the universe rules existed. Run `uv run tyche init --home <scratch-folder>` and copy the `[universe]` table from its `config/markets/US.toml` into yours. |
+| `config/markets/US.toml: … execution: Field required` | Your workspace was created before PR 14. Copy the `[execution]` table, with its comments, from the `config/markets/US.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
 | `config/tyche.toml: … strategies: Field required` | Your workspace was created before strategies were configured. See [Choose your strategies](#5-choose-your-strategies) for the table to add and the file to copy. |
 | `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs, market profile or `[strategies]` table: `per_share = "0.005"`, not `per_share = 0.005`. |

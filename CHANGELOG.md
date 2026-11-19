@@ -63,7 +63,17 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Strategy config: a `[strategies]` table of budgets in `config/tyche.toml` and one `config/strategies/<id>.toml` per instance; the `PLUGINS` registry in `tyche.strategies`, each plugin with a strict parameter model; `tyche.runtime.strategies.build_strategies`. `tyche config check` builds every strategy and prints the budgets and the cash left.
 - ADR-0022. User guide: choose your strategies. Backtesting internals: how strategies share the account.
 
+- Risk gate and execution (Phase 1, PR 14): `PassThroughGate`, the only publisher of `ApprovedPortfolioEvent`, approves every proposed portfolio unchanged until Phase 2. `ExecutionStage` sizes approved weights into whole shares of equity at the last close, keeps holdings inside a rebalance band, crosses shares between sleeves before netting the rest into one market order per instrument, fits purchases to the buying power at the next open with a price buffer, splits fills between sleeves pro rata, and places each protective stop when its entry fills (ADR-0023).
+- `SleeveBook`: each strategy's own share of every position, with its resting stop. The signals stage now shows each strategy its positions.
+- `AccountState`: Tyche's own view of the account, kept from the same fills, settlements and distributions as the broker's, published as an `AccountEvent` at every session close.
+- Events `ApprovedPortfolioEvent`, `ExecutionPlanEvent`, `CancelRequestEvent` and `AccountEvent`. `SimBroker` cancels an open order on request.
+- `ExecutionRules`, `PlanLine` and `PlanNote` in the domain; `CashBalance.buying_power` and `Account.credit`.
+- `tyche config check` prints the rebalance band and the price buffer.
+- ADR-0023. Backtesting internals: from approved weights to orders. Learning note: sub-ledgers that add up.
+
 ### Changed
+
+- `MarketProfile` has a required `execution` (`ExecutionRules`: `rebalance_band` and `price_buffer`), read from a new `[execution]` table in `config/markets/<PROFILE>.toml`. A workspace created before PR 14 must copy the table from a new one (user guide, installation, troubleshooting).
 
 - `config/tyche.toml` requires a `[strategies]` table, and each strategy named there needs its file in `config/strategies/`. A workspace created before PR 13 must add both (user guide, installation, section 5).
 - `SignalEvent` gains `offered`, the instruments the strategy decided on.
@@ -77,6 +87,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 - The CLI is built with Typer instead of `argparse`. Running `tyche` with no arguments now prints help and exits with code 2.
 - pytest now treats every warning as an error. One known warning raised inside `exchange_calendars` is ignored, with the reason and the condition for removing it in `pyproject.toml`.
+
+### Fixed
+
+- `SimBroker` paid each purchase from settled cash without subtracting purchases made earlier at the same open, so two purchases could each pass the check and then fail in the ledger, halting the run. It now uses the account's buying power: settled cash minus purchases not settled yet (PR 14).
 
 ## [0.0.1] - 2026-11-16
 
