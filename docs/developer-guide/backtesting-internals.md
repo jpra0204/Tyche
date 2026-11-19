@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14. Sections on the backtest runner, metrics and walk-forward are added by PRs 15, 16 and 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15. Sections on metrics and walk-forward are added by PRs 16 and 20.*
 
 ## 1. How time moves
 
@@ -170,7 +170,41 @@ What follows from the rules:
 - **Per-strategy attribution is approximate where sleeves cross**: shares change sleeve at the decision's close, not at the next open. The account's totals are exact.
 - **The plan explains itself.** Each decision's `ExecutionPlanEvent` lists, per sleeve and instrument, what it held, its target, what crossed and what was ordered, and why it differs from its weight: `keep`, `within_band`, `below_one_share` or `cash_limited`.
 
-## 7. Known limits
+## 7. The backtest runner
+
+`tyche.core.backtest.run_backtest` runs one `BacktestSpec` ([ADR-0024](../adr/0024-backtest-runner-holdout-and-run-record.md)). It is wiring only: every stage is the one paper and live will use, and the three backtest parts are swapped in.
+
+```mermaid
+flowchart TD
+    A[Check the range against the holdout] --> B[Subscribe every stage to a new bus]
+    B --> C[Ask the stages how much history they need]
+    C --> D[Load candidates from warm-up start to last day<br/>through the DataProvider port]
+    D --> E{Any bar after the last day?}
+    E -- yes --> X[Refuse: BacktestError]
+    E -- no --> F[Warm up UniverseStage and SignalsStage<br/>on the sessions before the first day]
+    F --> G[Engine runs HistoricalReplay of first..last]
+    G --> H[BacktestResult: run, journal, both account views]
+```
+
+| Rule | Detail |
+|---|---|
+| Holdout | `BacktestSettings.require_before_holdout(last)`: a run whose last day is on or after `holdout_starts` is refused before anything is built or read. A provider returning a bar after the last day stops the run too |
+| Candidates | `MarketProfile.universe.instruments`, loaded in the order listed |
+| Warm-up length | `max(UniverseStage.history_needed, SignalsStage.history_needed)`: the liquidity average, the data-issue memory and each strategy's lookback. For the template, 20 sessions |
+| Warm-up | `UniverseStage.warm_up` learns the bars and data issues of those sessions as if they had been played; `SignalsStage.warm_up` fills the windows with bars up to the first open (ADR-0021). Nothing is published; nothing trades. A calendar that starts too late gives a shorter warm-up, and the first decisions wait |
+| Clock | `SimClock` starts at the first session's open |
+| Starting account | `starting_cash`, settled, in both the broker's and Tyche's account view |
+| Result | The engine's `RunResult`, the sessions replayed and learned, the histories, the journal, Tyche's account and the broker's, free-riding violations. `closes` is the account at every close; `fills` every fill |
+| Halts | A stage failing closed stops the engine; the runner returns the result anyway, with `run.completed` false and the reason |
+
+The runtime (`tyche.runtime.backtest`) supplies the New York calendar, the Parquet cache read through `CacheOnlySource` (never fetches, raises `NotCachedError` with the missing range), the system clock and the code version, then writes the record: `reports/backtests/<run id>/run.json`, `equity.csv` and `fills.csv`. The user guide lists what each holds ([running a backtest](../user-guide/03-running-a-backtest.md#the-record)).
+
+What follows from the rules:
+
+- **Two runs on the same cache, config and code give the same fills and the same equity curve.** Nothing in a run reads the wall clock except the record's start and end times and its id.
+- **Buy-and-hold carries a cash drag.** Dividends arrive as cash and are reinvested only when the holding falls more than the rebalance band below its target. On SPY from 2005 to 2023 the run ends with about 9% in cash, so the benchmark trails SPY's published total return. PR 16 must say so next to the benchmark.
+
+## 8. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

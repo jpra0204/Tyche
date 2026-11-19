@@ -15,3 +15,15 @@ market_profile = "US"
 # Each name needs a file config/strategies/<name>.toml. Decimals are strings so they
 # stay exact.
 buy_and_hold = "1.0"
+
+[backtest]
+# The holdout: the most recent history, kept away from every backtest until the final
+# check before a strategy is promoted (ADR-0024). A backtest that reaches this date is
+# refused. It is a fixed date, so the holdout grows as time passes. Never move it
+# later: history that a backtest has seen cannot become a holdout again.
+holdout_starts = 2024-01-01
+
+# The cash every backtest starts with, settled, in the profile's currency (USD for
+# the US profile). Costs weigh more on a small account, so use the amount you would
+# really trade with.
+starting_cash = "10000"

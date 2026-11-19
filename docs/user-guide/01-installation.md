@@ -43,8 +43,8 @@ This creates `~/tyche-workspace` with:
 
 | File | What it is |
 |---|---|
-| `config/tyche.toml` | Workspace settings, including the active market profile |
-| `config/markets/US.toml` | The `US` market profile, including its universe rules: which instruments may be traded (asset classes, a minimum price, a minimum average dollar volume, and how long data problems keep an instrument out) |
+| `config/tyche.toml` | Workspace settings: the active market profile, the strategies and their budgets, and the backtest settings (the starting cash and the holdout) |
+| `config/markets/US.toml` | The `US` market profile: the instruments Tyche follows, and the universe rules that decide which of them may be traded (asset classes, a minimum price, a minimum average dollar volume, and how long data problems keep an instrument out) |
 | `config/costs/US.toml` | What trading costs under the `US` profile (IBKR Pro Fixed), slippage and settlement, with the date the rates were checked |
 | `.env` | Where secrets will go in Phase 2. Empty for now, and readable only by you |
 | `.gitignore` | Keeps `.env`, market data, state and logs out of git |
@@ -117,7 +117,7 @@ Configuration is valid: /Users/<you>/tyche-workspace
 - **Rebalance band**: a holding is resized only when it has drifted more than this fraction from its target (0.10 is 10%). Each trade pays at least the USD 1.00 minimum commission, so small drifts are cheaper to leave alone. Buying and selling a whole position always happens.
 - **Price buffer**: purchases are sized at the close but fill at the next open, so Tyche leaves this much room (0.02 is 2%) for the open to be higher. A purchase the cash cannot pay for at the open is rejected whole. A fully invested strategy therefore holds about 2% in cash.
 
-The config hash is a fingerprint of every setting. Tyche will print it in every backtest report and run log, so you can always tell which configuration produced a result. Editing a comment or reordering keys does not change it; changing any value does.
+The config hash is a fingerprint of every setting. Every backtest records it with the settings behind it, and reports and run logs will show it, so you can always tell which configuration produced a result. Editing a comment or reordering keys does not change it; changing any value does.
 
 If something is wrong, the message names the file and the setting:
 
@@ -175,5 +175,7 @@ Only Tyche's built-in strategies can be named for now. How the budgets combine i
 | `config/costs/US.toml is missing: every market profile needs a costs file` | Your workspace was created before costs existed. Run `uv run tyche init --home <scratch-folder>` and copy its `config/costs/US.toml` into your workspace. |
 | `config/markets/US.toml: … universe: Field required` | Your workspace was created before the universe rules existed. Run `uv run tyche init --home <scratch-folder>` and copy the `[universe]` table from its `config/markets/US.toml` into yours. |
 | `config/markets/US.toml: … execution: Field required` | Your workspace was created before PR 14. Copy the `[execution]` table, with its comments, from the `config/markets/US.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
+| `config/tyche.toml: … backtest: Field required` | Your workspace was created before PR 15. Copy the `[backtest]` table, with its comments, from the `config/tyche.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. See [running a backtest](03-running-a-backtest.md). |
+| `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, from the `[universe]` table of a new workspace's `config/markets/US.toml` into yours. |
 | `config/tyche.toml: … strategies: Field required` | Your workspace was created before strategies were configured. See [Choose your strategies](#5-choose-your-strategies) for the table to add and the file to copy. |
 | `write decimals as strings, such as "0.005", so they stay exact` | Put quotes around the number in the costs, market profile or `[strategies]` table: `per_share = "0.005"`, not `per_share = 0.005`. |

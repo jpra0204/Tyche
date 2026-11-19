@@ -6,6 +6,7 @@ its result or error into text and an exit code. No logic lives here.
 
 import os
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -21,7 +22,10 @@ from tyche.config import (
     load_config,
     resolve_home,
 )
-from tyche.core.domain import AssetClass
+from tyche.core.backtest import BacktestError, HoldoutError
+from tyche.core.domain import AssetClass, Money
+from tyche.core.ports import DataError
+from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
 from tyche.runtime.data import (
     DEFAULT_FIRST,
     FetchOutcome,
@@ -231,6 +235,95 @@ def _describe_fetch(outcome: FetchOutcome) -> str:
         if len(history.issues) > MAX_ISSUES_SHOWN:
             lines.append(f"    ... and {len(history.issues) - MAX_ISSUES_SHOWN} more")
     return "\n".join(lines)
+
+
+@app.command()
+def backtest(
+    first: Annotated[
+        datetime,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help="First session date to trade. History before it is used to warm up.",
+            show_default=False,
+        ),
+    ],
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last session date to trade. Defaults to the day before the holdout.",
+            show_default=False,
+        ),
+    ] = None,
+    home: HomeOption = None,
+) -> None:
+    """Backtest the configured strategies on cached history, and record the run.
+
+    Replays the instruments listed in the market profile, from the cache only: fetch
+    them first with `tyche data fetch`. A range that reaches the holdout is refused.
+    The record goes to reports/backtests/ in the workspace.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        config = load_config(workspace)
+        outcome = run_configured_backtest(
+            config, first.date(), last.date() if last is not None else None
+        )
+    except (
+        WorkspaceError,
+        ConfigError,
+        BacktestRequestError,
+        HoldoutError,
+        BacktestError,
+        DataError,
+    ) as error:
+        _fail(str(error))
+
+    for line in _describe_backtest(outcome, config.backtest.starting_cash):
+        typer.echo(line)
+    run = outcome.result.run
+    if not run.completed:
+        typer.echo(f"Error: the run halted: {run.failure}", err=True)
+        raise typer.Exit(code=1)
+
+
+def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
+    result = outcome.result
+    record = outcome.record_dir / "run.json"
+    sessions = sum(len(found) for found in result.sessions.values())
+    warm_up = [s for found in result.warm_up.values() for s in found]
+    currency = starting.currency
+    lines = [
+        f"Backtest {outcome.run_id}: {'completed' if result.run.completed else 'halted'}",
+        f"  Range:         {outcome.first} to {outcome.last}, {_count(sessions, 'session')}",
+    ]
+    if warm_up:
+        lines.append(
+            f"  Warm-up:       {_count(len(warm_up), 'session')} from {warm_up[0].day} "
+            f"({result.warm_up_needed} needed)"
+        )
+    else:
+        lines.append(f"  Warm-up:       none ({result.warm_up_needed} needed)")
+    equity = result.account.equity(currency).amount
+    change = ((equity - starting.amount) / starting.amount * 100).quantize(Decimal("0.01"))
+    lines.append(f"  Starting cash: {starting}")
+    lines.append(f"  Final equity:  {equity.quantize(Decimal('0.01'))} {currency} ({change:+}%)")
+    lines.append(
+        f"  Fills:         {len(result.fills)}; free-riding violations: {len(result.free_riding)}"
+    )
+    issues = sum(len(h.issues) for h in result.histories)
+    if issues:
+        lines.append(f"  Data issues:   {issues}, listed by `tyche data fetch`")
+    lines.append(f"  Code:          {outcome.code}")
+    lines.append(f"  Record:        {record}")
+    if outcome.code.dirty:
+        lines.append(
+            "Warning: the code had uncommitted changes, so its commit alone does not "
+            "reproduce this run."
+        )
+    return lines
 
 
 def _count(number: int, noun: str) -> str:

@@ -199,7 +199,7 @@ $TYCHE_HOME/
 ├── strategies/          your own strategy plugins (optional)
 ├── research/            agent research notes
 ├── proposals/           agent proposals, gate results, your decisions
-├── reports/             backtest reports, each with its config and code version
+├── reports/             backtests/<run id>/: each run's record (code, config, data, outcome), equity and fills
 ├── data/                market data (gitignored): bars/<source>/<timeframe>/<exchange>/<symbol>.parquet,
 │                        plus yfinance's own small caches
 ├── state/               SQLite database and run state (gitignored)
@@ -224,6 +224,7 @@ You asked for plain statements where something is a likely way to lose money or 
    *Agreed:* in Phase 2 I will propose revised promotion criteria with two separate tests. The edge must be shown by walk-forward and out-of-sample backtests. Paper trading must show that live results stay close to what the backtest predicts for the same period, within a defined tracking threshold.
 3. **A weekly proposal loop is an overfitting machine unless it is fenced in.** Testing a new idea against the same history every week will eventually find something that passes by luck.
    *Agreed:* every candidate ever tried is counted, a holdout period stays untouched, and results are reported with a deflated Sharpe ratio or an equivalent correction for the number of trials. The holdout is reserved from the first backtest in Phase 1; a holdout that earlier experiments have already seen is not a holdout.
+   *Reserved in PR 15 ([ADR-0024](../adr/0024-backtest-runner-holdout-and-run-record.md)):* history from 2024-01-01 on, a fixed date in the workspace. Every backtest is refused if it reaches it, and every run is recorded, so trials can be counted.
 4. **Cash-account settlement can block same-day rotation.** In a cash account, sale proceeds may not be usable until they settle. A rotation that sells and buys at the same open may then be partly unfunded.
    *Agreed:* Phase 1 verifies the current rule for an IBKR Canada cash account and models settled and unsettled cash in `SimBroker`.
    *Checked 2026-11-17 (PR 9):* US trades settle T+1, a cash account buys with settled cash only, and selling before a purchase settles is free riding (90 days of settled-cash-only trading). A rotation therefore takes two sessions, and a stop that triggers on the day of entry is a violation. Handling decided in [ADR-0020](../adr/0020-cost-and-settlement-model.md).

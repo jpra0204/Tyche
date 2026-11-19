@@ -122,7 +122,7 @@ What stops an agent, or a bug in an agent, from affecting trading:
 A loop that proposes a change every week and tests it on the same history will eventually pass something by luck. Four rules guard against that:
 
 1. **Trial registry.** Every candidate ever evaluated for a strategy is recorded. Gate results show the trial number, and the pass threshold tightens as trials accumulate.
-2. **Holdout.** The most recent slice of history is reserved, starting with the first backtest in Phase 1 so that nothing has seen it before the loop exists. The reviewer's input bundle and the walk-forward never include it; it is used once, for the final check before promotion.
+2. **Holdout.** The most recent slice of history is reserved, starting with the first backtest in Phase 1 so that nothing has seen it before the loop exists: from 2024-01-01, a fixed date in the workspace ([ADR-0024](../adr/0024-backtest-runner-holdout-and-run-record.md)). The reviewer's input bundle and the walk-forward never include it; it is used once, for the final check before promotion.
 3. **Pre-registered effect.** A proposal must state its expected effect before the gate runs. The gate reports the actual effect beside it, so a proposal that "worked" for a different reason than claimed is visible.
 4. **Deflated results.** Gate results report a deflated Sharpe ratio, or an equivalent correction, that discounts performance for the number of trials behind it. A raw Sharpe ratio from the best of many attempts is not shown alone.
 

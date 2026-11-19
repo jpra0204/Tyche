@@ -72,6 +72,11 @@ class Workspace:
         """Market data. Gitignored: it is large and can be fetched again."""
         return self.root / "data"
 
+    @property
+    def reports_dir(self) -> Path:
+        """Backtest records and reports. Committed: each says which code and config made it."""
+        return self.root / "reports"
+
     def relative(self, path: Path) -> str:
         """``path`` relative to the workspace root, for messages."""
         return path.relative_to(self.root).as_posix()

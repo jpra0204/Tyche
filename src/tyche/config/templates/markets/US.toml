@@ -36,6 +36,16 @@ liquidity_sessions = 20
 # (a missing session, conflicting or invalid bars, a suspect price move).
 quality_sessions = 5
 
+# The candidates: every instrument Tyche follows under this profile. A backtest replays
+# exactly these (fetch them first with `tyche data fetch`); the rules above decide at
+# each decision which are eligible. A strategy can only trade an instrument listed here.
+# The exchange is where it is listed, as a market identifier code: ARCX, XNAS, XNYS,
+# BATS or XASE.
+instruments = [
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+]
+
 [execution]
 # How approved weights become orders (ADR-0023). A choice, not a market fact.
 

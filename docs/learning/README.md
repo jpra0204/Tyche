@@ -22,6 +22,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [State built from events](state-built-from-events.md) | A stage remembers only what it has been told, so it cannot see the future and behaves the same in every mode |
 | [Plugins](plugins.md) | The core defines a small contract, hands the plugin only what it allows, and checks everything that comes back |
 | [Sub-ledgers that add up](sub-ledgers.md) | Each strategy keeps its own book of shares, they must always sum to the real account, and only the difference is traded |
+| [The holdout and the run record](holdout-and-run-records.md) | Keep the most recent history away from every experiment, and record every run with its code, config and data |
 
 ## Planned
 

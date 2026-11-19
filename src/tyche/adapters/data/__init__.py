@@ -8,10 +8,13 @@ Available now:
   ``BarSource``, auditing every answer against the trading calendar.
 * ``BarSource`` and ``SourceData``: what a data vendor adapter implements and returns.
 
+* ``CacheOnlySource``: a source that never fetches and raises ``NotCachedError``
+  instead, so a backtest reads only what is already cached.
 * ``YFinanceSource``: daily bars and corporate actions from Yahoo Finance, with retries.
   Yahoo's data is for personal use only; see the module docstring.
 """
 
+from tyche.adapters.data.cache_only_source import CacheOnlySource, NotCachedError
 from tyche.adapters.data.cached_provider import BarSource, CachedDataProvider, SourceData
 from tyche.adapters.data.parquet_cache import (
     CACHE_FORMAT,
@@ -26,9 +29,11 @@ __all__ = [
     "CACHE_FORMAT",
     "BarSource",
     "CacheEntry",
+    "CacheOnlySource",
     "CachedBar",
     "CachedDataProvider",
     "DateRange",
+    "NotCachedError",
     "ParquetBarCache",
     "SourceData",
     "YFinanceSource",

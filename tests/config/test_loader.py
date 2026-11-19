@@ -1,5 +1,6 @@
 """Loading the workspace configuration: all valid, or a clear error naming file and key."""
 
+from datetime import date
 from decimal import Decimal
 from importlib.resources import files
 from pathlib import Path
@@ -8,7 +9,9 @@ import pytest
 
 from tests.support.costs import US_COSTS
 from tests.support.profiles import US_PROFILE
+from tests.support.workspace import BACKTEST
 from tyche.config import (
+    BacktestFile,
     ConfigError,
     TycheFile,
     Workspace,
@@ -16,7 +19,7 @@ from tyche.config import (
     init_workspace,
     load_config,
 )
-from tyche.core.domain import Currency
+from tyche.core.domain import Currency, Money
 
 
 @pytest.fixture
@@ -32,7 +35,7 @@ def write(workspace: Workspace, relative: str, text: str) -> None:
     path.write_text(text)
 
 
-TYCHE_TOML = 'schema_version = 1\nmarket_profile = "US"\n'
+TYCHE_TOML = 'schema_version = 1\nmarket_profile = "US"\n' + BACKTEST
 STRATEGIES = '\n[strategies]\nbuy_and_hold = "1.0"\n'
 BUY_AND_HOLD_TOML = (
     files("tyche.config") / "templates" / "strategies" / "buy_and_hold.toml"
@@ -45,6 +48,10 @@ min_price = "5.00"
 min_average_dollar_volume = "10000000"
 liquidity_sessions = 20
 quality_sessions = 5
+instruments = [
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+]
 """
 EXECUTION_TOML = """
 [execution]
@@ -75,7 +82,7 @@ class TestValidConfig:
         write(
             workspace,
             "config/tyche.toml",
-            'schema_version = 1\nmarket_profile = "CA+US"\n' + STRATEGIES,
+            'schema_version = 1\nmarket_profile = "CA+US"\n' + BACKTEST + STRATEGIES,
         )
         write(
             workspace,
@@ -100,7 +107,9 @@ class TestConfigHash:
         write(
             workspace,
             "config/tyche.toml",
-            '# rewritten\n\nmarket_profile = "US"   # same\nschema_version = 1\n' + STRATEGIES,
+            '# rewritten\n\nmarket_profile = "US"   # same\nschema_version = 1\n'
+            + BACKTEST
+            + STRATEGIES,
         )
 
         assert load_config(workspace).config_hash == before
@@ -134,7 +143,14 @@ class TestConfigHash:
 
     def test_includes_a_scheme_so_a_new_hashing_method_changes_every_hash(self) -> None:
         def model() -> TycheFile:
-            return TycheFile(schema_version=1, market_profile="US", strategies={})
+            return TycheFile(
+                schema_version=1,
+                market_profile="US",
+                strategies={},
+                backtest=BacktestFile.model_validate(
+                    {"holdout_starts": date(2024, 1, 1), "starting_cash": "1"}
+                ),
+            )
 
         same = config_hash({"config/tyche.toml": model()})
 
@@ -159,7 +175,7 @@ class TestMissingFiles:
         write(
             workspace,
             "config/tyche.toml",
-            'schema_version = 1\nmarket_profile = "CA"\n' + STRATEGIES,
+            'schema_version = 1\nmarket_profile = "CA"\n' + BACKTEST + STRATEGIES,
         )
 
         with pytest.raises(
@@ -183,7 +199,7 @@ class TestInvalidTyche:
             load_config(workspace)
 
     def test_missing_key(self, workspace: Workspace) -> None:
-        write(workspace, "config/tyche.toml", "schema_version = 1\n" + STRATEGIES)
+        write(workspace, "config/tyche.toml", "schema_version = 1\n" + BACKTEST + STRATEGIES)
 
         with pytest.raises(ConfigError, match=r"market_profile: Field required"):
             load_config(workspace)
@@ -203,7 +219,7 @@ class TestInvalidTyche:
         write(
             workspace,
             "config/tyche.toml",
-            'schema_version = 2\nmarket_profile = "US"\n' + STRATEGIES,
+            'schema_version = 2\nmarket_profile = "US"\n' + BACKTEST + STRATEGIES,
         )
 
         with pytest.raises(
@@ -214,10 +230,11 @@ class TestInvalidTyche:
     def test_every_problem_is_reported_at_once(self, workspace: Workspace) -> None:
         write(workspace, "config/tyche.toml", 'schema_version = "x"\nextra = 1\n')
 
-        with pytest.raises(ConfigError, match=r"4 invalid setting\(s\)") as caught:
+        with pytest.raises(ConfigError, match=r"5 invalid setting\(s\)") as caught:
             load_config(workspace)
 
         message = str(caught.value)
+        assert "backtest:" in message
         assert "schema_version:" in message
         assert "market_profile:" in message
         assert "extra:" in message
@@ -228,7 +245,7 @@ class TestInvalidTyche:
         write(
             workspace,
             "config/tyche.toml",
-            f'schema_version = 1\nmarket_profile = "{name}"\n' + STRATEGIES,
+            f'schema_version = 1\nmarket_profile = "{name}"\n' + BACKTEST + STRATEGIES,
         )
 
         with pytest.raises(ConfigError, match="market_profile: invalid market profile name"):
@@ -357,6 +374,53 @@ class TestUniverseRules:
     def test_the_packaged_profile_has_the_documented_rules(self, workspace: Workspace) -> None:
         assert load_config(workspace).market_profile.universe == US_PROFILE.universe
 
+    def test_instruments_are_built_from_their_exchange(self, workspace: Workspace) -> None:
+        [spy, qqq] = load_config(workspace).market_profile.universe.instruments
+
+        assert (str(spy), spy.calendar, spy.currency) == ("SPY@ARCX", "XNYS", Currency.USD)
+        assert str(qqq) == "QQQ@XNAS"
+
+    def test_an_unknown_exchange_is_refused_with_the_known_ones(self, workspace: Workspace) -> None:
+        write(
+            workspace, "config/markets/US.toml", US_TOML.replace('"XNAS", asset', '"XTSE", asset')
+        )
+
+        with pytest.raises(
+            ConfigError,
+            match=r"US.toml: universe.instruments: QQQ: unknown exchange 'XTSE'; known "
+            "exchanges: ARCX",
+        ):
+            load_config(workspace)
+
+    def test_an_invalid_symbol_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('"QQQ"', '"Q Q Q"'))
+
+        with pytest.raises(ConfigError, match=r"US.toml: universe.instruments: .*symbol"):
+            load_config(workspace)
+
+    def test_the_instrument_list_cannot_be_empty(self, workspace: Workspace) -> None:
+        start = US_TOML.index("instruments = [")
+        end = US_TOML.index("]\n", start) + 2
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML[:start] + "instruments = []\n" + US_TOML[end:],
+        )
+
+        with pytest.raises(ConfigError, match="list at least one instrument"):
+            load_config(workspace)
+
+    def test_changing_the_instruments_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace('"QQQ"', '"IWM"').replace('"XNAS", asset', '"ARCX", asset'),
+        )
+
+        assert load_config(workspace).config_hash != before
+
     def test_a_profile_without_a_universe_table_is_refused(self, workspace: Workspace) -> None:
         write(workspace, "config/markets/US.toml", US_TOML.replace(UNIVERSE_TOML, ""))
 
@@ -395,7 +459,9 @@ class TestUniverseRules:
         ):
             load_config(workspace)
 
-    def test_thresholds_must_be_in_a_currency_the_profile_holds(self, workspace: Workspace) -> None:
+    def test_instruments_must_be_quoted_in_the_thresholds_currency(
+        self, workspace: Workspace
+    ) -> None:
         write(
             workspace,
             "config/markets/US.toml",
@@ -404,7 +470,8 @@ class TestUniverseRules:
 
         with pytest.raises(
             ConfigError,
-            match=r"config/markets/US.toml: market profile US: universe thresholds are in CAD",
+            match=r"config/markets/US.toml: universe rules: SPY@ARCX is quoted in USD, but the "
+            "thresholds are in CAD",
         ):
             load_config(workspace)
 
@@ -530,3 +597,63 @@ class TestExecutionRules:
         write(workspace, "config/markets/US.toml", US_TOML.replace('"0.10"', '"0.05"'))
 
         assert load_config(workspace).config_hash != before
+
+
+class TestBacktestSettings:
+    def test_the_template_reserves_history_from_2024_and_starts_with_10000_usd(
+        self, workspace: Workspace
+    ) -> None:
+        settings = load_config(workspace).backtest
+
+        assert settings.holdout_starts == date(2024, 1, 1)
+        assert settings.starting_cash == Money.of("10000", Currency.USD)
+
+    def test_the_holdout_start_must_be_a_toml_date(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/tyche.toml",
+            TYCHE_TOML.replace("holdout_starts = 2024-01-01", 'holdout_starts = "2024-01-01"')
+            + STRATEGIES,
+        )
+
+        with pytest.raises(
+            ConfigError, match=r"backtest.holdout_starts: Input should be a valid date"
+        ):
+            load_config(workspace)
+
+    def test_the_starting_cash_must_be_positive(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/tyche.toml",
+            TYCHE_TOML.replace('starting_cash = "10000"', 'starting_cash = "0"') + STRATEGIES,
+        )
+
+        with pytest.raises(
+            ConfigError, match=r"config/tyche\.toml: backtest: starting cash must be positive"
+        ):
+            load_config(workspace)
+
+    def test_moving_the_holdout_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/tyche.toml", TYCHE_TOML + STRATEGIES)
+        before = load_config(workspace).config_hash
+        write(
+            workspace,
+            "config/tyche.toml",
+            TYCHE_TOML.replace("2024-01-01", "2025-01-01") + STRATEGIES,
+        )
+
+        assert load_config(workspace).config_hash != before
+
+    def test_the_snapshot_is_what_was_hashed(self, workspace: Workspace) -> None:
+        config = load_config(workspace)
+
+        assert sorted(config.snapshot) == [
+            "config/costs/US.toml",
+            "config/markets/US.toml",
+            "config/strategies/buy_and_hold.toml",
+            "config/tyche.toml",
+        ]
+        assert config.snapshot["config/tyche.toml"]["backtest"] == {
+            "holdout_starts": "2024-01-01",
+            "starting_cash": "10000",
+        }

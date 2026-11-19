@@ -13,6 +13,7 @@ from pathlib import Path
 
 from tests.support.market import QQQ, SPY, bar
 from tests.support.profiles import US_PROFILE
+from tests.support.workspace import BACKTEST
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.config import init_workspace, load_config
 from tyche.core.domain import PriceAdjustment, SleeveStatus, audit_daily_bars
@@ -44,7 +45,8 @@ def run(tmp_path: Path) -> InMemoryJournal:
     workspace = init_workspace(home / "ws", user_home=home)
     workspace.tyche_config.write_text(
         'schema_version = 1\nmarket_profile = "US"\n'
-        '[strategies]\nbuy_and_hold = "0.6"\nhold_qqq = "0.4"\n'
+        + BACKTEST
+        + '[strategies]\nbuy_and_hold = "0.6"\nhold_qqq = "0.4"\n'
     )
     (workspace.strategies_dir / "hold_qqq.toml").write_text(HOLD_QQQ)
     configured = build_strategies(load_config(workspace))
