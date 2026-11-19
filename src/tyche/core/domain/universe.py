@@ -54,6 +54,10 @@ class UniverseRules:
         quality_sessions: How many decision cycles an instrument stays excluded after
             a disqualifying data issue about it is reported, counting the cycle of the
             report.
+        instruments: The candidates: every instrument followed under the profile. A
+            backtest replays these, and paper and live will fetch them; the rules above
+            decide at each cycle which of them are eligible. Each must be quoted in the
+            thresholds' currency and be of an allowed asset class.
     """
 
     asset_classes: tuple[AssetClass, ...]
@@ -61,6 +65,7 @@ class UniverseRules:
     min_average_dollar_volume: Money
     liquidity_sessions: int
     quality_sessions: int
+    instruments: tuple[Instrument, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.asset_classes:
@@ -81,6 +86,19 @@ class UniverseRules:
             raise ValueError("universe rules: liquidity_sessions must be at least 1")
         if self.quality_sessions < 1:
             raise ValueError("universe rules: quality_sessions must be at least 1")
+        if len(set(self.instruments)) != len(self.instruments):
+            raise ValueError("universe rules: instruments are repeated")
+        for instrument in self.instruments:
+            if instrument.currency is not self.currency:
+                raise ValueError(
+                    f"universe rules: {instrument} is quoted in {instrument.currency}, but "
+                    f"the thresholds are in {self.currency}"
+                )
+            if instrument.asset_class not in self.asset_classes:
+                raise ValueError(
+                    f"universe rules: {instrument} is of asset class "
+                    f"{instrument.asset_class}, which is not allowed"
+                )
 
     @property
     def currency(self) -> Currency:

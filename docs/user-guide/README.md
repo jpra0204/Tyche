@@ -8,12 +8,12 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 |---|---|
 | [Installation and your workspace](01-installation.md) | Installing Tyche, creating your private workspace, checking its configuration |
 | [Fetching market data](02-fetching-market-data.md) | Downloading prices, dividends and splits from Yahoo Finance, and reading the data issues |
+| [Running a backtest](03-running-a-backtest.md) | The holdout, the instruments a backtest replays, running `tyche backtest` and reading its record. Metrics and the report are added in PRs 16 and 19 |
 
 ## Planned
 
 | Page | What it will cover | Written in |
 |---|---|---|
-| `03-running-a-backtest.md` | Running a backtest and reading the report | Phase 1 |
 | `04-first-time-setup.md` | IBKR paper account, IB Gateway, Discord webhook, `.env`, choosing a market profile and a risk profile | Phase 2 |
 | `05-daily-and-weekly-routine.md` | What Tyche does by itself and what you check | Phase 2 |
 | `06-reading-discord-reports.md` | The daily summary and each kind of alert | Phase 2 |

@@ -17,6 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from tests.support.market import QQQ, SPY, bar, close_of
+from tests.support.workspace import BACKTEST
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.config import TycheConfig, init_workspace, load_config
 from tyche.core.domain import (
@@ -79,7 +80,7 @@ def configured(tmp_path: Path, strategies: str) -> TycheConfig:
     home.mkdir()
     workspace = init_workspace(home / "ws", user_home=home)
     workspace.tyche_config.write_text(
-        f'schema_version = 1\nmarket_profile = "US"\n[strategies]\n{strategies}\n'
+        f'schema_version = 1\nmarket_profile = "US"\n{BACKTEST}[strategies]\n{strategies}\n'
     )
     (workspace.strategies_dir / "hold_qqq.toml").write_text(HOLD_QQQ)
     return load_config(workspace)

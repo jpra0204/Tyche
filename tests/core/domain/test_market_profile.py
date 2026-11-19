@@ -6,7 +6,14 @@ from typing import Any
 import pytest
 
 from tests.support.profiles import US_EXECUTION, US_RULES
-from tyche.core.domain import Currency, MarketProfile, Money, require_profile_name
+from tyche.core.domain import (
+    AssetClass,
+    Currency,
+    Instrument,
+    MarketProfile,
+    Money,
+    require_profile_name,
+)
 
 US = MarketProfile(
     name="US",
@@ -90,7 +97,16 @@ def test_universe_thresholds_must_be_in_a_cash_currency() -> None:
         US_RULES,
         min_price=Money.of("5", Currency.CAD),
         min_average_dollar_volume=Money.of("1", Currency.CAD),
+        instruments=(),
     )
 
     with pytest.raises(ValueError, match="universe thresholds are in CAD"):
         replace(US, universe=in_cad)
+
+
+def test_every_instrument_must_follow_one_of_the_profiles_calendars() -> None:
+    on_nasdaq_calendar = Instrument("QQQ", "XNAS", Currency.USD, "XNAS", AssetClass.ETF)
+    rules = replace(US_RULES, instruments=(on_nasdaq_calendar,))
+
+    with pytest.raises(ValueError, match="QQQ@XNAS follows calendar XNAS, which is not one"):
+        replace(US, universe=rules)

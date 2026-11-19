@@ -71,6 +71,12 @@ class MarketProfile:
                 f"market profile {self.name}: universe thresholds are in "
                 f"{self.universe.currency}, which is not one of its cash currencies"
             )
+        for instrument in self.universe.instruments:
+            if instrument.calendar not in self.calendars:
+                raise ValueError(
+                    f"market profile {self.name}: {instrument} follows calendar "
+                    f"{instrument.calendar}, which is not one of the profile's"
+                )
 
     def __str__(self) -> str:
         return self.name

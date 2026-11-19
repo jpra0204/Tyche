@@ -5,12 +5,13 @@ from datetime import date
 
 import pytest
 
-from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of
+from tests.support.market import JANUARY_2024, QQQ, SPY, bar, close_of, session
 from tests.support.profiles import US_PROFILE, US_RULES, usd
 from tests.support.recording import Recorder, TickingClock
 from tyche.core.domain import (
     AssetClass,
     Bar,
+    BarHistory,
     Currency,
     DataIssue,
     DataIssueKind,
@@ -153,7 +154,11 @@ class TestNotInProfile:
         assert "quoted in CAD" in event.excluded[0].detail
 
     def test_an_asset_class_the_profile_does_not_allow(self) -> None:
-        h = Harness(replace(PROFILE, universe=replace(RULES, asset_classes=(AssetClass.STOCK,))))
+        h = Harness(
+            replace(
+                PROFILE, universe=replace(RULES, asset_classes=(AssetClass.STOCK,), instruments=())
+            )
+        )
 
         event = h.warm_up(SPY)
 
@@ -345,3 +350,73 @@ class TestFailsClosed:
         with pytest.raises(HandlerError) as raised:
             h.bus.drain()
         assert "out of order" in str(raised.value.__cause__)
+
+
+class TestWarmUp:
+    """Warming up on sessions gives the same judgement as playing them as events."""
+
+    def played(self, sessions: list[tuple[date, list[Bar], tuple[DataIssue, ...]]]) -> Harness:
+        h = Harness()
+        for day, bars, issues in sessions:
+            h.session(
+                day,
+                bars,
+                missing=(QQQ,) if QQQ not in {b.instrument for b in bars} else (),
+                issues=issues,
+            )
+        return h
+
+    def warmed(self, sessions: list[tuple[date, list[Bar], tuple[DataIssue, ...]]]) -> Harness:
+        h = Harness()
+        histories = [
+            BarHistory(
+                instrument,
+                tuple(b for _, bars, _ in sessions for b in bars if b.instrument == instrument),
+                issues=tuple(
+                    i for _, _, issues in sessions for i in issues if i.instrument == instrument
+                ),
+            )
+            for instrument in (QQQ, SPY)
+        ]
+        h.stage.warm_up(histories, {"XNYS": [session(day) for day, _, _ in sessions]})
+        return h
+
+    def history(self) -> list[tuple[date, list[Bar], tuple[DataIssue, ...]]]:
+        # QQQ misses D3 and its data on D4 is suspect; SPY trades every day.
+        days: list[tuple[date, list[Bar], tuple[DataIssue, ...]]] = []
+        for day, close in zip((D1, D2, D3, D4), (10.0, 20.0, 30.0, 40.0), strict=True):
+            bars = [bar(day, close)]
+            if day != D3:
+                bars.append(bar(day, close * 2, instrument=QQQ))
+            found = (issue(DataIssueKind.SUSPECT_MOVE, D4, QQQ),) if day == D4 else ()
+            days.append((day, bars, found))
+        return days
+
+    def test_the_next_decision_matches_one_made_after_playing_every_session(self) -> None:
+        today = [bar(D5, 50.0), bar(D5, 100.0, instrument=QQQ)]
+        played = self.played(self.history())
+        warmed = self.warmed(self.history())
+
+        expected = played.session(D5, today)
+        actual = warmed.session(D5, today)
+
+        assert actual.eligible == expected.eligible
+        assert actual.excluded == expected.excluded
+        assert eligible(actual) == ["SPY"]
+        assert reasons(actual) == {"QQQ": ExclusionReason.DATA_ISSUE}
+
+    def test_publishes_nothing(self) -> None:
+        warmed = self.warmed(self.history())
+
+        assert warmed.recorder.events == []
+
+    def test_needs_sessions_for_every_calendar(self) -> None:
+        h = Harness()
+
+        with pytest.raises(UniverseError, match="no warm-up sessions given for calendar XNYS"):
+            h.stage.warm_up([BarHistory(SPY, ())], {})
+
+    def test_history_needed_covers_the_average_and_the_quarantine(self) -> None:
+        assert UniverseStage(EventBus(TickingClock().now), PROFILE).history_needed == 3
+        longer = replace(PROFILE, universe=replace(RULES, quality_sessions=7))
+        assert UniverseStage(EventBus(TickingClock().now), longer).history_needed == 7

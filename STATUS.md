@@ -20,7 +20,8 @@
 - PR 11 (universe and screening) is merged.
 - PR 12 (strategy interface and benchmark) is merged; ADR-0021 accepted.
 - PR 13 (portfolio construction and strategy config) is merged; ADR-0022 accepted.
-- PR 14 (risk gate and execution) is open for review; ADR-0023 accepted. Kept as one PR, as you chose on 2026-11-19.
+- PR 14 (risk gate and execution) is merged; ADR-0023 accepted.
+- PR 15 (backtest runner) is open for review; ADR-0024 accepted: the holdout starts 2024-01-01, and the candidates are listed in the market profile. **Milestone reached: the first end-to-end backtest.**
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -43,9 +44,11 @@
 - Costs and settlement (PR 9): IBKR Pro Fixed commissions and regulatory fees, adverse slippage, whole-share sizing that leaves room for costs, and T+1 settlement dates, with the rates in a dated `config/costs/US.toml`. `tyche config check` prints when the rates were checked.
 - Account ledger (PR 8): orders with a checked lifecycle, fills, positions at average cost, and cash per currency, settled and unsettled. Refuses short sales, buying beyond the cash, and applying a fill twice.
 
-- Risk gate and execution (PR 14, in review): `PassThroughGate` approves every proposed portfolio unchanged (risk rules come in Phase 2). `ExecutionStage` turns approved weights into whole shares of equity at the last close, keeps a holding within the rebalance band, crosses shares between sleeves and nets the rest into one market order per instrument, fits purchases to the buying power at the next open with a price buffer, splits fills between sleeves pro rata, and places each protective stop when its entry fills ([ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md)). `SleeveBook` gives each strategy its own positions; `AccountState` keeps Tyche's own view of the account and publishes an `AccountEvent` at every close. One `ExecutionPlanEvent` per decision says what each sleeve held, aimed for and ordered, and why. `SimBroker` now cancels on request and pays purchases from buying power (a fix: two purchases at one open could spend the same cash). `[execution]` in `config/markets/US.toml`: `rebalance_band = "0.10"`, `price_buffer = "0.02"`. Checked end to end from workspace config to fills on the real NYSE calendar.
+- Risk gate and execution (PR 14): `PassThroughGate` approves every proposed portfolio unchanged (risk rules come in Phase 2). `ExecutionStage` turns approved weights into whole shares of equity at the last close, keeps a holding within the rebalance band, crosses shares between sleeves and nets the rest into one market order per instrument, fits purchases to the buying power at the next open with a price buffer, splits fills between sleeves pro rata, and places each protective stop when its entry fills ([ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md)). `SleeveBook` gives each strategy its own positions; `AccountState` keeps Tyche's own view of the account and publishes an `AccountEvent` at every close. One `ExecutionPlanEvent` per decision says what each sleeve held, aimed for and ordered, and why. `SimBroker` now cancels on request and pays purchases from buying power (a fix: two purchases at one open could spend the same cash). `[execution]` in `config/markets/US.toml`: `rebalance_band = "0.10"`, `price_buffer = "0.02"`. Checked end to end from workspace config to fills on the real NYSE calendar.
 
-The whole trading path now runs on replayed history, from data to fills. What is missing for a backtest is the runner: choosing the dates, warming up, recording the run and measuring it (PRs 15 and 16). Packages still holding only a docstring: `core.backtest`, `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM, storage and report adapters.
+- Backtest runner (PR 15, in review): `tyche backtest --from <date>` runs the configured strategies on cached history through the whole trading path ([ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md)). It replays the candidates now listed under `[universe]` in `config/markets/US.toml`, warms up the universe and the strategies on the sessions before the first day, reads the cache only (missing history stops it with the `tyche data fetch` command to run), and refuses any range reaching the holdout (`holdout_starts = 2024-01-01` under `[backtest]` in `tyche.toml`, with `starting_cash`). Every run writes `reports/backtests/<run id>/`: `run.json` (code version and commit, config hash and every setting, range, warm-up, data used, outcome), `equity.csv` and `fills.csv`. Checked on real Yahoo data in a scratch workspace: SPY buy-and-hold from 2005-01-03 to 2023-12-29, 4,781 sessions in about 6 seconds, 10,000 to 52,168 USD, three fills, no free riding, Tyche's account view equal to the broker's.
+
+What is missing to judge a strategy is measurement: metrics against the benchmark (PR 16), then the reference validation and the report. Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM, storage and report adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -96,14 +99,14 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 | 11 | Universe and screening (**merged**) | Stages 1 and 2 for the `US` profile, with liquidity, price and data-quality filters | The rules live in a new `[universe]` table of `config/markets/US.toml`. The universe keeps its own last few bars from `BarEvent`s; PR 12 may replace that with whatever it decides for strategies |
 | 12 | Strategy interface and benchmark (**merged**) | The plugin contract, the signals stage, buy-and-hold | Decided 2026-11-18: the window is handed in ([ADR-0021](docs/adr/0021-strategies-see-a-window-handed-in.md)), with positions in the context, rebuild-not-restate for splits, one warm-up path, no partial windows, windows keyed by instrument and timeframe |
 | 13 | Portfolio construction (**merged**) | Several strategies at once, per-strategy budgets, conflict resolution | Decided 2026-11-18 ([ADR-0022](docs/adr/0022-portfolio-targets-as-weights-in-sleeves.md)): targets in weights of equity, sized in shares by execution; one sleeve per strategy; each contribution keeps its own stop; one PR with strategy config. Splitting a netted fill between sleeves moves to PR 14, where fills arrive |
-| 14 | Risk gate (pass-through) and execution (**in review**) | `ApprovedPortfolioEvent` with no rules yet, target-to-order diffing, idempotent order ids | Decided 2026-11-19 ([ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md)): one PR, not split; a stop is placed when its entry fills and works from the next session; sleeves cross first, then the rest is netted and fills are split pro rata; a 10% rebalance band; a 2% price buffer on purchases. Also `AccountEvent`, `CancelRequestEvent`, `ExecutionPlanEvent`, the sleeve book, and a `SimBroker` buying-power fix |
-| 15 | Backtest runner | `tyche backtest`, a run record with config hash and code version, the reserved holdout | Decide: how much recent history to reserve. Warm up the signals windows with `SignalsStage.warm_up` and `history_needed`, and the universe too. Wire `AccountState`, `SleeveBook` (into `SignalsStage` too) and `ExecutionStage`, as `tests/integration/test_config_to_fills.py` does. The run record states the rebalance band and price buffer. **Milestone: first end-to-end backtest** |
+| 14 | Risk gate (pass-through) and execution (**merged**) | `ApprovedPortfolioEvent` with no rules yet, target-to-order diffing, idempotent order ids | Decided 2026-11-19 ([ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md)): one PR, not split; a stop is placed when its entry fills and works from the next session; sleeves cross first, then the rest is netted and fills are split pro rata; a 10% rebalance band; a 2% price buffer on purchases. Also `AccountEvent`, `CancelRequestEvent`, `ExecutionPlanEvent`, the sleeve book, and a `SimBroker` buying-power fix |
+| 15 | Backtest runner (**in review**) | `tyche backtest`, a run record with config hash and code version, the reserved holdout | Decided 2026-11-19 ([ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md)): the holdout starts on a fixed date, 2024-01-01; the candidate instruments are listed in the market profile. Also: cache-only runs, universe warm-up, every run recorded. **Milestone: first end-to-end backtest** (reached) |
 
 **E. Measurement**
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 16 | Metrics | CAGR, volatility, Sharpe, Sortino, max drawdown, turnover, win rate, exposure, all against the benchmark; golden-file regression test | |
+| 16 | Metrics | CAGR, volatility, Sharpe, Sortino, max drawdown, turnover, win rate, exposure, all against the benchmark; golden-file regression test | Decide: how to compare with a benchmark that holds dividends as cash (up to the 10% rebalance band, about 9% cash on SPY over 2005 to 2023), which makes it easier to beat than SPY's total return. Reads `BacktestResult` or the record's `equity.csv` and `fills.csv` |
 | 17 | Reference validation | Our backtester compared with an independent library on a simple strategy, kept as a regression test | Decide: `backtesting.py` or `vectorbt`, after checking their licences |
 | 18 | Example strategies | An ETF trend rotation and a mean-reversion strategy that uses a stop | |
 | 19 | Backtest report | HTML or Markdown with charts, a cost-drag section, the data-limits statement | Decide: chart library |
@@ -136,12 +139,16 @@ Two things in the brief's Phase 1 that this plan moves:
 | Trial registry, holdout and deflated results inside the automated gate | 3 |
 | Paper and live keep the sleeve book across restarts (stored, or rebuilt from fills) and reconcile it with the broker's positions; execution places a stop only after the broker reports the entry's fill (ADR-0023) | 2 |
 | A day order still open at the next decision (possible live, impossible in the simulator) currently halts the run; decide how live execution handles it | 2 |
+| Paper and live fetch exactly the candidate list in the market profile (ADR-0024); `tyche data fetch` could fetch the whole list in one command | 2 |
+| `starting_cash` is in the profile's first cash currency; `CA+US` needs cash per currency | 4 |
+| The Phase 3 promotion check is the one code path allowed to read the holdout, and records that it did (ADR-0024) | 3 |
 
 ## Open decisions
 
 | Decision | Needed by |
 |---|---|
 | Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
+| Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | With PR 15's review |
 | Opening an IBKR account and its paper account, if not done yet; approval can take days | Before Phase 2 |
 | Scheduler: APScheduler or cron in the container | Phase 2 |
 | SQLite migration approach | Phase 2 |
@@ -169,6 +176,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 14. Worth a look in [ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md): the section "Implementation choices made in PR 14, for review there" lists what I decided inside your four answers: proportional shrinking of purchases (rounding down can leave a little cash unspent), sales before purchases, the order-id format, and the three conditions that halt a run.
-2. **Your workspace needs a change for PR 14.** `tyche config check` now reports `execution: Field required`. Copy the `[execution]` table, with its comments, from the `config/markets/US.toml` of a new workspace (`tyche init --home <scratch-folder>`) into yours. Steps in `docs/user-guide/01-installation.md`, troubleshooting. Earlier notes still apply: a workspace from before PR 13 needs `[strategies]` and `config/strategies/buy_and_hold.toml`, one from before PR 11 the `[universe]` table, one from before PR 9 `config/costs/US.toml`.
-3. Phase 1, PR 15: the backtest runner, the first end-to-end backtest, when Pablo says to start it.
+1. Pablo reviews and merges PR 15. Worth a look in [ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md): the section "Implementation choices made in PR 15, for review there" lists what I decided inside your two answers: cache-only runs, the double holdout check, the warm-up rule, the run id and code-version format, and what `run.json` holds.
+2. **Your workspace needs two changes for PR 15.** `tyche config check` will report `backtest: Field required` and `universe.instruments: Field required`. Copy the `[backtest]` table from a new workspace's `config/tyche.toml` (`tyche init --home <scratch-folder>`), and set `starting_cash` to the amount you would really trade with; copy the `instruments` list into the `[universe]` table of your `config/markets/US.toml`. Then fetch the listed instruments from a little before your first backtest day. Steps in `docs/user-guide/03-running-a-backtest.md`. Earlier notes still apply to older workspaces (`[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
+3. Phase 1, PR 16: metrics against the benchmark, when Pablo says to start it.

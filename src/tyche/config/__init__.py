@@ -9,7 +9,8 @@ Available now:
   ``ConfigError`` and Tyche refuses to start (ADR-0010). The active market profile
   comes with its trading costs (``config/costs/<PROFILE>.toml``, ADR-0020), and the
   strategy instances with their budgets (``[strategies]`` in ``tyche.toml``) and
-  plugin parameters (``config/strategies/<id>.toml``), as ``StrategySpec``s (ADR-0022).
+  plugin parameters (``config/strategies/<id>.toml``), as ``StrategySpec``s (ADR-0022);
+  the backtest settings, with the reserved holdout, from ``[backtest]`` (ADR-0024).
 
 The file schemas live here; the core only receives domain objects (ADR-0017).
 """
@@ -17,6 +18,7 @@ The file schemas live here; the core only receives domain objects (ADR-0017).
 from tyche.config.exchanges import KNOWN_EXCHANGES, ExchangeInfo
 from tyche.config.loader import (
     SCHEMA_VERSION,
+    BacktestFile,
     ConfigError,
     CostsFile,
     MarketProfileFile,
@@ -42,6 +44,7 @@ __all__ = [
     "HOME_ENV_VAR",
     "KNOWN_EXCHANGES",
     "SCHEMA_VERSION",
+    "BacktestFile",
     "ConfigError",
     "CostsFile",
     "ExchangeInfo",

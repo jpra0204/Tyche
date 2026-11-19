@@ -11,6 +11,7 @@ from tyche.core.domain import (
     AssetClass,
     Currency,
     ExecutionRules,
+    Instrument,
     MarketProfile,
     Money,
     UniverseRules,
@@ -27,6 +28,10 @@ US_RULES = UniverseRules(
     min_average_dollar_volume=usd("10000000"),
     liquidity_sessions=20,
     quality_sessions=5,
+    instruments=(
+        Instrument("SPY", "ARCX", Currency.USD, "XNYS", AssetClass.ETF),
+        Instrument("QQQ", "XNAS", Currency.USD, "XNYS", AssetClass.ETF),
+    ),
 )
 
 US_EXECUTION = ExecutionRules(rebalance_band=Decimal("0.10"), price_buffer=Decimal("0.02"))
@@ -37,6 +42,7 @@ CA_RULES = replace(
     US_RULES,
     min_price=Money.of("5.00", Currency.CAD),
     min_average_dollar_volume=Money.of("10000000", Currency.CAD),
+    instruments=(),
 )
 
 CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION)

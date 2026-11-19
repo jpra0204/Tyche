@@ -28,7 +28,7 @@ uv run tyche data fetch SPY --exchange ARCX
 | `--from` | First date, `YYYY-MM-DD`. Defaults to 2000-01-01. The earliest allowed is 1990-01-01. |
 | `--to` | Last date. Defaults to today. |
 
-Tyche does not check that the exchange you give is the one the symbol really trades on: Yahoo answers by symbol alone. If you are unsure, the exchange is shown on the fund's or company's own website. Which of the instruments you fetch may be traded is decided by the universe rules in `config/markets/US.toml` (see [installation](01-installation.md)); the list of instruments a backtest uses comes with `tyche backtest` in PR 15.
+Tyche does not check that the exchange you give is the one the symbol really trades on: Yahoo answers by symbol alone. If you are unsure, the exchange is shown on the fund's or company's own website. A backtest replays the instruments listed under `[universe]` in `config/markets/US.toml`, and the universe rules there decide which may be traded at each decision ([running a backtest](03-running-a-backtest.md)). Fetch every listed instrument, from a little before the first day you plan to backtest.
 
 Several symbols on the same exchange can be fetched at once:
 

@@ -1,12 +1,14 @@
-"""The `tyche` command: version, init and config check, run as a user would."""
+"""The `tyche` command, run as a user would: version, init, config, data and backtest."""
 
 import re
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date
 from importlib.metadata import version
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -14,9 +16,13 @@ from typer.testing import CliRunner
 import tyche
 from tests.adapters.data.test_yfinance_source import row
 from tests.support.market import JANUARY_2024
+from tests.support.workspace import BACKTEST
+from tyche import cli
+from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
 from tyche.cli import app
 from tyche.runtime import data as runtime_data
+from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
 
 runner = CliRunner()
 
@@ -133,7 +139,9 @@ class TestConfigCheck:
         runner.invoke(app, ["init"])
         config_file = home / "tyche-workspace" / "config" / "tyche.toml"
         config_file.write_text(
-            'schema_version = 1\nmarket_profile = "US"\n[strategies]\nbuy_and_hold = "0.8"\n'
+            'schema_version = 1\nmarket_profile = "US"\n'
+            + BACKTEST
+            + '[strategies]\nbuy_and_hold = "0.8"\n'
         )
 
         result = runner.invoke(app, ["config", "check"])
@@ -339,3 +347,80 @@ class TestDataFetch:
         assert "1 data issue(s):" in result.stdout
         assert "2024-01-17 missing_session" in result.stdout
         assert "... and" not in result.stdout
+
+
+class TestBacktest:
+    @pytest.fixture
+    def fetched(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """A workspace whose cache holds SPY and QQQ for October to December 2023."""
+        nyse = ExchangeCalendarsCalendar("XNYS", first=date(2023, 1, 1), last=date(2024, 1, 31))
+
+        def fake_fetcher(
+            cache_dir: Path | None = None,
+        ) -> Callable[[str, date, date], list[YahooRow]]:
+            def fetch(ticker: str, start: date, end: date) -> list[YahooRow]:
+                days = [s.day for s in nyse.sessions_between(start, end) if s.day < end]
+                if ticker == "QQQ":  # Yahoo misses one QQQ session
+                    days.remove(date(2023, 11, 15))
+                return [row(day, 400.0 + i) for i, day in enumerate(days)]
+
+            return fetch
+
+        monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
+        assert runner.invoke(app, ["init"]).exit_code == 0
+        for symbol, exchange in (("SPY", "ARCX"), ("QQQ", "XNAS")):
+            arguments = ["data", "fetch", symbol, "--exchange", exchange]
+            result = runner.invoke(app, [*arguments, "--from", "2023-10-02", "--to", "2023-12-29"])
+            assert result.exit_code == 0, result.output
+        return home / "tyche-workspace"
+
+    def test_runs_records_and_summarises(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["backtest", "--from", "2023-11-01"])
+
+        assert result.exit_code == 0, result.output
+        out = result.stdout
+        assert re.search(r"^Backtest \d{8}T\d{6}Z-[0-9a-f]{8}: completed$", out, re.MULTILINE)
+        assert "Range:         2023-11-01 to 2023-12-31, 41 sessions" in out
+        assert "Warm-up:       20 sessions from 2023-10-04 (20 needed)" in out
+        assert "Starting cash: 10000 USD" in out
+        assert "Fills:         1; free-riding violations: 0" in out
+        assert "Data issues:   1, listed by `tyche data fetch`" in out
+        record = re.search(r"Record:\s+(\S+)", out)
+        assert record is not None
+        assert Path(record.group(1)).is_file()
+        assert Path(record.group(1)).is_relative_to(fetched / "reports" / "backtests")
+
+    def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])
+
+        assert result.exit_code == 1
+        assert "2024-01-01 on is the reserved holdout" in plain(result.stderr)
+        assert not (fetched / "reports").exists()
+
+    def test_missing_history_says_what_to_fetch(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["backtest", "--from", "2023-06-01"])
+
+        assert result.exit_code == 1
+        assert "tyche data fetch SPY --exchange ARCX --from 2023-05-03" in plain(result.stderr)
+
+    def test_needs_a_first_date(self, home: Path) -> None:
+        result = runner.invoke(app, ["backtest"])
+
+        assert result.exit_code == 2
+        assert "--from" in plain(result.output)
+
+    def test_a_run_that_halts_is_recorded_and_fails_the_command(
+        self, fetched: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def halting(*args: Any, **kwargs: Any) -> BacktestOutcome:
+            outcome = run_configured_backtest(*args, **kwargs)
+            halted = replace(outcome.result.run, completed=False, failure="a stage failed")
+            return replace(outcome, result=replace(outcome.result, run=halted))
+
+        monkeypatch.setattr(cli, "run_configured_backtest", halting)
+
+        result = runner.invoke(app, ["backtest", "--from", "2023-11-01"])
+
+        assert result.exit_code == 1
+        assert ": halted" in result.stdout
+        assert "Error: the run halted: a stage failed" in plain(result.stderr)

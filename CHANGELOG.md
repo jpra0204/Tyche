@@ -71,7 +71,16 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `tyche config check` prints the rebalance band and the price buffer.
 - ADR-0023. Backtesting internals: from approved weights to orders. Learning note: sub-ledgers that add up.
 
+- `tyche backtest` (Phase 1, PR 15): runs the configured strategies on cached history through the whole trading path and writes a run record to `reports/backtests/<run id>/` in the workspace: `run.json` (code version, config hash and every setting, range, warm-up, holdout, data used, outcome), `equity.csv` and `fills.csv`. The first end-to-end backtest.
+- The holdout: history from `holdout_starts` (2024-01-01 in the template) is refused to every backtest (ADR-0024).
+- `run_backtest`, `BacktestSpec`, `BacktestResult`, `BacktestSettings`, `HoldoutError` and `BacktestError` in `tyche.core.backtest`. `UniverseStage.warm_up` and `history_needed`, so the first decision is judged on the sessions before it.
+- `CacheOnlySource` and `NotCachedError`: a backtest reads only the cache and names the `tyche data fetch` command for anything missing.
+- `TycheConfig.backtest` and `TycheConfig.snapshot`; `Workspace.reports_dir`.
+- ADR-0024. User guide: running a backtest. Backtesting internals: the backtest runner. Learning note: the holdout and the run record.
+
 ### Changed
+
+- `config/tyche.toml` requires a `[backtest]` table (`holdout_starts`, a TOML date, and `starting_cash`), and `config/markets/<PROFILE>.toml` requires an `instruments` list under `[universe]`: the candidates a backtest replays. `UniverseRules` gains `instruments`, checked against the thresholds' currency, the allowed asset classes and the profile's calendars. A workspace created before PR 15 must copy both from a new one (user guide, running a backtest, troubleshooting).
 
 - `MarketProfile` has a required `execution` (`ExecutionRules`: `rebalance_band` and `price_buffer`), read from a new `[execution]` table in `config/markets/<PROFILE>.toml`. A workspace created before PR 14 must copy the table from a new one (user guide, installation, troubleshooting).
 

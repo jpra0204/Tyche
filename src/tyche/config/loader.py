@@ -33,12 +33,15 @@ from pydantic import (
 )
 from pydantic.types import Strict
 
+from tyche.config.exchanges import KNOWN_EXCHANGES
 from tyche.config.workspace import Workspace
+from tyche.core.backtest.settings import BacktestSettings
 from tyche.core.domain import (
     AssetClass,
     CommissionSchedule,
     Currency,
     ExecutionRules,
+    Instrument,
     MarketProfile,
     Money,
     RegulatoryFees,
@@ -91,6 +94,13 @@ ExactDecimal = Annotated[Decimal, BeforeValidator(_exact_decimal)]
 StrictDate = Annotated[date, Strict()]
 
 
+class BacktestFile(_ConfigFile):
+    """The ``[backtest]`` table of ``tyche.toml`` (ADR-0024)."""
+
+    holdout_starts: StrictDate
+    starting_cash: ExactDecimal
+
+
 class TycheFile(_ConfigFile):
     """``config/tyche.toml``."""
 
@@ -98,6 +108,7 @@ class TycheFile(_ConfigFile):
     market_profile: StrictStr
     strategies: dict[StrictStr, ExactDecimal]
     """Strategy id to budget, a fraction of account equity (ADR-0022)."""
+    backtest: BacktestFile
 
 
 class StrategyFile(_ConfigFile):
@@ -111,6 +122,25 @@ class StrategyFile(_ConfigFile):
     parameters: dict[StrictStr, Any] = {}
 
 
+class InstrumentFile(_ConfigFile):
+    """One entry of ``instruments`` in the ``[universe]`` table."""
+
+    symbol: StrictStr
+    exchange: StrictStr
+    asset_class: AssetClass
+
+    def to_domain(self) -> Instrument:
+        info = KNOWN_EXCHANGES.get(self.exchange)
+        if info is None:
+            known = ", ".join(sorted(KNOWN_EXCHANGES))
+            raise ValueError(
+                f"{self.symbol}: unknown exchange {self.exchange!r}; known exchanges: {known}"
+            )
+        return Instrument(
+            self.symbol, self.exchange, info.currency, info.calendar, self.asset_class
+        )
+
+
 class UniverseFile(_ConfigFile):
     """The ``[universe]`` table of a market profile file."""
 
@@ -120,14 +150,22 @@ class UniverseFile(_ConfigFile):
     min_average_dollar_volume: ExactDecimal
     liquidity_sessions: StrictInt
     quality_sessions: StrictInt
+    instruments: tuple[InstrumentFile, ...]
 
     def to_domain(self) -> UniverseRules:
+        if not self.instruments:
+            raise ValueError("universe.instruments: list at least one instrument")
+        try:
+            instruments = tuple(entry.to_domain() for entry in self.instruments)
+        except ValueError as error:
+            raise ValueError(f"universe.instruments: {error}") from None
         return UniverseRules(
             asset_classes=self.asset_classes,
             min_price=Money(self.min_price, self.currency),
             min_average_dollar_volume=Money(self.min_average_dollar_volume, self.currency),
             liquidity_sessions=self.liquidity_sessions,
             quality_sessions=self.quality_sessions,
+            instruments=instruments,
         )
 
 
@@ -238,16 +276,21 @@ class TycheConfig:
         market_profile: The active market profile.
         costs: What trading costs under that profile, and when trades settle.
         strategies: The configured strategy instances, ordered by id.
+        backtest: The starting cash and the reserved holdout (ADR-0024).
         config_hash: Fingerprint of every loaded setting. Two runs with the same hash
             used the same configuration. Comments, blank lines and key order do not
             affect it; any change of value does.
+        snapshot: Every loaded setting, by file, exactly as hashed: what a run record
+            stores so that the run can be reproduced.
     """
 
     workspace: Workspace
     market_profile: MarketProfile
     costs: TradingCosts
     strategies: tuple[StrategySpec, ...]
+    backtest: BacktestSettings
     config_hash: str
+    snapshot: Mapping[str, Any]
 
     @property
     def budgets(self) -> dict[str, Decimal]:
@@ -310,19 +353,28 @@ def load_config(workspace: Workspace) -> TycheConfig:
 
     strategies, strategy_files = _load_strategies(workspace, tyche, tyche_name)
 
+    try:
+        backtest = BacktestSettings(
+            holdout_starts=tyche.backtest.holdout_starts,
+            starting_cash=Money(tyche.backtest.starting_cash, profile.cash_currencies[0]),
+        )
+    except ValueError as error:
+        raise ConfigError(f"{tyche_name}: backtest: {error}") from None
+
+    files = {
+        tyche_name: tyche,
+        profile_name: profile_file,
+        costs_name: costs_file,
+        **strategy_files,
+    }
     return TycheConfig(
         workspace=workspace,
         market_profile=profile,
         costs=costs,
         strategies=strategies,
-        config_hash=config_hash(
-            {
-                tyche_name: tyche,
-                profile_name: profile_file,
-                costs_name: costs_file,
-                **strategy_files,
-            }
-        ),
+        backtest=backtest,
+        config_hash=config_hash(files),
+        snapshot=config_snapshot(files),
     )
 
 
@@ -362,16 +414,18 @@ def _load_strategies(
     return tuple(specs), files
 
 
+def config_snapshot(files: Mapping[str, BaseModel]) -> dict[str, Any]:
+    """Validated config files as plain JSON values, keyed by their path in the workspace."""
+    return {path: model.model_dump(mode="json") for path, model in files.items()}
+
+
 def config_hash(files: Mapping[str, BaseModel]) -> str:
     """Fingerprint validated config files, keyed by their path in the workspace.
 
     The hash covers parsed values, not file text, so reformatting a file or editing a
     comment does not change it. Secrets in ``.env`` are never part of it.
     """
-    payload = {
-        "scheme": HASH_SCHEME,
-        "files": {path: model.model_dump(mode="json") for path, model in files.items()},
-    }
+    payload = {"scheme": HASH_SCHEME, "files": config_snapshot(files)}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

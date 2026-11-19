@@ -32,18 +32,21 @@ Two limits worth knowing:
   ``liquidity_sessions``.
 """
 
-from collections import deque
+from collections import defaultdict, deque
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from tyche.core.domain import (
     DISQUALIFYING_ISSUES,
     Bar,
+    BarHistory,
     DataIssue,
     Exclusion,
     ExclusionReason,
     Instrument,
     MarketProfile,
+    Session,
     Timeframe,
     UniverseMember,
 )
@@ -74,7 +77,9 @@ class _Quarantine:
 class UniverseStage:
     """Pipeline stage 1. Publishes a ``UniverseEvent`` for every ``DataReadyEvent``.
 
-    Subscribe it before anything is published, like every other component.
+    Subscribe it before anything is published, like every other component, and call
+    ``warm_up`` before the first event if the first decision should be judged on the
+    sessions before it.
 
     Args:
         bus: The run's event bus.
@@ -96,10 +101,56 @@ class UniverseStage:
         bus.subscribe(DataQualityEvent, self._on_issue, name=SUBSCRIBER)
         bus.subscribe(DataReadyEvent, self._on_ready, name=SUBSCRIBER)
 
+    @property
+    def history_needed(self) -> int:
+        """Sessions the stage must have seen to judge as it would in the middle of a run.
+
+        Enough for the liquidity average, and enough to remember a data problem that
+        would still keep an instrument out.
+        """
+        return max(self._rules.liquidity_sessions, self._rules.quality_sessions)
+
+    def warm_up(
+        self, histories: Iterable[BarHistory], sessions: Mapping[str, Sequence[Session]]
+    ) -> None:
+        """Learn the sessions before the run as if they had been played (ADR-0024).
+
+        Keeps each instrument's last bars and the data problems still holding it out,
+        exactly as the same sessions arriving as events would, but publishes nothing.
+        Call it before the run's first event, with each calendar's sessions in order
+        and all of them before that event.
+
+        Args:
+            histories: Cached history of each instrument, from at least the first of
+                ``sessions``. Bars outside ``sessions`` are ignored.
+            sessions: For each calendar the instruments follow, the sessions to learn.
+        """
+        for history in histories:
+            instrument = history.instrument
+            calendar_sessions = sessions.get(instrument.calendar)
+            if calendar_sessions is None:
+                raise UniverseError(
+                    f"no warm-up sessions given for calendar {instrument.calendar} of {instrument}"
+                )
+            bars = {bar.timestamp: bar for bar in history.bars}
+            issues: dict[date, list[DataIssue]] = defaultdict(list)
+            for issue in history.issues:
+                if issue.session_day is not None:
+                    issues[issue.session_day].append(issue)
+            for session in calendar_sessions:
+                bar = bars.get(session.closes_at)
+                if bar is not None:
+                    self._add_bar(bar)
+                for issue in issues.get(session.day, ()):
+                    self._note_issue(issue)
+                self._count_down(instrument)
+
     # --- what the stage is told ------------------------------------------------------
 
     def _on_bar(self, envelope: Envelope[BarEvent]) -> None:
-        bar = envelope.event.bar
+        self._add_bar(envelope.event.bar)
+
+    def _add_bar(self, bar: Bar) -> None:
         _require_daily(bar.timeframe, f"a bar of {bar.instrument}")
         window = self._bars.setdefault(bar.instrument, deque(maxlen=self._rules.liquidity_sessions))
         if window and bar.timestamp <= window[-1].timestamp:
@@ -110,7 +161,9 @@ class UniverseStage:
         window.append(bar)
 
     def _on_issue(self, envelope: Envelope[DataQualityEvent]) -> None:
-        issue = envelope.event.issue
+        self._note_issue(envelope.event.issue)
+
+    def _note_issue(self, issue: DataIssue) -> None:
         if issue.kind in DISQUALIFYING_ISSUES and issue.session_day is not None:
             self._quarantine[issue.instrument] = _Quarantine(issue, self._rules.quality_sessions)
 
