@@ -8,6 +8,7 @@ import csv
 import json
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -16,9 +17,10 @@ from tests.adapters.data.test_yfinance_source import FakeFetch, row
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data import YFinanceSource
 from tyche.config import TycheConfig, init_workspace, load_config
-from tyche.core.backtest import HoldoutError
-from tyche.core.domain import AssetClass
+from tyche.core.backtest import BacktestMetrics, BacktestResult, HoldoutError, MetricsError
+from tyche.core.domain import AssetClass, Currency
 from tyche.core.sim import SimClock
+from tyche.runtime import backtest as runtime_backtest
 from tyche.runtime.backtest import (
     BacktestOutcome,
     BacktestRequestError,
@@ -77,6 +79,7 @@ class TestTheRunRecord:
         assert sorted(p.name for p in outcome.record_dir.iterdir()) == [
             "equity.csv",
             "fills.csv",
+            "metrics.json",
             "run.json",
         ]
 
@@ -127,6 +130,15 @@ class TestTheRunRecord:
         assert outcome["free_riding"] == 0
         assert outcome["agrees_with_broker"] is True
         assert outcome["final_equity"]["currency"] == "USD"
+        assert (outcome["metrics"], outcome["metrics_error"]) == ("metrics.json", None)
+
+    def test_names_the_benchmark_and_the_data_it_used(self, config: TycheConfig) -> None:
+        record = json.loads((backtest(config).record_dir / "run.json").read_text())
+
+        benchmark = record["benchmark"]
+        assert benchmark["instrument"] == "SPY@ARCX"
+        assert benchmark["method"].startswith("total return")
+        assert benchmark["data"] == record["data"][0]
 
     def test_equity_has_one_row_per_session_close(self, config: TycheConfig) -> None:
         outcome = backtest(config)
@@ -134,6 +146,7 @@ class TestTheRunRecord:
         equity = rows(outcome.record_dir / "equity.csv")
         assert len(equity) == len(NYSE.sessions_between(FIRST, LAST))
         assert equity[0]["equity"] == "10000"
+        assert equity[0]["benchmark_equity"] == "10000.00"
         assert equity[0]["currency"] == "USD"
         last = outcome.result.account.equity(outcome.result.account.currencies[0])
         assert equity[-1]["equity"] == str(last.amount)
@@ -147,6 +160,55 @@ class TestTheRunRecord:
             "2023-11-02",
         )
         assert float(fill["commission"]) >= 1.0  # at least the minimum commission
+
+    def test_metrics_compare_the_run_with_the_benchmark(self, config: TycheConfig) -> None:
+        outcome = backtest(config)
+        metrics = json.loads((outcome.record_dir / "metrics.json").read_text())
+
+        assert metrics["metrics_format"] == 1
+        assert metrics["run_id"] == outcome.run_id
+        assert metrics["conventions"] == {
+            "sessions_per_year": 252,
+            "days_per_year": "365.25",
+            "risk_free_rate": "0",
+        }
+        strategy, benchmark = metrics["strategy"], metrics["benchmark"]
+        assert benchmark["instrument"] == "SPY@ARCX"
+        assert strategy["start_equity"] == benchmark["start_equity"] == "10000.00"
+        assert strategy["sessions"] == benchmark["sessions"]
+        # SPY closes at 400 plus one a session from the first cached day, pays nothing,
+        # and the benchmark holds it from the first close to the last.
+        days = [s.day for s in NYSE.sessions_between(CACHED_FROM, CACHED_TO)]
+        first_close, last_close = 400 + days.index(FIRST), 400 + days.index(LAST)
+        expected = Decimal(10000) * last_close / first_close
+        assert benchmark["end_equity"] == str(expected.quantize(Decimal("0.01")))
+        assert benchmark["exposure"] == "1.000000"
+        assert Decimal(strategy["exposure"]) < 1
+        versus = Decimal(strategy["total_return"]) - Decimal(benchmark["total_return"])
+        assert abs(Decimal(metrics["versus_benchmark"]["total_return"]) - versus) <= Decimal(
+            "0.000001"
+        )
+        assert metrics["trading"]["closed_trades"] == 0
+        assert metrics["trading"]["win_rate"] is None
+        assert metrics["trading"]["still_open"] == 1
+        assert Decimal(metrics["trading"]["costs"]) >= 1
+
+    def test_a_run_that_cannot_be_measured_is_still_recorded(
+        self, config: TycheConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def cannot_measure(result: BacktestResult, currency: Currency) -> BacktestMetrics:
+            raise MetricsError("no equity to measure")
+
+        monkeypatch.setattr(runtime_backtest, "measure_backtest", cannot_measure)
+
+        outcome = backtest(config)
+
+        assert (outcome.metrics, outcome.metrics_error) == (None, "no equity to measure")
+        record = json.loads((outcome.record_dir / "run.json").read_text())
+        assert record["outcome"]["metrics"] is None
+        assert record["outcome"]["metrics_error"] == "no equity to measure"
+        assert not (outcome.record_dir / "metrics.json").exists()
+        assert {row["benchmark_equity"] for row in rows(outcome.record_dir / "equity.csv")} == {""}
 
     def test_two_runs_in_the_same_second_get_their_own_records(self, config: TycheConfig) -> None:
         first, second = backtest(config), backtest(config)

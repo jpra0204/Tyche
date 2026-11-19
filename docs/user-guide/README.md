@@ -8,7 +8,7 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 |---|---|
 | [Installation and your workspace](01-installation.md) | Installing Tyche, creating your private workspace, checking its configuration |
 | [Fetching market data](02-fetching-market-data.md) | Downloading prices, dividends and splits from Yahoo Finance, and reading the data issues |
-| [Running a backtest](03-running-a-backtest.md) | The holdout, the instruments a backtest replays, running `tyche backtest` and reading its record. Metrics and the report are added in PRs 16 and 19 |
+| [Running a backtest](03-running-a-backtest.md) | The holdout, the instruments a backtest replays, the benchmark, running `tyche backtest`, its metrics and its record. The report with charts is added in PR 19 |
 
 ## Planned
 

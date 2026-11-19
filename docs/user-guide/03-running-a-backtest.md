@@ -4,7 +4,7 @@ A backtest replays history through exactly the code that will later trade on pap
 
 You need a workspace with fetched data: see [Installation and your workspace](01-installation.md) and [Fetching market data](02-fetching-market-data.md).
 
-*Metrics (PR 16) and the report with charts (PR 19) come next. For now a backtest prints the final equity and writes the equity curve and the fills to files.*
+*The report with charts comes in PR 19. For now a backtest prints its metrics beside the benchmark's and writes them, the equity curve and the fills to files.*
 
 ## The holdout: history you cannot backtest
 
@@ -32,6 +32,19 @@ instruments = [
 ```
 
 These are the **candidates**. At every decision the universe rules in the same table decide which of them are eligible (price, liquidity, data quality), and only eligible ones are offered to your strategies. A strategy can only trade an instrument listed here: one that names an unlisted instrument never trades.
+
+## The benchmark
+
+Every backtest is measured against the **benchmark**, named in the same file:
+
+```toml
+[benchmark]
+symbol = "SPY"
+exchange = "ARCX"
+asset_class = "etf"
+```
+
+The benchmark is not a strategy that trades. It is what simply holding SPY paid over the same days: the backtest's starting equity buys SPY at the first close, and every dividend is reinvested at the close of its ex-date, with no commissions and no idle cash ([ADR-0025](../adr/0025-metrics-against-the-benchmarks-total-return.md)). It is a harder bar than Tyche's own buy-and-hold strategy, and the right one: it is what you would get without Tyche. It need not be one of the candidates, but its history must be fetched like theirs.
 
 ## Fetch the history first
 
@@ -71,16 +84,46 @@ Backtest 20261119T172646Z-75505646: completed
   Starting cash: 10000 USD
   Final equity:  52168.20 USD (+421.68%)
   Fills:         3; free-riding violations: 0
+  Metrics           strategy  SPY@ARCX total return
+    CAGR               9.09%       9.59%
+    Volatility        18.28%      19.31%
+    Sharpe (rf 0)       0.57        0.57
+    Sortino (rf 0)      0.80        0.80
+    Max drawdown      53.23%      55.20%
+    Exposure          94.25%     100.00%
+  Turnover:      0.03 a year; costs 3.03 USD
+  Trades:        0 closed, win rate n/a; 1 still open
   Code:          0.0.1+g4ed905d3be34
   Record:        /Users/<you>/tyche-workspace/reports/backtests/20261119T172646Z-75505646/run.json
 ```
 
 - **Range** is what was traded; **Warm-up** is the history learned before it. If fewer warm-up sessions were available than needed, the first decisions wait for enough history.
-- **Final equity** is cash plus holdings at the last close. The change is total, not yearly; yearly figures and the comparison with the benchmark come with the metrics (PR 16).
+- **Final equity** is cash plus holdings at the last close. The change is total, not yearly.
+- **Metrics** put your strategies, all together, beside the benchmark. Both start from the same equity at the same first close and are measured on the same closes with the same formulas, defined below.
+- **Turnover, costs and trades** are about your strategies only: the benchmark pays nothing and never trades.
 - **Fills** counts every trade. **Free-riding violations** should always be 0 ([costs and settlement](../developer-guide/ibkr-canada-costs-and-settlement.md)).
 - **Code** is Tyche's version and the git commit it ran from. If the code had uncommitted changes, it ends in `.dirty` and a warning says the commit alone cannot reproduce the run.
 
 A run of 19 years with two instruments takes a few seconds.
+
+## The metrics
+
+| Figure | Meaning |
+|---|---|
+| CAGR | Growth per year, compounded, over calendar years. Over a run of a few months it is a figure, not a forecast |
+| Volatility | How much the daily returns vary (their standard deviation), scaled to a year with 252 sessions |
+| Sharpe (rf 0) | Average daily return over its volatility, scaled to a year. Above the benchmark's means more return for the ups and downs taken |
+| Sortino (rf 0) | Like Sharpe, but only the falls count as risk |
+| Max drawdown | The largest fall from a peak close to a later close. `metrics.json` adds when it peaked, bottomed and recovered |
+| Exposure | The average share of equity invested; the rest was cash |
+| Turnover | The value of everything bought and sold, per year, as a multiple of the average equity |
+| Trades | A trade runs from the purchase that opens a position to the sale that closes it. The win rate is the share of closed trades that made money after commissions; dividends received are not counted in it |
+
+*rf 0* means the ratios are measured over a risk-free rate of zero, because cash earns nothing in the simulator. They read higher than ratios published over Treasury bill rates, for your strategy and the benchmark alike, so compare them with each other, not with outside figures.
+
+A figure that cannot be computed (a Sharpe ratio for a run with no ups and downs, a win rate with no closed trade) shows as `n/a`.
+
+**These numbers are not a verdict.** A strategy that shows a higher CAGR or Sharpe than the benchmark on one backtest has not proven an edge: it may be luck, or the result of trying many versions. Out-of-sample testing and overfitting checks (PRs 20 and 21) come before any such claim.
 
 ## The record
 
@@ -89,8 +132,9 @@ Every run writes a folder under `reports/backtests/` in your workspace, named af
 | File | Holds |
 |---|---|
 | `run.json` | What ran: the code version, the config hash and every setting behind it, the range and warm-up, the holdout, the starting cash, the rebalance band and price buffer, each strategy with its version and budget, the data used (when it was fetched, how many bars, any data issues) and the outcome |
-| `equity.csv` | Your account at every session close: equity, cash, settled cash and the value of holdings |
+| `equity.csv` | Your account at every session close: equity, cash, settled cash and the value of holdings; and the benchmark's equity at the same close |
 | `fills.csv` | Every fill: date, instrument, side, shares, price after slippage, commission and fees, settlement date |
+| `metrics.json` | The metrics of your strategies and of the benchmark, the differences, and the conventions used (sessions per year, the risk-free rate). Fractions are written as decimals: `"0.090912"` is 9.09% |
 
 Records are part of your workspace's private git repository: commit them with the configuration that produced them. Every run is recorded, including one that halts, because later phases count how many experiments were tried before a result was found.
 
@@ -99,7 +143,8 @@ Records are part of your workspace's private git repository: commit them with th
 With the template's buy-and-hold on SPY:
 
 - It buys at the first open with about 98% of the cash: the rest is the price buffer for the open being higher than the close ([installation, section 4](01-installation.md#4-check-the-configuration)).
-- Dividends arrive as cash and stay as cash until the holding is more than 10% below its target (the rebalance band); then it buys more. Over 2005 to 2023 that happens twice, and the run ends with about 9% in cash. This cash drag makes buy-and-hold look a little worse than SPY's published total return, which reinvests every dividend. Keep it in mind when the metrics compare a strategy with it.
+- Dividends arrive as cash and stay as cash until the holding is more than 10% below its target (the rebalance band); then it buys more. Over 2005 to 2023 that happens twice, and the run ends with about 9% in cash.
+- So it trails the benchmark: 9.09% a year against 9.59% for SPY with every dividend reinvested. That half point is what commissions and idle cash cost buy-and-hold through Tyche. Its drawdown is a little smaller for the same reason: the cash did not fall.
 
 ## Troubleshooting
 
@@ -108,5 +153,8 @@ With the template's buy-and-hold on SPY:
 | `… is the reserved holdout; end the backtest before 2024-01-01` | Give an earlier `--to`, or leave it out to stop the day before the holdout. |
 | `… are not in the cache yet. Fetch it first:` | Run the command printed below the message, then the backtest again. |
 | `config/tyche.toml: … backtest: Field required` | Your workspace was created before PR 15. Copy the `[backtest]` table, with its comments, from the `config/tyche.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
+| `config/markets/US.toml: … benchmark: Field required` | Your workspace was created before PR 16. Copy the `[benchmark]` table, with its comments, from the `config/markets/US.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
+| `no bar of the benchmark SPY@ARCX on or before …` | Fetch the benchmark's history from before your first day, as for a candidate. |
+| `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json`; the message says why. |
 | `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, into the `[universe]` table of your `config/markets/US.toml`. |
 | `Error: the run halted: …` | A stage found something it cannot handle and stopped the run rather than guess (fail closed). The record is still written. The message names the problem; please share it, since it usually means a bug. |

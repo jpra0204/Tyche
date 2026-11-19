@@ -187,14 +187,20 @@ class MarketProfileFile(_ConfigFile):
     calendars: tuple[StrictStr, ...]
     universe: UniverseFile
     execution: ExecutionFile
+    benchmark: InstrumentFile
 
     def to_domain(self) -> MarketProfile:
+        try:
+            benchmark = self.benchmark.to_domain()
+        except ValueError as error:
+            raise ValueError(f"benchmark: {error}") from None
         return MarketProfile(
             name=self.name,
             cash_currencies=self.cash_currencies,
             calendars=self.calendars,
             universe=self.universe.to_domain(),
             execution=self.execution.to_domain(),
+            benchmark=benchmark,
         )
 
 

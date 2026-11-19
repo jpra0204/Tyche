@@ -190,6 +190,7 @@ flowchart TD
 |---|---|
 | Holdout | `BacktestSettings.require_before_holdout(last)`: a run whose last day is on or after `holdout_starts` is refused before anything is built or read. A provider returning a bar after the last day stops the run too |
 | Candidates | `MarketProfile.universe.instruments`, loaded in the order listed |
+| Benchmark | `MarketProfile.benchmark`, loaded over the same days through the same provider, or the candidate's own history when it is one. With no bar at or before the first close, the run is refused |
 | Warm-up length | `max(UniverseStage.history_needed, SignalsStage.history_needed)`: the liquidity average, the data-issue memory and each strategy's lookback. For the template, 20 sessions |
 | Warm-up | `UniverseStage.warm_up` learns the bars and data issues of those sessions as if they had been played; `SignalsStage.warm_up` fills the windows with bars up to the first open (ADR-0021). Nothing is published; nothing trades. A calendar that starts too late gives a shorter warm-up, and the first decisions wait |
 | Clock | `SimClock` starts at the first session's open |
@@ -197,14 +198,29 @@ flowchart TD
 | Result | The engine's `RunResult`, the sessions replayed and learned, the histories, the journal, Tyche's account and the broker's, free-riding violations. `closes` is the account at every close; `fills` every fill |
 | Halts | A stage failing closed stops the engine; the runner returns the result anyway, with `run.completed` false and the reason |
 
-The runtime (`tyche.runtime.backtest`) supplies the New York calendar, the Parquet cache read through `CacheOnlySource` (never fetches, raises `NotCachedError` with the missing range), the system clock and the code version, then writes the record: `reports/backtests/<run id>/run.json`, `equity.csv` and `fills.csv`. The user guide lists what each holds ([running a backtest](../user-guide/03-running-a-backtest.md#the-record)).
+The runtime (`tyche.runtime.backtest`) supplies the New York calendar, the Parquet cache read through `CacheOnlySource` (never fetches, raises `NotCachedError` with the missing range), the system clock and the code version, measures the run (`measure_backtest`), then writes the record: `reports/backtests/<run id>/run.json`, `equity.csv`, `fills.csv` and `metrics.json`. The user guide lists what each holds ([running a backtest](../user-guide/03-running-a-backtest.md#the-record)).
 
 What follows from the rules:
 
 - **Two runs on the same cache, config and code give the same fills and the same equity curve.** Nothing in a run reads the wall clock except the record's start and end times and its id.
-- **Buy-and-hold carries a cash drag.** Dividends arrive as cash and are reinvested only when the holding falls more than the rebalance band below its target. On SPY from 2005 to 2023 the run ends with about 9% in cash, so the benchmark trails SPY's published total return. PR 16 must say so next to the benchmark.
+- **Buy-and-hold carries a cash drag.** Dividends arrive as cash and are reinvested only when the holding falls more than the rebalance band below its target. On SPY from 2005 to 2023 the run ends with about 9% in cash, so Tyche's buy-and-hold trails the benchmark, SPY's total return, by about half a point of CAGR (section 8).
 
-## 8. Known limits
+## 8. Metrics
+
+`tyche.core.backtest.metrics` measures a run and its benchmark the same way ([ADR-0025](../adr/0025-metrics-against-the-benchmarks-total-return.md)). The module docstring defines every figure; this table is where each input comes from.
+
+| Input | Source |
+|---|---|
+| The run's equity | `BacktestResult.closes`: Tyche's `AccountEvent` at every session close, as `EquityPoint`s (equity and the value invested) |
+| The benchmark's equity | `benchmark_points(result.benchmark, closes, first equity)`: units bought at the latest close at or before the first close, each distribution reinvested at the close of the first bar on or after its ex-date, valued at the latest bar at or before each close |
+| Trades | `closed_trades(result.fills)`: flat to flat per instrument, across sleeves |
+| Turnover and costs | Every fill's value before costs, and its commission and fees |
+
+`measure` takes plain inputs, so a later tool can measure a record from `equity.csv` and `fills.csv` without rerunning it. Arithmetic is `Decimal` in a fixed 28-digit context; ratios that cannot be computed are `None`.
+
+The golden-file test `tests/integration/test_backtest_to_metrics.py` pins every figure of a fixed run. A change anywhere in the trading path that moves a number fails it; regenerate it only on purpose (learning note: [golden-file tests](../learning/golden-files.md)).
+
+## 9. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|
@@ -212,5 +228,6 @@ What follows from the rules:
 | **No intraday order of events** | A stop and a market order on the same bar are processed in submission order, not in the order they would have happened | Pessimistic stop rule; intraday data in Phase 6 |
 | **Liquidity** | Volume participation is a cap, not a market-impact model | Never binding at this account's size |
 | **Settlement calendar** | T+n counts exchange sessions; the settlement system's business days may differ on a few dates | See `tyche.core.sim.settlement` |
+| **Benchmark dates** | Distributions are matched to bars by the bar's UTC date. Right for US closes, which are before midnight UTC; a market closing after midnight UTC would need the session day | Revisit with the first non-US profile (Phase 4) |
 | **The open price** | A market order fills at the bar's open, the official opening price. A real order at the open may fill elsewhere | Measured in paper trading (Phase 2) |
 | **Future splits scale backtest windows** | Bars are adjusted for every split known when they were fetched, so before a later split a strategy's window reads lower than the prices that traded. Ratios (returns, crossovers, ranks) are unaffected; a fixed price threshold or a stop is on the adjusted basis, which is consistent with the simulated fills | ADR-0021. Matters only for strategies that compare prices with fixed numbers |

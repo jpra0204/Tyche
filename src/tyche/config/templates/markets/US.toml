@@ -61,3 +61,12 @@ rebalance_band = "0.10"
 # would reject it. Binds only when cash is short, so a fully invested strategy holds
 # about this fraction in cash. Reports state the value.
 price_buffer = "0.02"
+
+[benchmark]
+# What every strategy is measured against: this ETF's total return, dividends
+# reinvested at the ex-date close, with no costs and no cash (ADR-0025). It is the
+# return of simply holding it. It need not be one of the candidates above, but its
+# history must be fetched like theirs.
+symbol = "SPY"
+exchange = "ARCX"
+asset_class = "etf"

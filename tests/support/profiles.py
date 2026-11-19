@@ -36,7 +36,9 @@ US_RULES = UniverseRules(
 
 US_EXECUTION = ExecutionRules(rebalance_band=Decimal("0.10"), price_buffer=Decimal("0.02"))
 
-US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION)
+US_BENCHMARK = Instrument("SPY", "ARCX", Currency.USD, "XNYS", AssetClass.ETF)
+
+US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION, US_BENCHMARK)
 
 CA_RULES = replace(
     US_RULES,
@@ -45,4 +47,6 @@ CA_RULES = replace(
     instruments=(),
 )
 
-CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION)
+CA_BENCHMARK = Instrument("XIC", "XTSE", Currency.CAD, "XTSE", AssetClass.ETF)
+
+CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION, CA_BENCHMARK)

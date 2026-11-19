@@ -58,10 +58,17 @@ EXECUTION_TOML = """
 rebalance_band = "0.10"
 price_buffer = "0.02"
 """
+BENCHMARK_TOML = """
+[benchmark]
+symbol = "SPY"
+exchange = "ARCX"
+asset_class = "etf"
+"""
 US_TOML = (
     'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
     + UNIVERSE_TOML
     + EXECUTION_TOML
+    + BENCHMARK_TOML
 )
 US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
@@ -89,7 +96,8 @@ class TestValidConfig:
             "config/markets/CA+US.toml",
             'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n'
             + UNIVERSE_TOML
-            + EXECUTION_TOML,
+            + EXECUTION_TOML
+            + BENCHMARK_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
 
@@ -657,3 +665,38 @@ class TestBacktestSettings:
             "holdout_starts": "2024-01-01",
             "starting_cash": "10000",
         }
+
+
+class TestBenchmark:
+    def test_the_packaged_profile_measures_against_spy(self, workspace: Workspace) -> None:
+        benchmark = load_config(workspace).market_profile.benchmark
+
+        assert benchmark == US_PROFILE.benchmark
+        assert str(benchmark) == "SPY@ARCX"
+
+    def test_a_profile_without_a_benchmark_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace(BENCHMARK_TOML, ""))
+
+        with pytest.raises(ConfigError, match=r"US.toml: .*\n  benchmark: Field required"):
+            load_config(workspace)
+
+    def test_an_unknown_exchange_names_the_benchmark(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace('exchange = "ARCX"', 'exchange = "NOPE"'),
+        )
+
+        with pytest.raises(ConfigError, match=r"benchmark: SPY: unknown exchange 'NOPE'"):
+            load_config(workspace)
+
+    def test_changing_the_benchmark_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(
+            workspace,
+            "config/markets/US.toml",
+            US_TOML.replace(BENCHMARK_TOML, BENCHMARK_TOML.replace("SPY", "QQQ")),
+        )
+
+        assert load_config(workspace).config_hash != before

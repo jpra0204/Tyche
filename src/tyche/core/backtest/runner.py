@@ -7,7 +7,8 @@ hands the replay to the engine::
 
     check the range against the holdout
     subscribe every stage to a new bus
-    load history from the warm-up start to the last day, through the DataProvider port
+    load history from the warm-up start to the last day, through the DataProvider port,
+        for every candidate and for the benchmark
     warm up the universe and the signals windows on the sessions before the first day
     run the engine over the replay of first..last
 
@@ -86,6 +87,8 @@ class BacktestResult:
             than ``warm_up_needed`` when the calendar starts too late.
         warm_up_needed: Sessions of history the stages asked for.
         histories: What was loaded for each candidate, warm-up included.
+        benchmark: What was loaded for the profile's benchmark, over the same days.
+            The candidate's own history when the benchmark is also a candidate.
         journal: Every event of the run, in order.
         account: Tyche's own view of the account at the end.
         broker_account: The simulated broker's record of the same account.
@@ -97,6 +100,7 @@ class BacktestResult:
     warm_up: Mapping[str, tuple[Session, ...]]
     warm_up_needed: int
     histories: tuple[BarHistory, ...]
+    benchmark: BarHistory
     journal: InMemoryJournal
     account: Account
     broker_account: Account
@@ -167,7 +171,12 @@ def run_backtest(
         default=spec.first,
     )
     histories = tuple(data.daily_bars(i, load_from, spec.last) for i in candidates)
-    for history in histories:
+    by_instrument = {history.instrument: history for history in histories}
+    if spec.profile.benchmark in by_instrument:
+        benchmark = by_instrument[spec.profile.benchmark]
+    else:
+        benchmark = data.daily_bars(spec.profile.benchmark, load_from, spec.last)
+    for history in (*histories, benchmark):
         late = [bar for bar in history.bars if bar.timestamp > last_close]
         if late:
             raise BacktestError(
@@ -175,6 +184,12 @@ def run_backtest(
                 f"{spec.last}, up to {late[-1].timestamp.isoformat()}; refusing to run so "
                 "that no data beyond the range, and so none of the holdout, can be seen"
             )
+    first_close = min(found[0].closes_at for found in sessions.values())
+    if not any(bar.timestamp <= first_close for bar in benchmark.bars):
+        raise BacktestError(
+            f"no bar of the benchmark {benchmark.instrument} on or before {spec.first}; "
+            "the benchmark is measured from the first session's close"
+        )
 
     universe.warm_up(histories, warm_up)
     signals.warm_up(histories, through=start)
@@ -195,6 +210,7 @@ def run_backtest(
         warm_up=warm_up,
         warm_up_needed=needed,
         histories=histories,
+        benchmark=benchmark,
         journal=journal,
         account=state.account,
         broker_account=broker.account(),

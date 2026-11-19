@@ -78,7 +78,15 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `TycheConfig.backtest` and `TycheConfig.snapshot`; `Workspace.reports_dir`.
 - ADR-0024. User guide: running a backtest. Backtesting internals: the backtest runner. Learning note: the holdout and the run record.
 
+- Metrics (Phase 1, PR 16): `tyche.core.backtest.metrics` measures a run and its benchmark the same way: CAGR, volatility, Sharpe and Sortino (risk-free rate zero), maximum drawdown with its dates, exposure, turnover, costs, closed trades and win rate, and each figure's difference from the benchmark. `measure`, `measure_backtest`, `series_metrics`, `benchmark_points`, `closed_trades` and their result types; `MetricsError`.
+- The benchmark is the total return of the market profile's index ETF, distributions reinvested at the ex-date close, no costs, no cash (ADR-0025). `BacktestResult.benchmark` holds its history.
+- `tyche backtest` prints the metrics beside the benchmark's, and the record gains `metrics.json`, a `benchmark_equity` column in `equity.csv`, and the benchmark and its data in `run.json`.
+- A golden-file regression test pins every metric of a fixed backtest.
+- ADR-0025. Backtesting internals: metrics. Learning notes: measuring against a benchmark, golden-file tests.
+
 ### Changed
+
+- `config/markets/<PROFILE>.toml` requires a `[benchmark]` table (`symbol`, `exchange`, `asset_class`), and `MarketProfile` gains a required `benchmark`, which must follow one of the profile's calendars and trade in one of its cash currencies. A workspace created before PR 16 must copy the table from a new one (user guide, running a backtest, troubleshooting).
 
 - `config/tyche.toml` requires a `[backtest]` table (`holdout_starts`, a TOML date, and `starting_cash`), and `config/markets/<PROFILE>.toml` requires an `instruments` list under `[universe]`: the candidates a backtest replays. `UniverseRules` gains `instruments`, checked against the thresholds' currency, the allowed asset classes and the profile's calendars. A workspace created before PR 15 must copy both from a new one (user guide, running a backtest, troubleshooting).
 

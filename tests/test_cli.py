@@ -385,6 +385,11 @@ class TestBacktest:
         assert "Starting cash: 10000 USD" in out
         assert "Fills:         1; free-riding violations: 0" in out
         assert "Data issues:   1, listed by `tyche data fetch`" in out
+        assert re.search(r"^  Metrics\s+strategy\s+SPY@ARCX total return$", out, re.MULTILINE)
+        for figure in ("CAGR", "Volatility", "Sharpe (rf 0)", "Sortino (rf 0)", "Max drawdown"):
+            assert re.search(rf"^    {re.escape(figure)}\s+\S+\s+\S+$", out, re.MULTILINE)
+        assert re.search(r"^    Exposure\s+\d+\.\d\d%\s+100\.00%$", out, re.MULTILINE)
+        assert "Trades:        0 closed, win rate n/a; 1 still open" in out
         record = re.search(r"Record:\s+(\S+)", out)
         assert record is not None
         assert Path(record.group(1)).is_file()

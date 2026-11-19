@@ -35,6 +35,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0022](0022-portfolio-targets-as-weights-in-sleeves.md) | Portfolio targets are weights of equity, held in one sleeve per strategy | Accepted (Pablo, 2026-11-18) |
 | [0023](0023-execution-sleeves-stops-and-cash.md) | Execution: crossing between sleeves, stops after the entry fills, a rebalance band and a price buffer | Accepted (Pablo, 2026-11-19) |
 | [0024](0024-backtest-runner-holdout-and-run-record.md) | The backtest runner: a fixed holdout, candidates in the market profile, and a run record | Accepted (Pablo, 2026-11-19) |
+| [0025](0025-metrics-against-the-benchmarks-total-return.md) | Metrics: measured against the benchmark's total return, with a zero risk-free rate | Accepted (Pablo, 2026-11-19) |
 
 ## Template
 
