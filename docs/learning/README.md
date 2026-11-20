@@ -26,6 +26,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Measuring against a benchmark](measuring-against-a-benchmark.md) | Compare with what simply holding the index paid, dividends reinvested, measured the same way on the same days |
 | [Golden-file tests](golden-files.md) | Save every number of a fixed run, and make any change to them a deliberate, reviewed step |
 | [Reference validation](reference-validation.md) | Run the same scenario through an engine written by other people, and compare every fill and every close |
+| [Reports built from the record](reports-from-the-record.md) | The record is the truth; the report is a rebuildable, deterministic view of it |
 | [Strategies without memory](strategies-without-memory.md) | Write each rule so the fact it needs is in the bars, the positions or the broker, never in the strategy object |
 
 ## Planned

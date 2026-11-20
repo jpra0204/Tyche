@@ -23,6 +23,7 @@ from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
 from tyche.cli import app
 from tyche.runtime import data as runtime_data
 from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
+from tyche.runtime.report import ReportError
 
 runner = CliRunner()
 
@@ -395,6 +396,54 @@ class TestBacktest:
         assert record is not None
         assert Path(record.group(1)).is_file()
         assert Path(record.group(1)).is_relative_to(fetched / "reports" / "backtests")
+        report = re.search(r"Report:\s+(\S+)", out)
+        assert report is not None
+        assert Path(report.group(1)) == Path(record.group(1)).parent / "report.html"
+        assert Path(report.group(1)).is_file()
+
+    def test_report_rebuilds_a_recorded_runs_report(self, fetched: Path) -> None:
+        ran = runner.invoke(app, ["backtest", "--from", "2023-11-01"])
+        run_id = re.search(r"^Backtest (\S+):", ran.stdout, re.MULTILINE)
+        assert run_id is not None
+        page = fetched / "reports" / "backtests" / run_id.group(1) / "report.html"
+        page.unlink()
+
+        result = runner.invoke(app, ["report", run_id.group(1)])
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout == f"Report: {page}\n"
+        assert page.is_file()
+
+    def test_report_explains_a_record_it_cannot_use(self, fetched: Path) -> None:
+        ran = runner.invoke(app, ["backtest", "--from", "2023-11-01"])
+        run_id = re.search(r"^Backtest (\S+):", ran.stdout, re.MULTILINE)
+        assert run_id is not None
+        (fetched / "reports" / "backtests" / run_id.group(1) / "metrics.json").unlink()
+
+        result = runner.invoke(app, ["report", run_id.group(1)])
+
+        assert result.exit_code == 1
+        assert "metrics.json is missing" in plain(result.stderr)
+
+    def test_a_report_that_cannot_be_written_does_not_fail_the_backtest(
+        self, fetched: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def broken(folder: Path) -> Path:
+            raise ReportError(f"{folder}: cannot read the record: damaged")
+
+        monkeypatch.setattr(cli, "write_report", broken)
+
+        result = runner.invoke(app, ["backtest", "--from", "2023-11-01"])
+
+        assert result.exit_code == 0, result.output
+        assert "Report:        not written:" in result.stdout
+
+    @pytest.mark.parametrize("run_id", ["20231101T000000Z-00000000", "../config", ""])
+    def test_report_refuses_a_run_it_cannot_find(self, fetched: Path, run_id: str) -> None:
+        result = runner.invoke(app, ["report", run_id])
+
+        assert result.exit_code == 1
+        assert f"no backtest record named {run_id!r}" in plain(result.stderr)
 
     def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
         result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])

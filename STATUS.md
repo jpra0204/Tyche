@@ -1,6 +1,6 @@
 # Status
 
-*Last updated: 2026-11-19*
+*Last updated: 2026-11-20*
 
 ## Current phase
 
@@ -24,7 +24,8 @@
 - PR 15 (backtest runner) is merged; ADR-0024 accepted. **Milestone reached: the first end-to-end backtest.**
 - PR 16 (metrics) is merged; ADR-0025 accepted.
 - PR 17 (reference validation) is merged; ADR-0026 accepted.
-- PR 18 (example strategies) is open for review; ADR-0027 accepted: nine ETFs across asset classes, a monthly top-3 trend rotation, and an RSI(2) dip buy with an ATR stop, all fixed before any backtest.
+- PR 18 (example strategies) is merged; ADR-0027 accepted.
+- PR 19 (backtest report) is open for review; ADR-0028 accepted: one self-contained HTML file per run with matplotlib charts, and a cost drag measured by adding costs back onto equity.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -55,9 +56,11 @@
 
 - Reference validation (PR 17): one strategy (hold 95% of equity while the close is above its recent average) runs through Tyche and through backtesting.py on the same bars, and every fill, the equity at every close, every closed trade and the metrics are compared ([ADR-0026](docs/adr/0026-reference-validation-against-backtesting-py.md)). Tyche runs as the `US` profile configures it, without regulatory fees, which backtesting.py cannot model; slippage is charged to backtesting.py as commission. In CI: a seeded random walk, 2021 to 2023, at USD 10,000 and USD 1,000,000, 53 round trips each. Opt-in: real SPY from 2005 to 2023, 173 round trips over 4,781 sessions, final equity equal to 11 decimal places. Not covered, because backtesting.py does not model them: dividends, settlement, regulatory fees, the volume cap, stops, several instruments or sleeves. backtesting.py is AGPL-3.0, so it is a dev dependency only, and a new import contract fails CI if Tyche imports it.
 
-- Example strategies (PR 18, in review): `trend_rotation` and `mean_reversion` ([ADR-0027](docs/adr/0027-example-strategies-fixed-in-advance.md)), with shared indicators in `tyche.strategies.indicators`. Their rules and parameters were agreed before any backtest and are not to be tuned on results. New workspaces list nine candidate ETFs and ship both strategy files without a budget. Checked end to end: stops placed after their entries fill and hit by the simulator; the rotation opens and closes positions only at the open after a month's first session. On real data, 2005 to 2023, USD 10,000, each alone: the rotation 5.97% a year (max drawdown 29.7%), the mean reversion 1.28% a year (10% exposure, 41 of 328 trades closed by the stop), against 9.59% for SPY's total return. Neither beats the benchmark.
+- Example strategies (PR 18): `trend_rotation` and `mean_reversion` ([ADR-0027](docs/adr/0027-example-strategies-fixed-in-advance.md)), with shared indicators in `tyche.strategies.indicators`. Their rules and parameters were agreed before any backtest and are not to be tuned on results. New workspaces list nine candidate ETFs and ship both strategy files without a budget. Checked end to end: stops placed after their entries fill and hit by the simulator; the rotation opens and closes positions only at the open after a month's first session. On real data, 2005 to 2023, USD 10,000, each alone: the rotation 5.97% a year (max drawdown 29.7%), the mean reversion 1.28% a year (10% exposure, 41 of 328 trades closed by the stop), against 9.59% for SPY's total return. Neither beats the benchmark.
 
-What is missing before judging a strategy: the report (PR 19) and out-of-sample testing (PRs 20 and 21). Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM, storage and report adapters.
+- Backtest report (PR 19, in review): `tyche backtest` writes `report.html` beside each measured run's record, and `tyche report <run id>` rebuilds it from the record alone ([ADR-0028](docs/adr/0028-backtest-report-html-and-cost-drag.md)). One offline HTML file, deterministic, about 300 to 400 KB, with matplotlib charts: summary and equity against the benchmark, drawdown, year by year, trading and exposure, cost drag, what ran, and the data with the limits every result shares. The cost drag counts slippage, which the terminal summary does not: on PR 18's real-data runs, slippage cost each example strategy more than twice its commissions, and the mean reversion's costs were 48% of its profit before costs.
+
+What is missing before judging a strategy: out-of-sample testing (PRs 20 and 21). Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -117,8 +120,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 16 | Metrics (**merged**) | CAGR, volatility, Sharpe, Sortino, max drawdown, turnover, win rate, exposure, all against the benchmark; golden-file regression test | Decided 2026-11-19 ([ADR-0025](docs/adr/0025-metrics-against-the-benchmarks-total-return.md)): the benchmark is the ETF's total return computed from the cache, not the simulated buy-and-hold; the risk-free rate is zero for now. The benchmark ETF is a new `[benchmark]` table in the market profile |
 | 17 | Reference validation (**merged**) | Our backtester compared with an independent library on a simple strategy, kept as a regression test | Decided 2026-11-19 ([ADR-0026](docs/adr/0026-reference-validation-against-backtesting-py.md)): backtesting.py (AGPL-3.0), as a test-only dependency fenced off by an import contract; vectorbt (Apache-2.0 with the Commons Clause, about 60 packages) was the alternative. Licences checked on PyPI and in both repositories |
-| 18 | Example strategies (**in review**) | An ETF trend rotation and a mean-reversion strategy that uses a stop | Decided 2026-11-19 ([ADR-0027](docs/adr/0027-example-strategies-fixed-in-advance.md)): nine ETFs across asset classes; monthly, top 3 by 126-session return, each above its 200-session average; RSI(2) below 10 above the 200-session average, exit above the 5-session average, stop 2.5 ATR(14) below the entry close. Fixed before any backtest |
-| 19 | Backtest report | HTML or Markdown with charts, a cost-drag section, the data-limits statement | Decide: chart library |
+| 18 | Example strategies (**merged**) | An ETF trend rotation and a mean-reversion strategy that uses a stop | Decided 2026-11-19 ([ADR-0027](docs/adr/0027-example-strategies-fixed-in-advance.md)): nine ETFs across asset classes; monthly, top 3 by 126-session return, each above its 200-session average; RSI(2) below 10 above the 200-session average, exit above the 5-session average, stop 2.5 ATR(14) below the entry close. Fixed before any backtest |
+| 19 | Backtest report (**in review**) | HTML or Markdown with charts, a cost-drag section, the data-limits statement | Decided 2026-11-20 ([ADR-0028](docs/adr/0028-backtest-report-html-and-cost-drag.md)): one self-contained HTML file per run, charts by matplotlib (plotly would embed 4.8 MB per report or need internet to open); cost drag by adding costs back onto equity from the record, not by a second simulation |
 
 **F. Out-of-sample testing and honest answers**
 
@@ -152,7 +155,7 @@ Two things in the brief's Phase 1 that this plan moves:
 | `starting_cash` is in the profile's first cash currency; `CA+US` needs cash per currency | 4 |
 | The Phase 3 promotion check is the one code path allowed to read the holdout, and records that it did (ADR-0024) | 3 |
 | Interest on cash in the simulator, and a real risk-free rate (such as T-bills) for Sharpe and Sortino, in one change (ADR-0025) | 2 or later |
-| A command to measure an existing record from its `equity.csv` and `fills.csv` (`measure` already takes plain inputs), if the report needs it | 1 (PR 19) |
+| ~~A command to measure an existing record from its `equity.csv` and `fills.csv`, if the report needs it~~ Not needed: the report reads `metrics.json` (ADR-0028) | 1 (PR 19) |
 
 ## Open decisions
 
@@ -187,6 +190,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 18. Worth a look in [ADR-0027](docs/adr/0027-example-strategies-fixed-in-advance.md): "Implementation choices made in PR 18, for review there" (how each rule avoids memory, what happens to an ETF not offered at a rebalance, the stop on the entry session) and the real-data results.
-2. **Your workspace is unchanged by PR 18 and keeps working.** To try the examples, copy `config/strategies/trend_rotation.toml` and `mean_reversion.toml` from a new workspace (`tyche init --home <scratch-folder>`), and for the rotation also its seven extra ETFs into `instruments` in `config/markets/US.toml`; then fetch them (user guide, running a backtest, "Fetch the history first"). If not done yet, PR 16's `[benchmark]` table is still needed; earlier notes still apply to older workspaces (`[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
-3. Phase 1, PR 19: the backtest report (HTML or Markdown with charts, a cost-drag section, the data-limits statement; decide the chart library), when Pablo says to start it.
+1. Pablo reviews and merges PR 19. Worth a look in [ADR-0028](docs/adr/0028-backtest-report-html-and-cost-drag.md): "Implementation choices made in PR 19, for review there" (built from the record alone, the three layers, lines drawn as images inside the SVG to keep reports small, a failed report not failing the backtest).
+2. **Your workspace needs no change for PR 19.** Each new backtest writes its report; `tyche report <run id>` writes one for a run recorded earlier. Reports add about 300 to 400 KB per run to your workspace repository. If not done yet, PR 16's `[benchmark]` table is still needed; earlier notes still apply to older workspaces (`[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
+3. Phase 1, PR 20: train/test and walk-forward, with in-sample and out-of-sample results reported separately, when Pablo says to start it.

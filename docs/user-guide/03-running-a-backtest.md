@@ -100,12 +100,13 @@ Backtest 20261119T172646Z-75505646: completed
   Trades:        0 closed, win rate n/a; 1 still open
   Code:          0.0.1+g4ed905d3be34
   Record:        /Users/<you>/tyche-workspace/reports/backtests/20261119T172646Z-75505646/run.json
+  Report:        /Users/<you>/tyche-workspace/reports/backtests/20261119T172646Z-75505646/report.html
 ```
 
 - **Range** is what was traded; **Warm-up** is the history learned before it. If fewer warm-up sessions were available than needed, the first decisions wait for enough history.
 - **Final equity** is cash plus holdings at the last close. The change is total, not yearly.
 - **Metrics** put your strategies, all together, beside the benchmark. Both start from the same equity at the same first close and are measured on the same closes with the same formulas, defined below.
-- **Turnover, costs and trades** are about your strategies only: the benchmark pays nothing and never trades.
+- **Turnover, costs and trades** are about your strategies only: the benchmark pays nothing and never trades. **Costs** here are commissions and regulatory fees; slippage is in the prices, and the report's cost-drag section counts it too.
 - **Fills** counts every trade. **Free-riding violations** should always be 0 ([costs and settlement](../developer-guide/ibkr-canada-costs-and-settlement.md)).
 - **Code** is Tyche's version and the git commit it ran from. If the code had uncommitted changes, it ends in `.dirty` and a warning says the commit alone cannot reproduce the run.
 
@@ -140,8 +141,32 @@ Every run writes a folder under `reports/backtests/` in your workspace, named af
 | `equity.csv` | Your account at every session close: equity, cash, settled cash and the value of holdings; and the benchmark's equity at the same close |
 | `fills.csv` | Every fill: date, instrument, side, shares, price after slippage, commission and fees, settlement date |
 | `metrics.json` | The metrics of your strategies and of the benchmark, the differences, and the conventions used (sessions per year, the risk-free rate). Fractions are written as decimals: `"0.090912"` is 9.09% |
+| `report.html` | The report: open it in any browser. Built from the four files above alone, so it can always be rebuilt |
 
 Records are part of your workspace's private git repository: commit them with the configuration that produced them. Every run is recorded, including one that halts, because later phases count how many experiments were tried before a result was found.
+
+## The report
+
+Every measured run gets `report.html` in its record folder: one file, about 300 to 400 KB, that opens in any browser with no internet connection ([ADR-0028](../adr/0028-backtest-report-html-and-cost-drag.md)). It has six sections:
+
+| Section | Shows |
+|---|---|
+| Summary | The metrics beside the benchmark's, with when each worst fall happened; charts of equity (on a logarithmic scale) and of drawdown |
+| Year by year | Each calendar year's return, yours and the benchmark's |
+| Trading | Fills, closed trades, win rate, turnover, free riding; a chart of how much of the account was invested |
+| Cost drag | What costs took: commissions and fees, slippage, their share of the profit, and the CAGR before and after costs, with a chart of both curves |
+| What ran | The code, the config hash, the costs and execution rules, each strategy with its version and budget |
+| Data and its limits | Every instrument's history (bars, dates, data issues, dividends, splits) and the limits every result shares |
+
+**The cost drag** adds every cost paid back onto the equity at each close, which gives the run before costs, and measures both the same way. Slippage is worked back from each fill's price. Money not spent on costs would have grown too, so the drag shown is a floor. On a small account it is often the largest number in the report: on 2005 to 2023 with USD 10,000, the example mean reversion's costs were 48% of its profit before costs, and slippage alone was more than twice its commissions.
+
+To rebuild a report, for a run recorded before reports existed or after Tyche's report changes:
+
+```bash
+uv run tyche report 20261119T172646Z-75505646
+```
+
+It reads only the record folder, never the cache, and replaces `report.html`. The same record always gives the same file.
 
 ## Reading a buy-and-hold run
 
@@ -193,6 +218,8 @@ Neither beats holding SPY. The rotation's worst fall was 29.7% (2018 to 2020) ag
 | `IWM@ARCX: sessions from … are not in the cache yet` | The template's candidates grew from two to nine in PR 18. Fetch them (see [Fetch the history first](#fetch-the-history-first)), or remove the ones you do not want from `instruments` in `config/markets/US.toml`. |
 | `… gives strategy 'trend_rotation' a budget, but config/strategies/trend_rotation.toml does not exist` (or `mean_reversion`) | Your workspace was created before PR 18. Copy the file from a new workspace (`uv run tyche init --home <scratch-folder>`) into your `config/strategies/`. |
 | `no bar of the benchmark SPY@ARCX on or before …` | Fetch the benchmark's history from before your first day, as for a candidate. |
-| `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json`; the message says why. |
+| `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json` and without a report; the message says why. |
+| `Error: no backtest record named …` | `tyche report` takes the run id exactly as `tyche backtest` printed it: the record folder's name under `reports/backtests/`. |
+| `… run.json is record format …` | The record was written by a different version of Tyche than the one reading it. |
 | `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, into the `[universe]` table of your `config/markets/US.toml`. |
 | `Error: the run halted: …` | A stage found something it cannot handle and stopped the run rather than guess (fail closed). The record is still written. The message names the problem; please share it, since it usually means a bug. |
