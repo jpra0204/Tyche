@@ -55,12 +55,13 @@ uv run tyche init --home <scratch-folder>   # creates a workspace; never run it 
 uv run tyche config check                  # validates the workspace config, prints its hash
 uv run tyche data fetch SPY --exchange ARCX  # downloads from Yahoo (network; personal-use data)
 uv run tyche backtest --from 2005-01-03    # cache only; refuses the holdout; writes reports/backtests/<run id>/
+uv run tyche report <run id>               # rebuilds report.html from a run's record alone
 uv run pytest -m network                   # opt-in tests against real services
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.
 
-Run `tyche backtest` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there. Paper and agent commands do not exist yet. They are added to this section in the phase that implements them.
+Run `tyche backtest` and `tyche report` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there, and a report rewrites a file in it. Paper and agent commands do not exist yet. They are added to this section in the phase that implements them.
 
 ## Repo map
 

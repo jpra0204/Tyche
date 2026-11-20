@@ -33,6 +33,7 @@ from tyche.runtime.data import (
     fetch_daily_histories,
     instrument_for,
 )
+from tyche.runtime.report import ReportError, write_report
 from tyche.runtime.strategies import build_strategies
 
 app = typer.Typer(
@@ -283,10 +284,44 @@ def backtest(
 
     for line in _describe_backtest(outcome, config.backtest.starting_cash):
         typer.echo(line)
+    if outcome.metrics is not None:
+        try:
+            typer.echo(f"  Report:        {write_report(outcome.record_dir)}")
+        except ReportError as error:
+            typer.echo(f"  Report:        not written: {error}")
     run = outcome.result.run
     if not run.completed:
         typer.echo(f"Error: the run halted: {run.failure}", err=True)
         raise typer.Exit(code=1)
+
+
+@app.command()
+def report(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="The run's id, as `tyche backtest` printed it.", show_default=False),
+    ],
+    home: HomeOption = None,
+) -> None:
+    """Write report.html for a recorded backtest, from its record alone.
+
+    `tyche backtest` writes the report itself; this rebuilds it, for a run recorded
+    before reports existed or after the report changed. It reads only the record
+    folder in reports/backtests/, never the cache.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+    except WorkspaceError as error:
+        _fail(str(error))
+    backtests = workspace.reports_dir / "backtests"
+    folder = backtests / run_id
+    if not run_id or Path(run_id).name != run_id or not folder.is_dir():
+        _fail(f"no backtest record named {run_id!r} in {backtests}")
+    try:
+        path = write_report(folder)
+    except ReportError as error:
+        _fail(str(error))
+    typer.echo(f"Report: {path}")
 
 
 def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:

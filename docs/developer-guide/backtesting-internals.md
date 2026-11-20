@@ -220,6 +220,17 @@ What follows from the rules:
 
 The golden-file test `tests/integration/test_backtest_to_metrics.py` pins every figure of a fixed run. A change anywhere in the trading path that moves a number fails it; regenerate it only on purpose (learning note: [golden-file tests](../learning/golden-files.md)).
 
+### The report
+
+`tyche backtest` writes `report.html` into each measured run's record folder, and `tyche report <run id>` rebuilds it ([ADR-0028](../adr/0028-backtest-report-html-and-cost-drag.md), learning note: [reports built from the record](../learning/reports-from-the-record.md)). It is built from the record alone:
+
+| Part | Where |
+|---|---|
+| Reading the record, assembling the sections | `tyche.runtime.report` |
+| Cost drag: every cost paid to date added back at each close, slippage worked back from fill prices | `tyche.core.backtest.cost_drag` |
+| Returns by calendar year | `tyche.core.backtest.years` |
+| HTML and charts (matplotlib, inline SVG, deterministic) | `tyche.adapters.reports` |
+
 ### Checked against an independent engine
 
 `tests/reference/` runs one simple strategy through Tyche and through backtesting.py on the same bars and compares every fill, the equity at every close, every closed trade and the metrics ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md), learning note: [reference validation](../learning/reference-validation.md)). They agree to within 10⁻⁹ USD. What the comparison covers: next-open fills, whole-share sizing from the last close, IBKR Pro Fixed commissions, slippage on both sides, cash and equity accounting, trades and the metrics. What it does not, because backtesting.py does not model it: dividends, T+1 settlement, regulatory fees, the volume cap, stops, and more than one instrument or sleeve.

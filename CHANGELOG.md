@@ -95,6 +95,12 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - New workspaces get `config/strategies/trend_rotation.toml` and `mean_reversion.toml`, without a budget, so they do not run until given one.
 - ADR-0027. User guide: trying the example strategies. Developer guide: indicators, list and decimal parameters. Learning note: strategies without memory.
 
+- Backtest report (Phase 1, PR 19): `tyche backtest` writes `report.html` into each measured run's record folder, and `tyche report <run id>` rebuilds it from the record alone. One self-contained HTML file with charts drawn by matplotlib as inline SVG, deterministic, about 300 to 400 KB. Sections: summary against the benchmark (equity and drawdown charts), year by year, trading and exposure, cost drag, what ran, data and its limits (ADR-0028).
+- `cost_drag` and `fill_cost` in `tyche.core.backtest`: the run measured before and after its costs, slippage worked back from fill prices. `yearly_returns`: the return of each calendar year.
+- `tyche.adapters.reports`: a small `Document` model and `render_html`.
+- ADR-0028. User guide: the report. Learning note: reports built from the record.
+- Runtime dependency: `matplotlib` (PSF-based licence), with numpy. The core's import contract now forbids `matplotlib`.
+
 ### Changed
 
 - The `US` market profile template lists nine candidate ETFs instead of two: SPY, QQQ, IWM, EFA, EEM, TLT, IEF, GLD and VNQ. A backtest replays every candidate, so a new workspace must fetch all nine (two `tyche data fetch` commands, one per exchange). Existing workspaces keep their own list.
