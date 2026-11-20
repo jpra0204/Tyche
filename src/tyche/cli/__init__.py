@@ -22,7 +22,16 @@ from tyche.config import (
     load_config,
     resolve_home,
 )
-from tyche.core.backtest import BacktestError, BacktestMetrics, HoldoutError, SeriesMetrics
+from tyche.core.backtest import (
+    BacktestError,
+    BacktestMetrics,
+    Fold,
+    FoldScheme,
+    HoldoutError,
+    SeriesMetrics,
+    WalkForwardError,
+    WalkForwardMetrics,
+)
 from tyche.core.domain import AssetClass, Money
 from tyche.core.ports import DataError
 from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
@@ -35,6 +44,13 @@ from tyche.runtime.data import (
 )
 from tyche.runtime.report import ReportError, write_report
 from tyche.runtime.strategies import build_strategies
+from tyche.runtime.walk_forward import (
+    WALK_FORWARD_FILE,
+    WalkForwardOutcome,
+    WindowKind,
+    run_configured_walk_forward,
+)
+from tyche.runtime.walk_forward_report import is_walk_forward, write_walk_forward_report
 
 app = typer.Typer(
     name="tyche",
@@ -295,30 +311,121 @@ def backtest(
         raise typer.Exit(code=1)
 
 
+@app.command("walk-forward")
+def walk_forward(
+    first: Annotated[
+        datetime,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help="First day of the first training window. History before it is used to warm up.",
+            show_default=False,
+        ),
+    ],
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last day of the last test window. Defaults to the day before the holdout.",
+            show_default=False,
+        ),
+    ] = None,
+    train_years: Annotated[
+        int,
+        typer.Option(
+            "--train-years",
+            min=1,
+            help="Calendar years in the first training window (in every one, with --rolling).",
+        ),
+    ] = 5,
+    test_years: Annotated[
+        int,
+        typer.Option("--test-years", min=1, help="Calendar years in each test window."),
+    ] = 1,
+    rolling: Annotated[
+        bool,
+        typer.Option(
+            "--rolling",
+            help="Keep every training window at --train-years instead of growing it.",
+        ),
+    ] = False,
+    home: HomeOption = None,
+) -> None:
+    """Walk forward: backtest each training window and the test window after it.
+
+    Cuts the range into folds of whole calendar years. Each window is a backtest of
+    its own, from the starting cash, on cached history. In-sample (training) and
+    out-of-sample (test) results are reported separately, and the test windows are
+    joined into one out-of-sample result against the benchmark. The record and its
+    report go to reports/walk_forward/ in the workspace.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        config = load_config(workspace)
+        scheme = FoldScheme(train_years, test_years, anchored=not rolling)
+        typer.echo(f"Walk-forward, {scheme}")
+        outcome = run_configured_walk_forward(
+            config,
+            first.date(),
+            last.date() if last is not None else None,
+            scheme,
+            progress=_describe_window,
+        )
+    except (
+        WorkspaceError,
+        ConfigError,
+        BacktestRequestError,
+        HoldoutError,
+        BacktestError,
+        WalkForwardError,
+        DataError,
+    ) as error:
+        _fail(str(error))
+
+    for line in _describe_walk_forward(outcome):
+        typer.echo(line)
+    if outcome.metrics is not None:
+        try:
+            typer.echo(f"  Report:        {write_walk_forward_report(outcome.record_dir)}")
+        except ReportError as error:
+            typer.echo(f"  Report:        not written: {error}")
+    if not outcome.completed:
+        typer.echo(f"Error: the walk-forward stopped: {outcome.failure}", err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command()
 def report(
     run_id: Annotated[
         str,
-        typer.Argument(help="The run's id, as `tyche backtest` printed it.", show_default=False),
+        typer.Argument(
+            help="The backtest's or walk-forward's id, as Tyche printed it.",
+            show_default=False,
+        ),
     ],
     home: HomeOption = None,
 ) -> None:
-    """Write report.html for a recorded backtest, from its record alone.
+    """Write report.html for a recorded backtest or walk-forward, from its record alone.
 
-    `tyche backtest` writes the report itself; this rebuilds it, for a run recorded
-    before reports existed or after the report changed. It reads only the record
-    folder in reports/backtests/, never the cache.
+    `tyche backtest` and `tyche walk-forward` write the report themselves; this
+    rebuilds it, for a run recorded before reports existed or after the report
+    changed. It reads only the record folder in reports/backtests/ or
+    reports/walk_forward/, never the cache.
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
     except WorkspaceError as error:
         _fail(str(error))
-    backtests = workspace.reports_dir / "backtests"
-    folder = backtests / run_id
-    if not run_id or Path(run_id).name != run_id or not folder.is_dir():
-        _fail(f"no backtest record named {run_id!r} in {backtests}")
+    folders = [workspace.reports_dir / "backtests", workspace.reports_dir / "walk_forward"]
+    found = [f / run_id for f in folders if (f / run_id).is_dir()]
+    if not run_id or Path(run_id).name != run_id or not found:
+        _fail(f"no backtest or walk-forward record named {run_id!r} in {workspace.reports_dir}")
+    folder = found[0]
     try:
-        path = write_report(folder)
+        path = (
+            write_walk_forward_report(folder) if is_walk_forward(folder) else write_report(folder)
+        )
     except ReportError as error:
         _fail(str(error))
     typer.echo(f"Report: {path}")
@@ -387,6 +494,67 @@ def _describe_metrics(metrics: BacktestMetrics) -> list[str]:
     lines.append(
         f"  Trades:        {len(trades.closed)} closed, win rate {win_rate}; "
         f"{trades.still_open} still open"
+    )
+    return lines
+
+
+def _describe_window(fold: Fold, kind: WindowKind, outcome: BacktestOutcome) -> None:
+    """One line per window, printed as soon as it is recorded."""
+    window = fold.train if kind is WindowKind.TRAIN else fold.test
+    head = f"  Fold {fold.number:>2} {kind.value:<5} {window.first} to {window.last}"
+    metrics = outcome.metrics
+    if not outcome.result.run.completed:
+        typer.echo(f"{head}  halted")
+    elif metrics is None:
+        typer.echo(f"{head}  not measured")
+    elif kind is WindowKind.TRAIN:
+        typer.echo(
+            f"{head}  CAGR {_percent(metrics.strategy.cagr):>8}  "
+            f"benchmark {_percent(metrics.benchmark.cagr):>8}"
+        )
+    else:
+        typer.echo(
+            f"{head}  return {_percent(metrics.strategy.total_return):>8}  "
+            f"benchmark {_percent(metrics.benchmark.total_return):>8}"
+        )
+
+
+def _describe_walk_forward(outcome: WalkForwardOutcome) -> list[str]:
+    finished, planned = len(outcome.finished), len(outcome.folds)
+    state = "completed" if outcome.completed else "stopped"
+    lines = [f"Walk-forward {outcome.walk_forward_id}: {state}, {finished} of {planned} folds"]
+    if outcome.metrics is not None:
+        lines.extend(_describe_out_of_sample(outcome.metrics))
+    lines.append(f"  Code:          {outcome.code}")
+    lines.append(f"  Record:        {outcome.record_dir / WALK_FORWARD_FILE}")
+    if outcome.code.dirty:
+        lines.append(
+            "Warning: the code had uncommitted changes, so its commit alone does not "
+            "reproduce this walk-forward."
+        )
+    return lines
+
+
+def _describe_out_of_sample(metrics: WalkForwardMetrics) -> list[str]:
+    """The test windows joined, beside the benchmark joined the same way."""
+    mine, bench = metrics.out_of_sample, metrics.benchmark
+    first = metrics.folds[0].fold.test.first
+    last = metrics.folds[-1].fold.test.last
+    benchmark = f"{metrics.folds[0].test.benchmark_instrument} total return"
+    rows = [
+        ("CAGR", _percent(mine.cagr), _percent(bench.cagr)),
+        ("Volatility", _percent(mine.volatility), _percent(bench.volatility)),
+        ("Sharpe (rf 0)", _ratio(mine.sharpe), _ratio(bench.sharpe)),
+        ("Max drawdown", _percent(_depth(mine)), _percent(_depth(bench))),
+        ("Exposure", _percent(mine.exposure), _percent(bench.exposure)),
+    ]
+    lines = [
+        f"  Out of sample: {first} to {last}, the test windows joined",
+        f"  {'Metrics':<16}{'strategy':>10}  {benchmark}",
+    ]
+    lines.extend(f"    {name:<14}{ours:>10}  {theirs:>10}" for name, ours, theirs in rows)
+    lines.append(
+        f"  Ahead of the benchmark in {metrics.tests_ahead} of {len(metrics.folds)} test windows"
     )
     return lines
 

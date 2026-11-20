@@ -28,12 +28,12 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Reference validation](reference-validation.md) | Run the same scenario through an engine written by other people, and compare every fill and every close |
 | [Reports built from the record](reports-from-the-record.md) | The record is the truth; the report is a rebuildable, deterministic view of it |
 | [Strategies without memory](strategies-without-memory.md) | Write each rule so the fact it needs is in the bars, the positions or the broker, never in the strategy object |
+| [Walk-forward testing and overfitting](walk-forward-testing.md) | Judge a choice only on history it has not seen: train on the past, test on the next year, and move forward |
 
 ## Planned
 
 | Note | Written in |
 |---|---|
-| Walk-forward testing and overfitting | Phase 1 |
 | Idempotent orders | Phase 2 |
 | Reconciliation: trusting the broker over yourself | Phase 2 |
 | Schemas as contracts between agents and code | Phase 3 |

@@ -20,7 +20,7 @@ It is the same separation as a database and a view, or a ledger and a statement:
 - `src/tyche/runtime/report.py`: `read_record` reads a run's folder, and `backtest_report` assembles the document. `write_report` writes `report.html` next to the record.
 - `src/tyche/core/backtest/cost_drag.py` and `years.py`: the computations, in `Decimal`, with no I/O.
 - `src/tyche/adapters/reports/html.py`: the renderer. It takes a generic `Document` and returns HTML with charts as inline SVG, deterministic by construction (a fixed SVG salt, no date stamp, no global plotting state).
-- `tyche report <run id>` rebuilds a report; `tyche backtest` writes one after recording the run.
+- `tyche report <run id>` rebuilds a report; `tyche backtest` writes one after recording the run. A walk-forward's report (`src/tyche/runtime/walk_forward_report.py`) follows the same rule, reading its folder and each window's record.
 - [ADR-0028](../adr/0028-backtest-report-html-and-cost-drag.md) records the choices.
 
 ## What does it cost
