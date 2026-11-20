@@ -2,7 +2,9 @@
 
 A strategy is one class that turns a `StrategyContext` into targets. It needs no change to the core. The contract is [ADR-0021](../adr/0021-strategies-see-a-window-handed-in.md); this page is the practical version.
 
-*Written in PR 12; the config and registry steps added in PR 13 ([ADR-0022](../adr/0022-portfolio-targets-as-weights-in-sleeves.md)).*
+*Written in PR 12; the config and registry steps added in PR 13 ([ADR-0022](../adr/0022-portfolio-targets-as-weights-in-sleeves.md)); indicators, list and decimal parameters, and the two worked examples added in PR 18 ([ADR-0027](../adr/0027-example-strategies-fixed-in-advance.md)).*
+
+Three built-in strategies are worked examples: `buy_and_hold.py` (one instrument, always held), `trend_rotation.py` (several instruments, a monthly rebalance) and `mean_reversion.py` (short trades with a protective stop).
 
 ## 1. Write the class
 
@@ -92,6 +94,8 @@ PLUGIN = Plugin("above_average", AboveAverageParameters, _build)
 
 `lookup` builds the instrument and checks it against the market profile; a strategy never reads the config itself. Then add `PLUGIN` to `PLUGINS` in `src/tyche/strategies/__init__.py`, and test it as `tests/strategies/test_registry.py` does.
 
+For a list of instruments, use `InstrumentParameters` (one `{ symbol, exchange, asset_class }` table each) and build each with `entry.build(lookup)`. For a decimal, use `ExactDecimal`, which accepts only a string such as `"2.5"`, so the value stays exact. **Put every range check in the parameters model** (`Field(ge=1)`, or a `model_validator` for checks across keys), not only in the class: a mistake found by the model is reported as a config error naming the file and key, while one raised by the class's constructor stops Tyche with a traceback. `trend_rotation.py` shows both.
+
 ## 5. Configure it
 
 In the workspace, give it a budget and a file of the same name:
@@ -115,4 +119,8 @@ asset_class = "etf"
 
 `tyche config check` builds every strategy and names the file and key of any mistake. Its weights are fractions of its budget; how budgets combine is in [backtesting internals](backtesting-internals.md#5-how-strategies-share-the-account).
 
-If pandas makes the maths clearer, use it inside `decide`; a helper that turns a history view into a frame arrives with the first strategy that needs one (PR 18).
+## 6. Indicators
+
+`tyche.strategies.indicators` has the ones the examples use: `simple_average`, `price_return`, `rsi` (Wilder's) and `average_true_range`, each a function of the window, with its definition in the module's docstring. Add a new one there, with a test against values worked out by hand (`tests/strategies/test_indicators.py`). Plain Python on a window of a few hundred floats is clearer than pandas; PR 18 chose not to add a dataframe helper.
+
+A rule that sounds like it needs memory ("once a month", "keep the stop") can almost always be read from the window or the positions instead: learning note [strategies without memory](../learning/strategies-without-memory.md).

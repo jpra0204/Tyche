@@ -7,7 +7,15 @@ import pytest
 from tests.support.market import SPY
 from tyche.config import ConfigError, Workspace, init_workspace, load_config
 from tyche.runtime.strategies import build_strategies
-from tyche.strategies import PLUGINS, BuyAndHold, BuyAndHoldParameters, InstrumentLookup, Plugin
+from tyche.strategies import (
+    PLUGINS,
+    BuyAndHold,
+    BuyAndHoldParameters,
+    InstrumentLookup,
+    MeanReversion,
+    Plugin,
+    TrendRotation,
+)
 
 
 @pytest.fixture
@@ -28,6 +36,29 @@ def test_the_template_builds_buy_and_hold_on_spy(workspace: Workspace) -> None:
     assert isinstance(strategy, BuyAndHold)
     assert strategy.instrument == SPY
     assert configured.budgets == {"buy_and_hold": 1}
+
+
+def test_the_example_templates_build_once_they_have_a_budget(workspace: Workspace) -> None:
+    tyche = workspace.root / "config" / "tyche.toml"
+    tyche.write_text(
+        tyche.read_text().replace(
+            'buy_and_hold = "1.0"',
+            'buy_and_hold = "0.2"\ntrend_rotation = "0.4"\nmean_reversion = "0.4"',
+        )
+    )
+    config = load_config(workspace)
+
+    configured = build_strategies(config)
+
+    [buy_and_hold, dips, rotation] = configured.strategies
+    assert isinstance(buy_and_hold, BuyAndHold)
+    assert isinstance(dips, MeanReversion)
+    assert isinstance(rotation, TrendRotation)
+    assert [str(i) for i in dips.instruments] == ["SPY@ARCX", "QQQ@XNAS"]
+    assert len(rotation.instruments) == 9
+    candidates = set(config.market_profile.universe.instruments)
+    assert set(rotation.instruments) <= candidates
+    assert set(dips.instruments) <= candidates
 
 
 def test_an_unknown_plugin(workspace: Workspace) -> None:

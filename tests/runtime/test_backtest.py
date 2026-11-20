@@ -14,9 +14,10 @@ from pathlib import Path
 import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
+from tests.support.workspace import keep_candidates
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data import YFinanceSource
-from tyche.config import TycheConfig, init_workspace, load_config
+from tyche.config import TycheConfig, Workspace, init_workspace, load_config
 from tyche.core.backtest import BacktestMetrics, BacktestResult, HoldoutError, MetricsError
 from tyche.core.domain import AssetClass, Currency
 from tyche.core.sim import SimClock
@@ -41,7 +42,8 @@ CODE = CodeVersion("0.0.0", "0123456789abcdef0123", dirty=False)
 def config(tmp_path: Path) -> TycheConfig:
     home = tmp_path / "home"
     home.mkdir()
-    config = load_config(init_workspace(home / "ws", user_home=home))
+    keep_candidates(init_workspace(home / "ws", user_home=home).root, "SPY", "QQQ")
+    config = load_config(Workspace(home / "ws"))
     profile = config.market_profile
     days = [s.day for s in NYSE.sessions_between(CACHED_FROM, CACHED_TO)]
     fetch = FakeFetch([row(d, 400 + i) for i, d in enumerate(days)], [row(d, 350) for d in days])

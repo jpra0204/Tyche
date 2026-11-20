@@ -15,6 +15,11 @@ market_profile = "US"
 # Each name needs a file config/strategies/<name>.toml. Decimals are strings so they
 # stay exact.
 buy_and_hold = "1.0"
+# Two example strategies ship with their files but no budget, so they do not run. To
+# try one, give it a budget and lower the others so the total stays at most 1, e.g.:
+#   buy_and_hold = "0.5"
+#   trend_rotation = "0.5"
+# They exist to exercise Tyche, not to make money (ADR-0027).
 
 [backtest]
 # The holdout: the most recent history, kept away from every backtest until the final

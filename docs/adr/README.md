@@ -37,6 +37,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0024](0024-backtest-runner-holdout-and-run-record.md) | The backtest runner: a fixed holdout, candidates in the market profile, and a run record | Accepted (Pablo, 2026-11-19) |
 | [0025](0025-metrics-against-the-benchmarks-total-return.md) | Metrics: measured against the benchmark's total return, with a zero risk-free rate | Accepted (Pablo, 2026-11-19) |
 | [0026](0026-reference-validation-against-backtesting-py.md) | The backtester is checked against backtesting.py, a test-only dependency | Accepted (Pablo, 2026-11-19) |
+| [0027](0027-example-strategies-fixed-in-advance.md) | Two example strategies, with their rules fixed before any backtest | Accepted (Pablo, 2026-11-19) |
 
 ## Template
 

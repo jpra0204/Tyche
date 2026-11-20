@@ -26,12 +26,15 @@ A backtest replays the instruments listed in `config/markets/US.toml`, under `[u
 
 ```toml
 instruments = [
-    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
-    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" }, # US large caps (S&P 500)
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" }, # US large caps (Nasdaq-100)
+    # ... IWM, EFA, EEM, TLT, IEF, GLD and VNQ: nine ETFs in all
 ]
 ```
 
 These are the **candidates**. At every decision the universe rules in the same table decide which of them are eligible (price, liquidity, data quality), and only eligible ones are offered to your strategies. A strategy can only trade an instrument listed here: one that names an unlisted instrument never trades.
+
+The template lists nine ETFs across US large and small caps, other developed and emerging markets, Treasuries, gold and real estate: what the example trend rotation chooses from. **Every backtest replays every candidate**, so each one must be fetched, even when your strategies trade only SPY. To backtest fewer, remove the others from the list.
 
 ## The benchmark
 
@@ -48,15 +51,17 @@ The benchmark is not a strategy that trades. It is what simply holding SPY paid 
 
 ## Fetch the history first
 
-A backtest reads only what is already cached. It also needs some history **before** its first day, to warm up: the universe's liquidity average needs 20 sessions, and each strategy needs its own lookback. Fetch from a month or two before you plan to start:
+A backtest reads only what is already cached. It also needs some history **before** its first day, to warm up: the universe's liquidity average needs 20 sessions, and each strategy needs its own lookback (200 sessions, about ten months, for the example strategies). Fetch from a year before you plan to start. The nine candidates are listed on two exchanges, so two commands fetch them all:
 
 ```bash
-uv run tyche data fetch SPY --exchange ARCX --from 2004-11-01 --to 2023-12-29
+uv run tyche data fetch SPY IWM EFA EEM GLD VNQ --exchange ARCX --from 2004-01-01 --to 2023-12-29
 ```
 
 ```bash
-uv run tyche data fetch QQQ --exchange XNAS --from 2004-11-01 --to 2023-12-29
+uv run tyche data fetch QQQ TLT IEF --exchange XNAS --from 2004-01-01 --to 2023-12-29
 ```
+
+GLD and VNQ started trading in late 2004, so `tyche data fetch` reports the sessions before that as missing. That is expected: until a fund has enough history it is "warming up", and strategies are not offered it.
 
 If something is missing, the backtest stops and prints the exact command to run:
 
@@ -146,6 +151,37 @@ With the template's buy-and-hold on SPY:
 - Dividends arrive as cash and stay as cash until the holding is more than 10% below its target (the rebalance band); then it buys more. Over 2005 to 2023 that happens twice, and the run ends with about 9% in cash.
 - So it trails the benchmark: 9.09% a year against 9.59% for SPY with every dividend reinvested. That half point is what commissions and idle cash cost buy-and-hold through Tyche. Its drawdown is a little smaller for the same reason: the cash did not fall.
 
+## Trying the example strategies
+
+Two example strategies come with the workspace, in `config/strategies/`, without a budget, so they do not run until you give them one ([ADR-0027](../adr/0027-example-strategies-fixed-in-advance.md)). They exist to exercise Tyche, not to make money, and their parameters were fixed before any backtest ran.
+
+| Strategy | What it does |
+|---|---|
+| `trend_rotation` | Once a month, holds the three of the nine ETFs that rose most over about six months, a third of its budget each, but only those above their 200-session average; the rest stays in cash |
+| `mean_reversion` | On SPY and QQQ, buys a sharp two-day dip (RSI(2) below 10) while the price is above its 200-session average, with a stop 2.5 average true ranges below, and sells when the close rises above its 5-session average |
+
+To run one alone, change the budgets in `config/tyche.toml`:
+
+```toml
+[strategies]
+trend_rotation = "1.0"
+```
+
+or split the account between several, with budgets adding up to at most 1. Each one's file says what its parameters mean. **Changing a parameter after seeing a result, then testing again, is how a backtest gets fitted to the past**: every such run is a new trial, and later phases count them.
+
+On 2005 to 2023 real data, USD 10,000, each strategy alone:
+
+| | Trend rotation | Mean reversion | SPY total return |
+|---|---|---|---|
+| CAGR | 5.97% | 1.28% | 9.59% |
+| Volatility | 13.70% | 5.25% | 19.31% |
+| Max drawdown | 29.68% | 12.44% | 55.20% |
+| Exposure | 86% | 10% | 100% |
+| Trades | 175 closed | 328 closed, 41 by the stop | |
+| Costs | USD 544 | USD 698 | none |
+
+Neither beats holding SPY. The rotation's worst fall was 29.7% (2018 to 2020) against SPY's 55.2% (2007 to 2009), and it paid for that with a lower return. The mean reversion is invested a tenth of the time, so its low return and low drawdown both come mostly from sitting in cash. One backtest is not a verdict either way.
+
 ## Troubleshooting
 
 | Message | What to do |
@@ -154,6 +190,8 @@ With the template's buy-and-hold on SPY:
 | `… are not in the cache yet. Fetch it first:` | Run the command printed below the message, then the backtest again. |
 | `config/tyche.toml: … backtest: Field required` | Your workspace was created before PR 15. Copy the `[backtest]` table, with its comments, from the `config/tyche.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
 | `config/markets/US.toml: … benchmark: Field required` | Your workspace was created before PR 16. Copy the `[benchmark]` table, with its comments, from the `config/markets/US.toml` of a new workspace (`uv run tyche init --home <scratch-folder>`) into yours. |
+| `IWM@ARCX: sessions from … are not in the cache yet` | The template's candidates grew from two to nine in PR 18. Fetch them (see [Fetch the history first](#fetch-the-history-first)), or remove the ones you do not want from `instruments` in `config/markets/US.toml`. |
+| `… gives strategy 'trend_rotation' a budget, but config/strategies/trend_rotation.toml does not exist` (or `mean_reversion`) | Your workspace was created before PR 18. Copy the file from a new workspace (`uv run tyche init --home <scratch-folder>`) into your `config/strategies/`. |
 | `no bar of the benchmark SPY@ARCX on or before …` | Fetch the benchmark's history from before your first day, as for a candidate. |
 | `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json`; the message says why. |
 | `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, into the `[universe]` table of your `config/markets/US.toml`. |

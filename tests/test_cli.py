@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 import tyche
 from tests.adapters.data.test_yfinance_source import row
 from tests.support.market import JANUARY_2024
-from tests.support.workspace import BACKTEST
+from tests.support.workspace import BACKTEST, keep_candidates
 from tyche import cli
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
@@ -368,6 +368,7 @@ class TestBacktest:
 
         monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
         assert runner.invoke(app, ["init"]).exit_code == 0
+        keep_candidates(home / "tyche-workspace", "SPY", "QQQ")
         for symbol, exchange in (("SPY", "ARCX"), ("QQQ", "XNAS")):
             arguments = ["data", "fetch", symbol, "--exchange", exchange]
             result = runner.invoke(app, [*arguments, "--from", "2023-10-02", "--to", "2023-12-29"])

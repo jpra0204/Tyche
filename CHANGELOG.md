@@ -89,7 +89,15 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - ADR-0026. Backtesting internals: checked against an independent engine. Learning note: reference validation.
 - Development dependency: `backtesting` (AGPL-3.0), test-only and never imported by Tyche.
 
+- Example strategies (Phase 1, PR 18), with their rules fixed before any backtest (ADR-0027): `TrendRotation` (`trend_rotation`) holds, from the first session of each month, the three of its ETFs with the highest 126-session return that are above their 200-session average; `MeanReversion` (`mean_reversion`) buys an RSI(2) dip below 10 above the 200-session average, with a stop 2.5 ATR(14) below the close kept for the life of the trade, and sells above the 5-session average.
+- `tyche.strategies.indicators`: `simple_average`, `price_return`, `rsi` (Wilder's) and `average_true_range`.
+- Strategy parameters: `InstrumentParameters` for lists of instruments and `ExactDecimal` for decimals written as strings.
+- New workspaces get `config/strategies/trend_rotation.toml` and `mean_reversion.toml`, without a budget, so they do not run until given one.
+- ADR-0027. User guide: trying the example strategies. Developer guide: indicators, list and decimal parameters. Learning note: strategies without memory.
+
 ### Changed
+
+- The `US` market profile template lists nine candidate ETFs instead of two: SPY, QQQ, IWM, EFA, EEM, TLT, IEF, GLD and VNQ. A backtest replays every candidate, so a new workspace must fetch all nine (two `tyche data fetch` commands, one per exchange). Existing workspaces keep their own list.
 
 - `config/markets/<PROFILE>.toml` requires a `[benchmark]` table (`symbol`, `exchange`, `asset_class`), and `MarketProfile` gains a required `benchmark`, which must follow one of the profile's calendars and trade in one of its cash currencies. A workspace created before PR 16 must copy the table from a new one (user guide, running a backtest, troubleshooting).
 

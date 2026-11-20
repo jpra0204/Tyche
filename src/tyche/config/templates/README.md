@@ -9,7 +9,7 @@ Keep this folder a **private** git repository. Never push it anywhere public.
 | `config/tyche.toml` | Workspace settings: the active market profile, the strategies to run with their budgets, and the backtest settings with the holdout | Yes |
 | `config/markets/` | One file per market profile: the instruments followed and the rules for trading them | Yes |
 | `config/costs/` | Trading costs and settlement for each market profile, with the date they were checked | Yes |
-| `config/strategies/` | One file per strategy you run: which built-in plugin and its parameters. Budgets are in `config/tyche.toml` | Yes |
+| `config/strategies/` | One file per strategy: which built-in plugin and its parameters. A strategy runs only with a budget in `config/tyche.toml`; the two examples ship without one | Yes |
 | `reports/backtests/` | One folder per backtest run: what ran, the equity at every close, every fill | Yes |
 | `data/` | Market data fetched from Yahoo Finance, for personal use only | **Never** |
 | `.env` | Secrets: Discord webhook, broker connection | **Never** |

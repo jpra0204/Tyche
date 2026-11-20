@@ -26,6 +26,8 @@ _TEMPLATES = {
     "markets/US.toml": "config/markets/US.toml",
     "costs/US.toml": "config/costs/US.toml",
     "strategies/buy_and_hold.toml": "config/strategies/buy_and_hold.toml",
+    "strategies/mean_reversion.toml": "config/strategies/mean_reversion.toml",
+    "strategies/trend_rotation.toml": "config/strategies/trend_rotation.toml",
     "env.example": ".env",
     "gitignore": ".gitignore",
     "README.md": "README.md",
