@@ -1,4 +1,5 @@
-"""The `tyche` command, run as a user would: version, init, config, data and backtest."""
+"""The `tyche` command, run as a user would: version, init, config, data, backtest,
+walk-forward and report."""
 
 import re
 import subprocess
@@ -24,6 +25,7 @@ from tyche.cli import app
 from tyche.runtime import data as runtime_data
 from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
 from tyche.runtime.report import ReportError
+from tyche.runtime.walk_forward import WalkForwardOutcome, run_configured_walk_forward
 
 runner = CliRunner()
 
@@ -443,7 +445,7 @@ class TestBacktest:
         result = runner.invoke(app, ["report", run_id])
 
         assert result.exit_code == 1
-        assert f"no backtest record named {run_id!r}" in plain(result.stderr)
+        assert f"no backtest or walk-forward record named {run_id!r}" in plain(result.stderr)
 
     def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
         result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])
@@ -479,3 +481,111 @@ class TestBacktest:
         assert result.exit_code == 1
         assert ": halted" in result.stdout
         assert "Error: the run halted: a stage failed" in plain(result.stderr)
+
+
+class TestWalkForward:
+    @pytest.fixture
+    def fetched(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """A workspace whose cache holds SPY and QQQ from October 2021 to December 2023."""
+        nyse = ExchangeCalendarsCalendar("XNYS", first=date(2021, 1, 1), last=date(2024, 1, 31))
+
+        def fake_fetcher(
+            cache_dir: Path | None = None,
+        ) -> Callable[[str, date, date], list[YahooRow]]:
+            def fetch(ticker: str, start: date, end: date) -> list[YahooRow]:
+                days = [s.day for s in nyse.sessions_between(start, end) if s.day < end]
+                return [row(day, 400.0 + i) for i, day in enumerate(days)]
+
+            return fetch
+
+        monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
+        assert runner.invoke(app, ["init"]).exit_code == 0
+        keep_candidates(home / "tyche-workspace", "SPY", "QQQ")
+        for symbol, exchange in (("SPY", "ARCX"), ("QQQ", "XNAS")):
+            arguments = ["data", "fetch", symbol, "--exchange", exchange]
+            result = runner.invoke(app, [*arguments, "--from", "2021-10-01", "--to", "2023-12-29"])
+            assert result.exit_code == 0, result.output
+        return home / "tyche-workspace"
+
+    def test_runs_records_and_summarises(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["walk-forward", "--from", "2022-01-03", "--train-years", "1"])
+
+        assert result.exit_code == 0, result.output
+        out = result.stdout
+        assert "Walk-forward, anchored: 1-year first training window, 1-year test windows" in out
+        assert re.search(
+            r"^  Fold  1 train 2022-01-03 to 2022-12-31  CAGR +\S+%  benchmark +\S+%$",
+            out,
+            re.MULTILINE,
+        )
+        assert re.search(
+            r"^  Fold  1 test  2023-01-01 to 2023-12-31  return +\S+%  benchmark +\S+%$",
+            out,
+            re.MULTILINE,
+        )
+        assert re.search(
+            r"^Walk-forward \d{8}T\d{6}Z-[0-9a-f]{8}: completed, 1 of 1 folds$", out, re.MULTILINE
+        )
+        assert "Out of sample: 2023-01-01 to 2023-12-31, the test windows joined" in out
+        assert re.search(r"^    Sharpe \(rf 0\)\s+\S+\s+\S+$", out, re.MULTILINE)
+        assert re.search(r"^  Ahead of the benchmark in [01] of 1 test windows$", out, re.MULTILINE)
+        record = re.search(r"Record:\s+(\S+)", out)
+        assert record is not None
+        assert Path(record.group(1)).is_file()
+        assert Path(record.group(1)).is_relative_to(fetched / "reports" / "walk_forward")
+        report = re.search(r"Report:\s+(\S+)", out)
+        assert report is not None
+        assert Path(report.group(1)) == Path(record.group(1)).parent / "report.html"
+        assert Path(report.group(1)).is_file()
+
+    def test_rolling_windows_keep_their_length(self, fetched: Path) -> None:
+        result = runner.invoke(
+            app, ["walk-forward", "--from", "2022-01-03", "--train-years", "1", "--rolling"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Walk-forward, rolling: 1-year training window, 1-year test windows" in result.stdout
+
+    def test_report_rebuilds_a_walk_forwards_report(self, fetched: Path) -> None:
+        ran = runner.invoke(app, ["walk-forward", "--from", "2022-01-03", "--train-years", "1"])
+        found = re.search(r"^Walk-forward (\S+):", ran.stdout, re.MULTILINE)
+        assert found is not None
+        page = fetched / "reports" / "walk_forward" / found.group(1) / "report.html"
+        page.unlink()
+
+        result = runner.invoke(app, ["report", found.group(1)])
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout == f"Report: {page}\n"
+        assert page.is_file()
+
+    def test_a_range_with_no_test_window_is_refused(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["walk-forward", "--from", "2022-01-03"])
+
+        assert result.exit_code == 1
+        assert "leaves no test window after a 5-year training window" in plain(result.stderr)
+        assert not (fetched / "reports").exists()
+
+    def test_windows_are_at_least_a_year(self, home: Path) -> None:
+        result = runner.invoke(app, ["walk-forward", "--from", "2022-01-03", "--test-years", "0"])
+
+        assert result.exit_code == 2
+        assert "--test-years" in plain(result.output)
+
+    def test_a_walk_forward_that_stops_is_recorded_and_fails_the_command(
+        self, fetched: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def stopping(*args: Any, **kwargs: Any) -> WalkForwardOutcome:
+            outcome = run_configured_walk_forward(*args, **kwargs)
+            return replace(outcome, metrics=None, failure="fold 1's test window halted: oops")
+
+        monkeypatch.setattr(cli, "run_configured_walk_forward", stopping)
+
+        result = runner.invoke(app, ["walk-forward", "--from", "2022-01-03", "--train-years", "1"])
+
+        assert result.exit_code == 1
+        assert ": stopped, 1 of 1 folds" in result.stdout
+        assert "Report:" not in result.stdout
+        assert "Error: the walk-forward stopped: fold 1's test window halted: oops" in plain(
+            result.stderr
+        )

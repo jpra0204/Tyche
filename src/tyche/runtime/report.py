@@ -169,12 +169,12 @@ def backtest_report(record: Record) -> Document:
     """The report's content, as a document the renderer can draw."""
     run, metrics = record.run, record.metrics
     drag = cost_drag(record.equity, record.costs)
-    strategies = ", ".join(f"{s['id']} ({_percent_of(s['budget'])})" for s in run["strategies"])
+    strategies = ", ".join(f"{s['id']} ({fmt_budget(s['budget'])})" for s in run["strategies"])
     span = run["range"]
     starting = run["starting_cash"]
     subtitle = (
         f"{span['first_session']} to {span['last_session']}, {span['sessions']:,} sessions. "
-        f"Strategies: {strategies}. Starting cash {_amount(starting['amount'])} "
+        f"Strategies: {strategies}. Starting cash {fmt_amount(starting['amount'])} "
         f"{starting['currency']}."
     )
     callouts = [
@@ -217,42 +217,42 @@ def _summary(record: Record) -> Section:
     rows = (
         (
             "Final equity",
-            f"{_amount(mine['end_equity'])} {currency}",
-            f"{_amount(bench['end_equity'])} {currency}",
+            f"{fmt_amount(mine['end_equity'])} {currency}",
+            f"{fmt_amount(bench['end_equity'])} {currency}",
             "",
         ),
         (
             "Total return",
-            _pct(mine["total_return"]),
-            _pct(bench["total_return"]),
-            _points(diff["total_return"]),
+            fmt_pct(mine["total_return"]),
+            fmt_pct(bench["total_return"]),
+            fmt_points(diff["total_return"]),
         ),
-        ("CAGR", _pct(mine["cagr"]), _pct(bench["cagr"]), _points(diff["cagr"])),
+        ("CAGR", fmt_pct(mine["cagr"]), fmt_pct(bench["cagr"]), fmt_points(diff["cagr"])),
         (
             "Volatility",
-            _pct(mine["volatility"]),
-            _pct(bench["volatility"]),
-            _points(diff["volatility"]),
+            fmt_pct(mine["volatility"]),
+            fmt_pct(bench["volatility"]),
+            fmt_points(diff["volatility"]),
         ),
         (
             "Sharpe (rf 0)",
-            _ratio(mine["sharpe"]),
-            _ratio(bench["sharpe"]),
-            _ratio(diff["sharpe"], sign=True),
+            fmt_ratio(mine["sharpe"]),
+            fmt_ratio(bench["sharpe"]),
+            fmt_ratio(diff["sharpe"], sign=True),
         ),
         (
             "Sortino (rf 0)",
-            _ratio(mine["sortino"]),
-            _ratio(bench["sortino"]),
-            _ratio(diff["sortino"], sign=True),
+            fmt_ratio(mine["sortino"]),
+            fmt_ratio(bench["sortino"]),
+            fmt_ratio(diff["sortino"], sign=True),
         ),
         (
             "Max drawdown",
-            _pct(_depth(mine)),
-            _pct(_depth(bench)),
-            _points(diff["max_drawdown"]),
+            fmt_pct(depth_of(mine)),
+            fmt_pct(depth_of(bench)),
+            fmt_points(diff["max_drawdown"]),
         ),
-        ("Exposure", _pct(mine["exposure"]), _pct(bench["exposure"]), ""),
+        ("Exposure", fmt_pct(mine["exposure"]), fmt_pct(bench["exposure"]), ""),
     )
     benchmark_name = f"{bench['instrument']} total return"
     blocks: list[Block] = [
@@ -265,19 +265,22 @@ def _summary(record: Record) -> Section:
             "them with each other, not with published figures."
         ),
         Table(("", "Strategies", benchmark_name, "Difference"), rows),
-        Paragraph(_drawdown_sentence("Your strategies' worst fall", mine["max_drawdown"])),
-        Paragraph(_drawdown_sentence("The benchmark's", bench["max_drawdown"])),
+        Paragraph(drawdown_sentence("Your strategies' worst fall", mine["max_drawdown"])),
+        Paragraph(drawdown_sentence("The benchmark's", bench["max_drawdown"])),
         Chart(
             "Equity",
-            (_line("Strategies", record.equity), _line(benchmark_name, record.benchmark)),
+            (
+                equity_line("Strategies", record.equity),
+                equity_line(benchmark_name, record.benchmark),
+            ),
             metrics["currency"],
             log_scale=True,
         ),
         Chart(
             "Drawdown: fall from the highest close so far",
             (
-                _drawdown_line("Strategies", record.equity),
-                _drawdown_line(benchmark_name, record.benchmark),
+                drawdown_line("Strategies", record.equity),
+                drawdown_line(benchmark_name, record.benchmark),
             ),
             "below peak",
             percent=True,
@@ -295,9 +298,9 @@ def _years(record: Record) -> Section:
         (
             str(year.year),
             _covers(year),
-            _pct(year.value),
-            _pct(bench[year.year].value),
-            _points(year.value - bench[year.year].value),
+            fmt_pct(year.value),
+            fmt_pct(bench[year.year].value),
+            fmt_points(year.value - bench[year.year].value),
         )
         for year in mine
     )
@@ -319,14 +322,14 @@ def _years(record: Record) -> Section:
 def _trading(record: Record) -> Section:
     trading = record.metrics["trading"]
     outcome = record.run["outcome"]
-    win_rate = _pct(trading["win_rate"]) if trading["win_rate"] is not None else "none closed"
+    win_rate = fmt_pct(trading["win_rate"]) if trading["win_rate"] is not None else "none closed"
     rows = (
         ("Fills", f"{outcome['fills']:,}"),
         ("Closed trades", f"{trading['closed_trades']:,}"),
         ("Win rate", win_rate),
         ("Still open at the end", f"{trading['still_open']:,}"),
         ("Turnover", _turnover(trading["turnover"])),
-        ("Traded", f"{_amount(trading['traded'])} {record.metrics['currency']}"),
+        ("Traded", f"{fmt_amount(trading['traded'])} {record.metrics['currency']}"),
         ("Free-riding violations", f"{outcome['free_riding']:,}"),
     )
     exposure = Line(
@@ -364,17 +367,17 @@ def _cost_drag(record: Record, drag: CostDrag) -> Section:
             _money(drag.slippage, currency),
         ),
         ("Total costs", _money(drag.total, currency)),
-        ("Total, as a share of the starting equity", _pct(drag.total / start)),
-        ("Per year, as a share of the average equity", _pct(drag.per_year)),
+        ("Total, as a share of the starting equity", fmt_pct(drag.total / start)),
+        ("Per year, as a share of the average equity", fmt_pct(drag.per_year)),
         (
             "Share of the profit before costs",
-            _pct(drag.share_of_gross_profit)
+            fmt_pct(drag.share_of_gross_profit)
             if drag.share_of_gross_profit is not None
             else "no profit before costs",
         ),
-        ("CAGR before costs", _pct(drag.before_costs.cagr)),
-        ("CAGR after costs", _pct(drag.after_costs.cagr)),
-        ("Cost drag on CAGR", _points(drag.cagr_drag)),
+        ("CAGR before costs", fmt_pct(drag.before_costs.cagr)),
+        ("CAGR after costs", fmt_pct(drag.after_costs.cagr)),
+        ("Cost drag on CAGR", fmt_points(drag.cagr_drag)),
     )
     return Section(
         "Cost drag",
@@ -394,8 +397,8 @@ def _cost_drag(record: Record, drag: CostDrag) -> Section:
             Chart(
                 "Equity before and after costs",
                 (
-                    _line("After costs (as it happened)", record.equity),
-                    _line("Before costs", drag.before_costs_points),
+                    equity_line("After costs (as it happened)", record.equity),
+                    equity_line("Before costs", drag.before_costs_points),
                 ),
                 currency,
                 log_scale=True,
@@ -439,13 +442,13 @@ def _what_ran(run: dict[str, Any]) -> Section:
         (
             "Costs",
             f"{commission['per_share']} a share, at least {commission['minimum']}, at most "
-            f"{_pct(commission['maximum_rate'])} of the order; "
+            f"{fmt_pct(commission['maximum_rate'])} of the order; "
             f"slippage {costs['slippage_bps']} bps; "
             f"T+{costs['settlement_days']}; rates checked {run['costs_checked_on']}",
         ),
     )
     strategies = tuple(
-        (s["id"], s["plugin"] or "", s["version"], _percent_of(s["budget"]))
+        (s["id"], s["plugin"] or "", s["version"], fmt_budget(s["budget"]))
         for s in run["strategies"]
     )
     return Section(
@@ -470,9 +473,9 @@ def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:
             d["instrument"],
             d["source"],
             f"{d['bars']:,}",
-            _day(d["first_bar"]),
-            _day(d["last_bar"]),
-            _day(d["fetched_to"]),
+            fmt_day(d["first_bar"]),
+            fmt_day(d["last_bar"]),
+            fmt_day(d["fetched_to"]),
             f"{d['issues']:,}",
             f"{d['distributions']:,}",
             f"{d['splits']:,}",
@@ -480,23 +483,7 @@ def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:
         for d in used
     )
     limits = (
-        "Yahoo Finance data, through the unofficial yfinance library: for personal use "
-        "only, and it can change, be revised or stop working without notice.",
-        "Prices are split-adjusted; dividends are cash, credited at the open of the "
-        "ex-date (before the real payment date) with no withholding tax.",
-        "Survivorship bias: the backtest can only trade the instruments listed today, all "
-        "of which still exist. It never meets a fund that closed.",
-        "Market orders fill at the official open, moved by a fixed slippage. A real order "
-        "at the open can fill elsewhere, and there is no market impact beyond a cap of 1% "
-        "of the bar's volume.",
-        "A stop is assumed to fill whenever the day's low reaches it, at the stop price, or "
-        "at the open if the open is already through it: daily bars do not say when the low "
-        "happened.",
-        "Cash earns no interest, and Sharpe and Sortino use a risk-free rate of zero.",
-        "Commissions are IBKR Pro Fixed as checked on "
-        f"{run['costs_checked_on']}; brokers change their prices.",
-        "No currency conversion: the account, the instruments and the costs are all in "
-        f"{metrics['currency']}.",
+        *data_limits(run["costs_checked_on"], metrics["currency"]),
         "Everything here is in-sample: one run over one stretch of history.",
     )
     return Section(
@@ -529,14 +516,40 @@ def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:
     )
 
 
+# --- shared with the walk-forward report ----------------------------------------------
+
+
+def data_limits(costs_checked_on: str, currency: str) -> tuple[str, ...]:
+    """The limits every backtest result shares, whatever the study (ADR-0028)."""
+    return (
+        "Yahoo Finance data, through the unofficial yfinance library: for personal use "
+        "only, and it can change, be revised or stop working without notice.",
+        "Prices are split-adjusted; dividends are cash, credited at the open of the "
+        "ex-date (before the real payment date) with no withholding tax.",
+        "Survivorship bias: the backtest can only trade the instruments listed today, all "
+        "of which still exist. It never meets a fund that closed.",
+        "Market orders fill at the official open, moved by a fixed slippage. A real order "
+        "at the open can fill elsewhere, and there is no market impact beyond a cap of 1% "
+        "of the bar's volume.",
+        "A stop is assumed to fill whenever the day's low reaches it, at the stop price, or "
+        "at the open if the open is already through it: daily bars do not say when the low "
+        "happened.",
+        "Cash earns no interest, and Sharpe and Sortino use a risk-free rate of zero.",
+        "Commissions are IBKR Pro Fixed as checked on "
+        f"{costs_checked_on}; brokers change their prices.",
+        "No currency conversion: the account, the instruments and the costs are all in "
+        f"{currency}.",
+    )
+
+
 # --- formatting -----------------------------------------------------------------------
 
 
-def _line(label: str, points: Sequence[EquityPoint]) -> Line:
+def equity_line(label: str, points: Sequence[EquityPoint]) -> Line:
     return Line(label, tuple((p.at, float(p.equity)) for p in points))
 
 
-def _drawdown_line(label: str, points: Sequence[EquityPoint]) -> Line:
+def drawdown_line(label: str, points: Sequence[EquityPoint]) -> Line:
     peak = points[0].equity
     values: list[tuple[datetime, float]] = []
     for point in points:
@@ -545,21 +558,21 @@ def _drawdown_line(label: str, points: Sequence[EquityPoint]) -> Line:
     return Line(label, tuple(values))
 
 
-def _drawdown_sentence(whose: str, drawdown: dict[str, Any] | None) -> str:
+def drawdown_sentence(whose: str, drawdown: dict[str, Any] | None) -> str:
     if drawdown is None:
         return f"{whose}: none, it never closed below a previous high."
     recovered = (
-        f"back at the peak on {_day(drawdown['recovered'])}"
+        f"back at the peak on {fmt_day(drawdown['recovered'])}"
         if drawdown["recovered"]
         else "not recovered by the end of the run"
     )
     return (
-        f"{whose}: {_pct(drawdown['depth'])}, from {_day(drawdown['peak'])} to "
-        f"{_day(drawdown['trough'])}; {recovered}."
+        f"{whose}: {fmt_pct(drawdown['depth'])}, from {fmt_day(drawdown['peak'])} to "
+        f"{fmt_day(drawdown['trough'])}; {recovered}."
     )
 
 
-def _depth(series: dict[str, Any]) -> str | None:
+def depth_of(series: dict[str, Any]) -> str | None:
     drawdown = series["max_drawdown"]
     return drawdown["depth"] if drawdown else "0"
 
@@ -568,7 +581,7 @@ def _covers(year: YearReturn) -> str:
     return f"{year.first.date().isoformat()} to {year.last.date().isoformat()}"
 
 
-def _day(moment: str | None) -> str:
+def fmt_day(moment: str | None) -> str:
     return "" if moment is None else date.fromisoformat(moment[:10]).isoformat()
 
 
@@ -576,17 +589,17 @@ def _number(value: str | Decimal | None) -> Decimal | None:
     return None if value is None else Decimal(value)
 
 
-def _pct(value: str | Decimal | None) -> str:
+def fmt_pct(value: str | Decimal | None) -> str:
     number = _number(value)
     return "n/a" if number is None else f"{number * 100:.2f}%"
 
 
-def _points(value: str | Decimal | None) -> str:
+def fmt_points(value: str | Decimal | None) -> str:
     number = _number(value)
     return "n/a" if number is None else f"{number * 100:+.2f} pts"
 
 
-def _ratio(value: str | Decimal | None, *, sign: bool = False) -> str:
+def fmt_ratio(value: str | Decimal | None, *, sign: bool = False) -> str:
     number = _number(value)
     if number is None:
         return "n/a"
@@ -598,7 +611,7 @@ def _turnover(value: str | None) -> str:
     return "n/a" if number is None else f"{number:.2f} a year"
 
 
-def _amount(value: str) -> str:
+def fmt_amount(value: str) -> str:
     return f"{Decimal(value):,.2f}"
 
 
@@ -612,5 +625,5 @@ def _plain(value: Decimal) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def _percent_of(budget: str) -> str:
+def fmt_budget(budget: str) -> str:
     return f"{_plain(Decimal(budget) * 100)}% of equity"

@@ -42,7 +42,7 @@ src/tyche/
 │   ├── risk/               stage 5: the gate (pass-through in Phase 1); later profiles, guardrails, halts
 │   ├── engine/             the run loop shared by all three modes
 │   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
-│   ├── backtest/           runner and the holdout; later metrics, walk-forward, sweeps
+│   ├── backtest/           runner, holdout, metrics, cost drag, walk-forward; later sweeps
 │   ├── improvement/        proposals, gate, approvals, strategy lifecycle
 │   └── agents/             offline LLM-agent workflows
 ├── strategies/           built-in strategy plugins (benchmark and examples)

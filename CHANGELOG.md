@@ -101,7 +101,16 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - ADR-0028. User guide: the report. Learning note: reports built from the record.
 - Runtime dependency: `matplotlib` (PSF-based licence), with numpy. The core's import contract now forbids `matplotlib`.
 
+- Walk-forward (Phase 1, PR 20): `tyche walk-forward --from <date>` cuts history into folds of calendar years (by default anchored, a five-year first training window and one-year test windows; `--train-years`, `--test-years`, `--rolling`), runs every training and test window as a backtest of its own from the starting cash, and reports in-sample and out-of-sample results side by side. The test windows are joined into one out-of-sample result against the benchmark joined the same way. A train step between each fold's runs keeps the configured parameters until parameter sweeps (PR 21) (ADR-0029).
+- `plan_folds`, `FoldScheme`, `Fold`, `Window`, `chain`, `measure_walk_forward`, `FoldResult` and `WalkForwardMetrics` in `tyche.core.backtest`.
+- Each walk-forward writes `reports/walk_forward/<id>/`: `walk_forward.json`, `metrics.json`, `equity.csv`, `report.html`, and each window's full backtest record under `folds/`.
+- ADR-0029. User guide: walk-forward. Learning note: walk-forward testing and overfitting. Developer guide: backtesting internals, section 9.
+
 ### Changed
+
+- `tyche report <id>` also rebuilds a walk-forward's report, and its error for an unknown id now reads `no backtest or walk-forward record named …`.
+- A backtest's `run.json` gains `part_of` when the run is one window of a walk-forward. The record format stays 1: no field changed meaning.
+- `tyche.runtime.backtest` is split into `checked_range`, `cached_market` and `run_and_record`, so a walk-forward runs each window exactly as `tyche backtest` does. `tyche.runtime.report` exposes its formatting helpers and `data_limits` for the walk-forward report.
 
 - The `US` market profile template lists nine candidate ETFs instead of two: SPY, QQQ, IWM, EFA, EEM, TLT, IEF, GLD and VNQ. A backtest replays every candidate, so a new workspace must fetch all nine (two `tyche data fetch` commands, one per exchange). Existing workspaces keep their own list.
 

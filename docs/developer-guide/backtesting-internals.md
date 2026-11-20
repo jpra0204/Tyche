@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15, the metrics section in PR 16 and the reference check in PR 17. A section on walk-forward is added by PR 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15, the metrics section in PR 16, the reference check in PR 17 and the walk-forward section in PR 20.*
 
 ## 1. How time moves
 
@@ -235,7 +235,39 @@ The golden-file test `tests/integration/test_backtest_to_metrics.py` pins every 
 
 `tests/reference/` runs one simple strategy through Tyche and through backtesting.py on the same bars and compares every fill, the equity at every close, every closed trade and the metrics ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md), learning note: [reference validation](../learning/reference-validation.md)). They agree to within 10⁻⁹ USD. What the comparison covers: next-open fills, whole-share sizing from the last close, IBKR Pro Fixed commissions, slippage on both sides, cash and equity accounting, trades and the metrics. What it does not, because backtesting.py does not model it: dividends, T+1 settlement, regulatory fees, the volume cap, stops, and more than one instrument or sleeve.
 
-## 9. Known limits
+## 9. Walk-forward
+
+`tyche walk-forward` runs a walk-forward ([ADR-0029](../adr/0029-walk-forward-folds-and-a-train-step.md), learning note: [walk-forward testing](../learning/walk-forward-testing.md)). It is made of backtests: every training and test window runs through the same path as `tyche backtest`.
+
+```mermaid
+flowchart TD
+    A[Check the range against the holdout] --> B["plan_folds: windows of calendar years"]
+    B --> C[Next fold]
+    C --> D[Backtest the training window<br/>run_and_record into folds/NN-train]
+    D --> E["Train step: keep_configured<br/>(a parameter choice from PR 21)"]
+    E --> F[Backtest the test window<br/>with what the train step chose<br/>into folds/NN-test]
+    F --> G{More folds?}
+    G -- yes --> C
+    G -- no --> H["measure_walk_forward: chain the test windows,<br/>and the benchmark the same way"]
+    H --> I[walk_forward.json, metrics.json,<br/>equity.csv, report.html]
+```
+
+| Rule | Detail |
+|---|---|
+| Folds | `plan_folds(first, last, FoldScheme)`, dates only. The first test year is `first.year + train_years`; test windows of `test_years` follow with no gap until `last`. Anchored training windows start at `first`; rolling ones keep `train_years` calendar years |
+| Each window | A backtest of its own, from `starting_cash`, warmed up on the history before it like any backtest. It writes a full record into `folds/<NN>-train/` or `folds/<NN>-test/`, with `part_of` in `run.json` naming the walk-forward, the fold and the window |
+| Train step | `tyche.runtime.walk_forward.keep_configured(config, fold, trained)` returns what the test window runs. Today: the configured strategies, so the training run is measured and reported but changes nothing |
+| Joining | `chain` scales each test window's equity (and the amount invested) to start where the previous one ended. The benchmark's equity for each test window comes from that window's `metrics.benchmark_equity` and is chained the same way |
+| Stops | The first window that halts or cannot be measured stops the walk-forward; `walk_forward.json` records the failure and the folds finished. Missing history raises after recording the same |
+| Report | `tyche.runtime.walk_forward_report`, built from the folder alone through `tyche.adapters.reports`. `tyche report <id>` finds a walk-forward under `reports/walk_forward/` |
+
+What follows from the rules:
+
+- **A test window starts flat.** Its first session's close is the first equity point, before any order has filled, for the strategies and the benchmark alike. Joined, the session between two windows shows no change for either.
+- **With the train step keeping the configured parameters, each anchored training window is the start of the next one.** On real data, fold 13's training run (2005 to 2021) matched the first 4,280 closes of fold 14's (2005 to 2022) in every equity row and every fill, for all three strategies. That is also a lookahead check: where a run ends changes nothing before it. The walk-forward still runs every window, because a parameter choice will make them differ.
+- **Speed.** About ten times a single backtest of the same range with the defaults. On the nine-ETF profile, a walk-forward over 2005 to 2023 takes 2 to 3 minutes.
+
+## 10. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

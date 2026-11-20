@@ -42,6 +42,7 @@ from tyche.core.backtest import (
     BacktestMetrics,
     BacktestResult,
     BacktestSpec,
+    Comparison,
     Drawdown,
     MetricsError,
     SeriesMetrics,
@@ -50,9 +51,9 @@ from tyche.core.backtest import (
 )
 from tyche.core.backtest.metrics import DAYS_PER_YEAR, RISK_FREE_RATE, SESSIONS_PER_YEAR
 from tyche.core.domain import AssetClass, BarHistory, Currency, Money, PriceAdjustment
-from tyche.core.ports import Calendar, Clock
+from tyche.core.ports import Calendar, Clock, DataProvider
 from tyche.runtime.data import CALENDAR_START
-from tyche.runtime.strategies import build_strategies
+from tyche.runtime.strategies import ConfiguredStrategies, build_strategies
 
 RECORD_FORMAT = 1
 """Version of ``run.json``'s layout. Raised when a field changes meaning or goes away."""
@@ -163,42 +164,102 @@ def run_configured_backtest(
     """
     clock = clock or SystemClock()
     code = code or current_code_version()
-    settings = config.backtest
+    last = checked_range(config, first, last)
+    market = cached_market(config, last, clock)
+    backtests = config.workspace.reports_dir / "backtests"
+    run_id = new_run_id(backtests, clock.now(), config.config_hash)
+    return run_and_record(
+        config,
+        market,
+        build_strategies(config),
+        run_id=run_id,
+        first=first,
+        last=last,
+        folder=backtests / run_id,
+        clock=clock,
+        code=code,
+    )
+
+
+def checked_range(config: TycheConfig, first: date, last: date | None) -> date:
+    """The last day to run, once ``first`` to ``last`` is checked against the workspace.
+
+    ``last`` defaults to the day before the holdout.
+
+    Raises:
+        BacktestRequestError: The range starts too early or is empty.
+        HoldoutError: ``last`` reaches the holdout.
+    """
     if last is None:
-        last = settings.holdout_starts - timedelta(days=1)
-    settings.require_before_holdout(last)
+        last = config.backtest.holdout_starts - timedelta(days=1)
+    config.backtest.require_before_holdout(last)
     if first < CALENDAR_START:
         raise BacktestRequestError(f"the earliest date Tyche can backtest from is {CALENDAR_START}")
     if first > last:
         raise BacktestRequestError(f"empty date range: {first} is after {last}")
+    return last
 
-    profile = config.market_profile
-    built = build_strategies(config)
+
+@dataclass(frozen=True, slots=True)
+class CachedMarket:
+    """What a backtest reads the market through: the calendars and the cache, never
+    the network (ADR-0024)."""
+
+    calendars: dict[str, Calendar]
+    provider: DataProvider
+
+
+def cached_market(config: TycheConfig, last: date, clock: Clock) -> CachedMarket:
+    """The profile's calendars, loaded past ``last``, and its cache read through a
+    source that never fetches."""
     calendars: dict[str, Calendar] = {
         mic: ExchangeCalendarsCalendar(mic, first=CALENDAR_START, last=last + CALENDAR_MARGIN)
-        for mic in profile.calendars
+        for mic in config.market_profile.calendars
     }
     cache = ParquetBarCache(config.workspace.data_dir / "bars", source=SOURCE_NAME)
     source = CacheOnlySource(SOURCE_NAME, PriceAdjustment.SPLITS)
-    provider = CachedDataProvider(source, cache, calendars, clock)
+    return CachedMarket(calendars, CachedDataProvider(source, cache, calendars, clock))
 
-    started = clock.now()
-    backtests = config.workspace.reports_dir / "backtests"
-    run_id = _new_run_id(backtests, started, config.config_hash)
+
+def run_and_record(
+    config: TycheConfig,
+    market: CachedMarket,
+    strategies: ConfiguredStrategies,
+    *,
+    run_id: str,
+    first: date,
+    last: date,
+    folder: Path,
+    clock: Clock,
+    code: CodeVersion,
+    part_of: dict[str, Any] | None = None,
+) -> BacktestOutcome:
+    """Run one backtest, measure it, and write its record into ``folder``, a new folder.
+
+    ``part_of`` says which larger study the run belongs to, such as a walk-forward's
+    fold; it is written into ``run.json`` as it is.
+
+    Raises:
+        BacktestRequestError: History is missing from the cache.
+        HoldoutError: ``last`` reaches the holdout.
+        BacktestError: The range or the setup cannot be run.
+    """
+    profile = config.market_profile
     spec = BacktestSpec(
         run_id=run_id,
         code_version=str(code),
         config_hash=config.config_hash,
         profile=profile,
         costs=config.costs,
-        strategies=built.strategies,
-        budgets=built.budgets,
-        settings=settings,
+        strategies=strategies.strategies,
+        budgets=strategies.budgets,
+        settings=config.backtest,
         first=first,
         last=last,
     )
+    started = clock.now()
     try:
-        result = run_backtest(spec, provider, calendars)
+        result = run_backtest(spec, market.provider, market.calendars)
     except NotCachedError as error:
         raise BacktestRequestError(_fetch_hint(error)) from None
     finished = clock.now()
@@ -211,14 +272,22 @@ def run_configured_backtest(
     except MetricsError as error:
         metrics_error = str(error)
     record = run_record(
-        config, spec, result, code, started=started, finished=finished, metrics_error=metrics_error
+        config,
+        spec,
+        result,
+        code,
+        started=started,
+        finished=finished,
+        metrics_error=metrics_error,
+        part_of=part_of,
     )
-    record_dir = backtests / run_id
-    write_run_record(record_dir, record, result, currency, metrics)
-    return BacktestOutcome(run_id, result, record_dir, code, first, last, metrics, metrics_error)
+    write_run_record(folder, record, result, currency, metrics)
+    return BacktestOutcome(run_id, result, folder, code, first, last, metrics, metrics_error)
 
 
-def _new_run_id(folder: Path, started: datetime, config_hash: str) -> str:
+def new_run_id(folder: Path, started: datetime, config_hash: str) -> str:
+    """A run id not yet used in ``folder``: the start time and the config hash's first
+    eight characters, with ``-2``, ``-3``... for a second run in the same second."""
     base = f"{started:%Y%m%dT%H%M%SZ}-{config_hash.removeprefix('sha256:')[:8]}"
     run_id, number = base, 1
     while (folder / run_id).exists():
@@ -253,8 +322,12 @@ def run_record(
     started: datetime,
     finished: datetime,
     metrics_error: str | None = None,
+    part_of: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The run record: everything needed to reproduce the run and judge what it used."""
+    """The run record: everything needed to reproduce the run and judge what it used.
+
+    ``part_of`` is written as it is when the run belongs to a larger study.
+    """
     currency = spec.profile.cash_currencies[0]
     sessions = [s for found in result.sessions.values() for s in found]
     warm_up = [s for found in result.warm_up.values() for s in found]
@@ -264,6 +337,7 @@ def run_record(
         "record_format": RECORD_FORMAT,
         "run_id": spec.run_id,
         "mode": "backtest",
+        **({"part_of": part_of} if part_of is not None else {}),
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "code": {
@@ -365,7 +439,7 @@ def write_run_record(
                     cash.total.amount,
                     cash.settled.amount,
                     account.market_value(currency).amount,
-                    _cents(bench) if bench is not None else "",
+                    cents(bench) if bench is not None else "",
                     currency.value,
                 ]
             )
@@ -433,7 +507,8 @@ def _fraction(value: Decimal | None) -> str | None:
     return None if value is None else str(value.quantize(FRACTION_PLACES))
 
 
-def _cents(value: Decimal) -> str:
+def cents(value: Decimal) -> str:
+    """An amount as ``metrics.json`` and ``equity.csv`` write it: rounded to the cent."""
     return str(value.quantize(Decimal("0.01")))
 
 
@@ -448,14 +523,15 @@ def _drawdown(drawdown: Drawdown | None) -> dict[str, Any] | None:
     }
 
 
-def _series(series: SeriesMetrics) -> dict[str, Any]:
+def series_record(series: SeriesMetrics) -> dict[str, Any]:
+    """One measured equity series, as ``metrics.json`` writes it."""
     return {
         "first_close": series.first.isoformat(),
         "last_close": series.last.isoformat(),
         "sessions": series.sessions,
         "years": _fraction(series.years),
-        "start_equity": _cents(series.start_equity),
-        "end_equity": _cents(series.end_equity),
+        "start_equity": cents(series.start_equity),
+        "end_equity": cents(series.end_equity),
         "total_return": _fraction(series.total_return),
         "cagr": _fraction(series.cagr),
         "volatility": _fraction(series.volatility),
@@ -463,6 +539,27 @@ def _series(series: SeriesMetrics) -> dict[str, Any]:
         "sortino": _fraction(series.sortino),
         "max_drawdown": _drawdown(series.max_drawdown),
         "exposure": _fraction(series.exposure),
+    }
+
+
+def comparison_record(versus: Comparison) -> dict[str, Any]:
+    """Strategy minus benchmark, as ``metrics.json`` writes it."""
+    return {
+        "total_return": _fraction(versus.total_return),
+        "cagr": _fraction(versus.cagr),
+        "volatility": _fraction(versus.volatility),
+        "sharpe": _fraction(versus.sharpe),
+        "sortino": _fraction(versus.sortino),
+        "max_drawdown": _fraction(versus.max_drawdown),
+    }
+
+
+def conventions_record() -> dict[str, Any]:
+    """How the metrics were computed, as ``metrics.json`` writes it."""
+    return {
+        "sessions_per_year": SESSIONS_PER_YEAR,
+        "days_per_year": str(DAYS_PER_YEAR),
+        "risk_free_rate": str(RISK_FREE_RATE),
     }
 
 
@@ -478,29 +575,18 @@ def metrics_record(run_id: str, metrics: BacktestMetrics) -> dict[str, Any]:
         "metrics_format": METRICS_FORMAT,
         "run_id": run_id,
         "currency": metrics.currency.value,
-        "conventions": {
-            "sessions_per_year": SESSIONS_PER_YEAR,
-            "days_per_year": str(DAYS_PER_YEAR),
-            "risk_free_rate": str(RISK_FREE_RATE),
-        },
-        "strategy": _series(metrics.strategy),
+        "conventions": conventions_record(),
+        "strategy": series_record(metrics.strategy),
         "benchmark": {
             "instrument": str(metrics.benchmark_instrument),
             "method": BENCHMARK_METHOD,
-            **_series(metrics.benchmark),
+            **series_record(metrics.benchmark),
         },
-        "versus_benchmark": {
-            "total_return": _fraction(versus.total_return),
-            "cagr": _fraction(versus.cagr),
-            "volatility": _fraction(versus.volatility),
-            "sharpe": _fraction(versus.sharpe),
-            "sortino": _fraction(versus.sortino),
-            "max_drawdown": _fraction(versus.max_drawdown),
-        },
+        "versus_benchmark": comparison_record(versus),
         "trading": {
             "turnover": _fraction(metrics.turnover),
-            "traded": _cents(metrics.traded.amount),
-            "costs": _cents(metrics.costs.amount),
+            "traded": cents(metrics.traded.amount),
+            "costs": cents(metrics.costs.amount),
             "closed_trades": len(trades.closed),
             "wins": trades.wins,
             "win_rate": _fraction(trades.win_rate),
