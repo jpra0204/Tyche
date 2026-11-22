@@ -147,6 +147,7 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 ### Fixed
 
+- The data cache could not record sessions before an instrument's first bar when a fetch for them returned nothing, so a backtest or sweep whose warm-up reached back before GLD (November 2004) or VNQ (September 2004) existed kept printing the same `tyche data fetch` hint. An empty answer for sessions that all fall before the earliest cached bar now marks them as covered; the audit still reports them as missing sessions. Empty answers for sessions after the last cached bar are asked for again, as before.
 - `SimBroker` paid each purchase from settled cash without subtracting purchases made earlier at the same open, so two purchases could each pass the check and then fail in the ledger, halting the run. It now uses the account's buying power: settled cash minus purchases not settled yet (PR 14).
 
 ## [0.0.1] - 2026-11-16

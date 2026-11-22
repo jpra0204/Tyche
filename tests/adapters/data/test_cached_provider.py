@@ -7,7 +7,14 @@ import pytest
 
 from tests.support.market import JANUARY_2024, SPY, bar, close_of, dividend, split
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
-from tyche.adapters.data import BarSource, CachedDataProvider, ParquetBarCache, SourceData
+from tyche.adapters.data import (
+    BarSource,
+    CachedDataProvider,
+    CacheOnlySource,
+    NotCachedError,
+    ParquetBarCache,
+    SourceData,
+)
 from tyche.core.domain import (
     AssetClass,
     Bar,
@@ -47,7 +54,7 @@ class FakeSource:
         if self.failure is not None:
             raise self.failure
         found = [
-            bar(day, close, adjustment=self.adjustment)
+            bar(day, close, instrument=instrument, adjustment=self.adjustment)
             for day, close in self.closes.items()
             if first <= day <= last
         ]
@@ -226,6 +233,93 @@ class TestCoverage:
 
         assert len(source.requests) == 2
         assert not cache.path_for(SPY, bar(date(2024, 1, 2)).timeframe).exists()
+
+    def test_an_empty_answer_after_the_last_cached_bar_is_asked_for_again(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        source = FakeSource({day: 100.0 for day in JANUARY_2024 if day <= date(2024, 1, 5)})
+        data = provider(source, cache, nyse, clock)
+        data.daily_bars(SPY, date(2024, 1, 2), date(2024, 1, 5))
+
+        data.daily_bars(SPY, date(2024, 1, 8), date(2024, 1, 16))
+        data.daily_bars(SPY, date(2024, 1, 8), date(2024, 1, 16))
+
+        assert source.requests[1:] == [(date(2024, 1, 8), date(2024, 1, 16))] * 2
+
+
+GLD = Instrument("GLD", "ARCX", Currency.USD, "XNYS", AssetClass.ETF)
+GLD_FIRST_BAR = date(2004, 11, 18)
+
+
+@pytest.fixture(scope="module")
+def calendar_2004() -> Calendar:
+    return ExchangeCalendarsCalendar("XNYS", first=date(2003, 12, 1), last=date(2004, 12, 31))
+
+
+class TestBeforeTheInstrumentExisted:
+    """GLD's first bar is 2004-11-18; Yahoo has nothing for it before that."""
+
+    @pytest.fixture
+    def gld_source(self, calendar_2004: Calendar) -> FakeSource:
+        days = calendar_2004.sessions_between(GLD_FIRST_BAR, date(2004, 11, 30))
+        return FakeSource({s.day: 45.0 for s in days})
+
+    @staticmethod
+    def gld_provider(
+        source: BarSource, cache: ParquetBarCache, calendar: Calendar
+    ) -> CachedDataProvider:
+        clock = SimClock(datetime(2004, 12, 1, 12, 0, tzinfo=UTC))
+        return CachedDataProvider(source, cache, {"XNYS": calendar}, clock)
+
+    def test_an_empty_answer_before_the_first_cached_bar_is_covered(
+        self, cache: ParquetBarCache, calendar_2004: Calendar, gld_source: FakeSource
+    ) -> None:
+        data = self.gld_provider(gld_source, cache, calendar_2004)
+        data.daily_bars(GLD, date(2004, 1, 2), date(2004, 11, 30))
+
+        first = data.daily_bars(GLD, date(2003, 12, 31), date(2004, 11, 30))
+        second = data.daily_bars(GLD, date(2003, 12, 31), date(2004, 11, 30))
+
+        assert gld_source.requests == [
+            (date(2004, 1, 2), date(2004, 11, 30)),
+            (date(2003, 12, 31), date(2003, 12, 31)),
+        ]
+        for history in (first, second):
+            missing = [i.session_day for i in history.issues]
+            assert missing[0] == date(2003, 12, 31)
+            assert all(i.kind is DataIssueKind.MISSING_SESSION for i in history.issues)
+            assert history.bars[0].timestamp == close_of(GLD_FIRST_BAR)
+        assert second == first
+
+    def test_a_cache_only_run_no_longer_asks_for_those_sessions(
+        self, cache: ParquetBarCache, calendar_2004: Calendar, gld_source: FakeSource
+    ) -> None:
+        data = self.gld_provider(gld_source, cache, calendar_2004)
+        data.daily_bars(GLD, date(2004, 1, 2), date(2004, 11, 30))
+        offline = self.gld_provider(
+            CacheOnlySource("test", PriceAdjustment.SPLITS), cache, calendar_2004
+        )
+        with pytest.raises(NotCachedError):
+            offline.daily_bars(GLD, date(2003, 12, 31), date(2004, 11, 30))
+
+        data.daily_bars(GLD, date(2003, 12, 31), date(2003, 12, 31))
+        history = offline.daily_bars(GLD, date(2003, 12, 31), date(2004, 11, 30))
+
+        assert history.bars[0].timestamp == close_of(GLD_FIRST_BAR)
+
+    def test_bars_the_source_sent_but_could_not_be_used_still_cover_nothing(
+        self, cache: ParquetBarCache, calendar_2004: Calendar, gld_source: FakeSource
+    ) -> None:
+        data = self.gld_provider(gld_source, cache, calendar_2004)
+        data.daily_bars(GLD, date(2004, 1, 2), date(2004, 11, 30))
+        gld_source.extra = [
+            bar(date(2003, 12, 31), instrument=GLD, timestamp=close_of(date(2003, 12, 27)))
+        ]
+
+        data.daily_bars(GLD, date(2003, 12, 31), date(2003, 12, 31))
+        data.daily_bars(GLD, date(2003, 12, 31), date(2003, 12, 31))
+
+        assert gld_source.requests[1:] == [(date(2003, 12, 31), date(2003, 12, 31))] * 2
 
 
 class TestBadSourceData:

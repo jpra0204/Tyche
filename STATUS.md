@@ -28,6 +28,7 @@
 - PR 19 (backtest report) is merged; ADR-0028 accepted.
 - PR 20 (walk-forward) is merged; ADR-0029 accepted.
 - PR 21 (parameter sweeps) is open for review; ADR-0030 accepted: every distinct trial ever recorded for a plugin is counted, the pick is the highest Sharpe ratio, it is reported with a deflated Sharpe ratio, and a sweep keeps one table of trials plus the pick's full record. One PR, not split.
+- Fix: the data cache now covers sessions before an instrument's first bar when the source has nothing for them, so the fetch hint for GLD and VNQ no longer loops. Open as a draft stacked on PR 21; no workspace change needed, and no need to delete cache files.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -170,7 +171,7 @@ Two things in the brief's Phase 1 that this plan moves:
 | Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
 | Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
-| The data cache never marks sessions before an ETF's first bar as covered when a fetch for them returns nothing, so `tyche data fetch`'s own hint cannot fill them (GLD before November 2004, VNQ before September 2004). Workaround in the user guide (parameter sweeps, troubleshooting); a fix belongs in its own PR | Before Phase 2, recommended |
+| ~~The data cache never marks sessions before an ETF's first bar as covered when a fetch for them returns nothing, so `tyche data fetch`'s own hint cannot fill them (GLD before November 2004, VNQ before September 2004)~~ Fixed in the cache coverage PR (draft, stacked on PR 21): an empty answer for sessions before the earliest cached bar now covers them | Done once merged |
 | Opening an IBKR account and its paper account, if not done yet; approval can take days | Before Phase 2 |
 | Scheduler: APScheduler or cron in the container | Phase 2 |
 | SQLite migration approach | Phase 2 |
