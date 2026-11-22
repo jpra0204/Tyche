@@ -4,9 +4,9 @@ A single backtest tells you how your strategies did over one stretch of history.
 
 Everything on the [backtest page](03-running-a-backtest.md) applies here: the holdout, the candidates, the benchmark, fetching history first. A walk-forward reads the same cache and never reaches the holdout.
 
-## What "out-of-sample" means today
+## What "out-of-sample" means
 
-**For now the training window chooses nothing.** Each test window runs your strategies with the parameters in their files, exactly as configured. Parameter sweeps (PR 21) will make the training window pick the parameters the test window then runs. Until then:
+**Without `--sweep`, the training window chooses nothing.** Each test window runs your strategies with the parameters in their files, exactly as configured. With `--sweep <name>`, each training window picks the parameters its test window runs (see [parameter sweeps](05-parameter-sweeps.md#inside-a-walk-forward)). Without a sweep:
 
 - the in-sample and out-of-sample results are the same strategy, run over different years;
 - a big gap between them shows that the strategy's results depend on the period, **not** that it was overfitted, because nothing was fitted;
@@ -27,6 +27,7 @@ uv run tyche walk-forward --from 2005-01-03
 | `--train-years` | 5 | Calendar years in the first training window |
 | `--test-years` | 1 | Calendar years in each test window |
 | `--rolling` | off | Keep every training window at `--train-years`, sliding forward, instead of growing it from `--from` |
+| `--sweep` | none | A sweep in `config/sweeps/`: every combination runs on each training window, and the test window runs the one with the highest Sharpe ratio |
 
 Windows are whole calendar years. With the defaults and history from 2005, the first fold trains on 2005 to 2009 and tests 2010; the last trains on 2005 to 2022 and tests 2023: 14 folds. Each window is a backtest of its own, starting from your `starting_cash`, so a walk-forward takes much longer than one backtest. Over 2005 to 2023 on the nine-ETF profile it takes 2 to 3 minutes.
 
@@ -75,7 +76,7 @@ Every walk-forward writes a folder under `reports/walk_forward/`, named like a b
 | `report.html` | The report, built from this folder alone |
 | `folds/01-train/`, `folds/01-test/`, ... | Each window's full backtest record: `run.json`, `metrics.json`, `equity.csv` and `fills.csv` |
 
-A walk-forward record is about 7 MB with the defaults, most of it the training windows' equity and fills. Commit it with your workspace like a backtest's record. If the size becomes a problem, say so: PR 21 decides what a run keeps.
+A walk-forward record is about 7 MB with the defaults, most of it the training windows' equity and fills. Commit it with your workspace like a backtest's record. With a sweep, each training window keeps only its pick's full record and a `trials.json` with every combination's results, so the size stays about the same.
 
 ## The report
 
@@ -95,7 +96,7 @@ To rebuild it:
 uv run tyche report 20261120T005537Z-c05df771
 ```
 
-`tyche report` takes a backtest's id or a walk-forward's.
+`tyche report` takes a backtest's id, a walk-forward's or a sweep's.
 
 ## Reading the example strategies
 
@@ -117,4 +118,4 @@ The rotation's fold table is the instructive part. On its first training window 
 | `… leaves no test window after a 5-year training window` | The range is too short for one training window and one test year. Start earlier, or give a smaller `--train-years`. |
 | `Error: the walk-forward stopped: …` | A window halted or could not be measured. The windows before it are recorded, and `walk_forward.json` says which one stopped and why. |
 | `… are not in the cache yet. Fetch it first:` | Run the command printed, then the walk-forward again. The windows already run stay recorded under the stopped walk-forward. |
-| `Error: no backtest or walk-forward record named …` | `tyche report` takes the id exactly as it was printed: a folder's name under `reports/backtests/` or `reports/walk_forward/`. |
+| `Error: no backtest, walk-forward or sweep record named …` | `tyche report` takes the id exactly as it was printed: a folder's name under `reports/backtests/`, `reports/walk_forward/` or `reports/sweeps/`. |

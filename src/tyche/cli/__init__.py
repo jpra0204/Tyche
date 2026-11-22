@@ -5,10 +5,11 @@ its result or error into text and an exit code. No logic lives here.
 """
 
 import os
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 import typer
 
@@ -20,6 +21,7 @@ from tyche.config import (
     WorkspaceError,
     init_workspace,
     load_config,
+    load_sweep,
     resolve_home,
 )
 from tyche.core.backtest import (
@@ -29,6 +31,7 @@ from tyche.core.backtest import (
     FoldScheme,
     HoldoutError,
     SeriesMetrics,
+    Trial,
     WalkForwardError,
     WalkForwardMetrics,
 )
@@ -44,6 +47,9 @@ from tyche.runtime.data import (
 )
 from tyche.runtime.report import ReportError, write_report
 from tyche.runtime.strategies import build_strategies
+from tyche.runtime.sweep import SweepOutcome, SweepPlan, SweepResult, run_configured_sweep
+from tyche.runtime.sweep_report import is_sweep, write_sweep_report
+from tyche.runtime.trials import TrialCountError
 from tyche.runtime.walk_forward import (
     WALK_FORWARD_FILE,
     WalkForwardOutcome,
@@ -350,6 +356,17 @@ def walk_forward(
             help="Keep every training window at --train-years instead of growing it.",
         ),
     ] = False,
+    sweep: Annotated[
+        str | None,
+        typer.Option(
+            "--sweep",
+            help=(
+                "A sweep in config/sweeps/: run every combination on each training "
+                "window, and test the one with the highest Sharpe ratio."
+            ),
+            show_default=False,
+        ),
+    ] = None,
     home: HomeOption = None,
 ) -> None:
     """Walk forward: backtest each training window and the test window after it.
@@ -357,20 +374,25 @@ def walk_forward(
     Cuts the range into folds of whole calendar years. Each window is a backtest of
     its own, from the starting cash, on cached history. In-sample (training) and
     out-of-sample (test) results are reported separately, and the test windows are
-    joined into one out-of-sample result against the benchmark. The record and its
+    joined into one out-of-sample result against the benchmark. With --sweep, each
+    training window picks the parameters its test window runs. The record and its
     report go to reports/walk_forward/ in the workspace.
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
         config = load_config(workspace)
+        spec = load_sweep(config, sweep) if sweep is not None else None
         scheme = FoldScheme(train_years, test_years, anchored=not rolling)
         typer.echo(f"Walk-forward, {scheme}")
+        if spec is not None:
+            typer.echo(f"  Train step: sweep {spec.name} ({spec.source}), highest Sharpe ratio")
         outcome = run_configured_walk_forward(
             config,
             first.date(),
             last.date() if last is not None else None,
             scheme,
             progress=_describe_window,
+            sweep=spec,
         )
     except (
         WorkspaceError,
@@ -379,6 +401,7 @@ def walk_forward(
         HoldoutError,
         BacktestError,
         WalkForwardError,
+        TrialCountError,
         DataError,
     ) as error:
         _fail(str(error))
@@ -396,36 +419,117 @@ def walk_forward(
 
 
 @app.command()
+def sweep(
+    name: Annotated[
+        str,
+        typer.Argument(
+            help="The sweep's name: config/sweeps/<name>.toml in the workspace.",
+            show_default=False,
+        ),
+    ],
+    first: Annotated[
+        datetime,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help="First session date to trade. History before it is used to warm up.",
+            show_default=False,
+        ),
+    ],
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last session date to trade. Defaults to the day before the holdout.",
+            show_default=False,
+        ),
+    ] = None,
+    home: HomeOption = None,
+) -> None:
+    """Run every combination of a parameter sweep, and pick the highest Sharpe ratio.
+
+    Each combination is a backtest over the same days, on cached history. The pick is
+    reported with a deflated Sharpe ratio, which discounts it for every distinct trial
+    of the plugin recorded in the workspace, and with warnings about overfitting. The
+    pick is in-sample: for an out-of-sample result, use `tyche walk-forward --sweep`.
+    The record and its report go to reports/sweeps/ in the workspace.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        config = load_config(workspace)
+        spec = load_sweep(config, name)
+        outcome = run_configured_sweep(
+            config,
+            spec,
+            first.date(),
+            last.date() if last is not None else None,
+            progress=_describe_trial,
+            planned=_describe_plan,
+        )
+    except (
+        WorkspaceError,
+        ConfigError,
+        BacktestRequestError,
+        HoldoutError,
+        BacktestError,
+        TrialCountError,
+        DataError,
+    ) as error:
+        _fail(str(error))
+
+    for line in _describe_sweep(outcome):
+        typer.echo(line)
+    if outcome.pick is not None:
+        try:
+            typer.echo(f"  Report:        {write_sweep_report(outcome.record_dir)}")
+        except ReportError as error:
+            typer.echo(f"  Report:        not written: {error}")
+    else:
+        typer.echo("Error: no trial has a Sharpe ratio, so nothing was picked", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def report(
     run_id: Annotated[
         str,
         typer.Argument(
-            help="The backtest's or walk-forward's id, as Tyche printed it.",
+            help="The backtest's, walk-forward's or sweep's id, as Tyche printed it.",
             show_default=False,
         ),
     ],
     home: HomeOption = None,
 ) -> None:
-    """Write report.html for a recorded backtest or walk-forward, from its record alone.
+    """Write report.html for a recorded backtest, walk-forward or sweep, from its record.
 
-    `tyche backtest` and `tyche walk-forward` write the report themselves; this
-    rebuilds it, for a run recorded before reports existed or after the report
-    changed. It reads only the record folder in reports/backtests/ or
-    reports/walk_forward/, never the cache.
+    `tyche backtest`, `tyche walk-forward` and `tyche sweep` write the report
+    themselves; this rebuilds it, for a run recorded before reports existed or after
+    the report changed. It reads only the record folder in reports/backtests/,
+    reports/walk_forward/ or reports/sweeps/, never the cache.
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
     except WorkspaceError as error:
         _fail(str(error))
-    folders = [workspace.reports_dir / "backtests", workspace.reports_dir / "walk_forward"]
+    folders = [
+        workspace.reports_dir / "backtests",
+        workspace.reports_dir / "walk_forward",
+        workspace.reports_dir / "sweeps",
+    ]
     found = [f / run_id for f in folders if (f / run_id).is_dir()]
     if not run_id or Path(run_id).name != run_id or not found:
-        _fail(f"no backtest or walk-forward record named {run_id!r} in {workspace.reports_dir}")
+        _fail(
+            f"no backtest, walk-forward or sweep record named {run_id!r} in {workspace.reports_dir}"
+        )
     folder = found[0]
     try:
-        path = (
-            write_walk_forward_report(folder) if is_walk_forward(folder) else write_report(folder)
-        )
+        if is_walk_forward(folder):
+            path = write_walk_forward_report(folder)
+        elif is_sweep(folder):
+            path = write_sweep_report(folder)
+        else:
+            path = write_report(folder)
     except ReportError as error:
         _fail(str(error))
     typer.echo(f"Report: {path}")
@@ -498,10 +602,15 @@ def _describe_metrics(metrics: BacktestMetrics) -> list[str]:
     return lines
 
 
-def _describe_window(fold: Fold, kind: WindowKind, outcome: BacktestOutcome) -> None:
-    """One line per window, printed as soon as it is recorded."""
+def _describe_window(
+    fold: Fold, kind: WindowKind, outcome: BacktestOutcome, picked: Mapping[str, Any] | None
+) -> None:
+    """One line per window, printed as soon as it is recorded, and the training
+    window's pick when a sweep chose it."""
     window = fold.train if kind is WindowKind.TRAIN else fold.test
     head = f"  Fold {fold.number:>2} {kind.value:<5} {window.first} to {window.last}"
+    if picked is not None:
+        typer.echo(f"{head}  picked {_parameters(picked)}")
     metrics = outcome.metrics
     if not outcome.result.run.completed:
         typer.echo(f"{head}  halted")
@@ -517,6 +626,66 @@ def _describe_window(fold: Fold, kind: WindowKind, outcome: BacktestOutcome) -> 
             f"{head}  return {_percent(metrics.strategy.total_return):>8}  "
             f"benchmark {_percent(metrics.benchmark.total_return):>8}"
         )
+
+
+def _describe_plan(plan: SweepPlan) -> None:
+    """Printed before the first trial runs."""
+    counted = plan.trials_counted
+    typer.echo(
+        f"Sweep {plan.sweep.name}: {len(plan.combinations)} combinations of "
+        f"{plan.strategy_id} ({plan.plugin}); {counted} trials counted with the "
+        f"{plan.earlier_trials} already recorded"
+    )
+
+
+def _describe_trial(plan: SweepPlan, trial: Trial) -> None:
+    """One line per trial, printed as soon as it is measured."""
+    number = trial.combination.number
+    head = f"  Trial {number:>3}/{len(plan.combinations)}  {_parameters(trial.combination.values)}"
+    metrics = trial.metrics
+    if metrics is None:
+        typer.echo(f"{head}  {trial.failure}")
+        return
+    sharpe, cagr = _ratio(metrics.strategy.sharpe), _percent(metrics.strategy.cagr)
+    typer.echo(f"{head}  Sharpe {sharpe:>6}  CAGR {cagr:>8}")
+
+
+def _describe_sweep(outcome: SweepOutcome) -> list[str]:
+    result: SweepResult = outcome.result
+    best = result.best
+    measured = sum(1 for t in result.trials if t.metrics is not None)
+    lines = [
+        f"Sweep {outcome.sweep_id}: {len(result.trials)} trials, {measured} measured",
+    ]
+    if best is not None and best.metrics is not None:
+        lines.append(
+            f"  Pick:          trial {best.combination.number}, "
+            f"{_parameters(best.combination.values)} (in-sample)"
+        )
+        lines.extend(_describe_metrics(best.metrics))
+    deflated = result.deflated
+    if deflated is not None:
+        verdict = "significant" if deflated.significant else "not significant"
+        lines.append(
+            f"  Deflated Sharpe ratio: {deflated.probability:.1%} after "
+            f"{deflated.trials} trials ({verdict} at 95%)"
+        )
+    elif result.deflation_error is not None:
+        lines.append(f"  Deflated Sharpe ratio: not computed: {result.deflation_error}")
+    for warning in result.warnings:
+        lines.append(f"Warning: {warning}")
+    lines.append(f"  Code:          {outcome.code}")
+    lines.append(f"  Record:        {outcome.record_dir}")
+    if outcome.code.dirty:
+        lines.append(
+            "Warning: the code had uncommitted changes, so its commit alone does not "
+            "reproduce this sweep."
+        )
+    return lines
+
+
+def _parameters(values: Mapping[str, Any]) -> str:
+    return " ".join(f"{name}={value}" for name, value in values.items())
 
 
 def _describe_walk_forward(outcome: WalkForwardOutcome) -> list[str]:

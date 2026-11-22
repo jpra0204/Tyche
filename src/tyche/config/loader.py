@@ -122,6 +122,17 @@ class StrategyFile(_ConfigFile):
     parameters: dict[StrictStr, Any] = {}
 
 
+class SweepFile(_ConfigFile):
+    """``config/sweeps/<name>.toml``: a parameter sweep over one strategy (ADR-0030).
+
+    The values are checked here only as TOML lists; the plugin's own model checks
+    every combination when the runtime builds it, before any trial runs.
+    """
+
+    strategy: StrictStr
+    grid: dict[StrictStr, list[Any]]
+
+
 class InstrumentFile(_ConfigFile):
     """One entry of ``instruments`` in the ``[universe]`` table."""
 
@@ -418,6 +429,70 @@ def _load_strategies(
             )
         )
     return tuple(specs), files
+
+
+@dataclass(frozen=True, slots=True)
+class SweepSpec:
+    """A parameter sweep, read from its file and checked against the configuration.
+
+    Attributes:
+        name: The file's name without ``.toml``.
+        strategy_id: The configured strategy whose parameters are swept.
+        grid: Each swept parameter's values, in the order written.
+        source: The sweep file, relative to the workspace, for messages.
+        snapshot: The file's values, as a run record stores them.
+        sweep_hash: Fingerprint of ``snapshot``. The config hash does not cover sweep
+            files, so a record states both.
+    """
+
+    name: str
+    strategy_id: str
+    grid: Mapping[str, tuple[Any, ...]]
+    source: str
+    snapshot: Mapping[str, Any]
+    sweep_hash: str
+
+
+def load_sweep(config: TycheConfig, name: str) -> SweepSpec:
+    """Read ``config/sweeps/<name>.toml``, or raise ``ConfigError`` naming the problem.
+
+    The strategy must be configured with a budget: a sweep varies one strategy of the
+    configured set and runs the others as they are.
+    """
+    workspace = config.workspace
+    try:
+        require_strategy_id(name)
+    except ValueError as error:
+        raise ConfigError(f"sweep name: {error}") from None
+    path = workspace.sweeps_dir / f"{name}.toml"
+    source = workspace.relative(path)
+    if not path.is_file():
+        raise ConfigError(f"no sweep named {name!r}: {source} does not exist")
+    sweep = _read(workspace, path, SweepFile)
+    if sweep.strategy not in config.budgets:
+        configured = ", ".join(sorted(config.budgets)) or "none"
+        raise ConfigError(
+            f"{source}: strategy: {sweep.strategy!r} has no budget under [strategies] in "
+            f"config/tyche.toml; configured: {configured}"
+        )
+    if not sweep.grid:
+        raise ConfigError(f"{source}: grid: name at least one parameter and its values")
+    for key, values in sweep.grid.items():
+        if not values:
+            raise ConfigError(f"{source}: grid.{key}: list at least one value")
+        canonical = [json.dumps(v, sort_keys=True) for v in values]
+        if len(set(canonical)) != len(canonical):
+            raise ConfigError(f"{source}: grid.{key}: a value is listed more than once")
+    snapshot = sweep.model_dump(mode="json")
+    payload = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return SweepSpec(
+        name=name,
+        strategy_id=sweep.strategy,
+        grid={key: tuple(values) for key, values in sweep.grid.items()},
+        source=source,
+        snapshot=snapshot,
+        sweep_hash="sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+    )
 
 
 def config_snapshot(files: Mapping[str, BaseModel]) -> dict[str, Any]:

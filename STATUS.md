@@ -1,6 +1,6 @@
 # Status
 
-*Last updated: 2026-11-20*
+*Last updated: 2026-11-22*
 
 ## Current phase
 
@@ -26,7 +26,8 @@
 - PR 17 (reference validation) is merged; ADR-0026 accepted.
 - PR 18 (example strategies) is merged; ADR-0027 accepted.
 - PR 19 (backtest report) is merged; ADR-0028 accepted.
-- PR 20 (walk-forward) is open for review; ADR-0029 accepted: anchored folds of calendar years by default (rolling optional), and a train step that keeps the configured parameters until PR 21's sweeps choose them.
+- PR 20 (walk-forward) is merged; ADR-0029 accepted.
+- PR 21 (parameter sweeps) is open for review; ADR-0030 accepted: every distinct trial ever recorded for a plugin is counted, the pick is the highest Sharpe ratio, it is reported with a deflated Sharpe ratio, and a sweep keeps one table of trials plus the pick's full record. One PR, not split.
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -61,9 +62,11 @@
 
 - Backtest report (PR 19): `tyche backtest` writes `report.html` beside each measured run's record, and `tyche report <run id>` rebuilds it from the record alone ([ADR-0028](docs/adr/0028-backtest-report-html-and-cost-drag.md)). One offline HTML file, deterministic, about 300 to 400 KB, with matplotlib charts: summary and equity against the benchmark, drawdown, year by year, trading and exposure, cost drag, what ran, and the data with the limits every result shares. The cost drag counts slippage, which the terminal summary does not: on PR 18's real-data runs, slippage cost each example strategy more than twice its commissions, and the mean reversion's costs were 48% of its profit before costs.
 
-- Walk-forward (PR 20, in review): `tyche walk-forward --from <date>` cuts history into folds of calendar years, runs each training and test window as a backtest of its own from the starting cash, and reports in-sample and out-of-sample results side by side, with the test windows joined into one out-of-sample result against the benchmark joined the same way ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)). Defaults: anchored, a five-year first training window, one-year test windows, so 14 folds testing 2010 to 2023; `--rolling`, `--train-years` and `--test-years` change them. Between each fold's two runs a train step decides what the test window runs; until PR 21 it keeps the configured parameters, so the in-sample/out-of-sample gap shows how results vary by period, not overfitting, and the report says so first. Each walk-forward writes `reports/walk_forward/<id>/` with every window's full backtest record and one `report.html`; `tyche report <id>` rebuilds it. Checked on real data, testing 2010 to 2023: buy-and-hold 12.14% a year against the benchmark's 12.58%, the rotation 4.57% (ahead in 2 of 14 test years), the mean reversion 1.25%. The rotation's in-sample lead on 2005 to 2009 (11 points a year, mostly 2007 and 2008) did not carry into any later fold. Each run takes 2 to 3 minutes and writes about 7 MB.
+- Walk-forward (PR 20): `tyche walk-forward --from <date>` cuts history into folds of calendar years, runs each training and test window as a backtest of its own from the starting cash, and reports in-sample and out-of-sample results side by side, with the test windows joined into one out-of-sample result against the benchmark joined the same way ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)). Defaults: anchored, a five-year first training window, one-year test windows, so 14 folds testing 2010 to 2023; `--rolling`, `--train-years` and `--test-years` change them. Between each fold's two runs a train step decides what the test window runs; until PR 21 it keeps the configured parameters, so the in-sample/out-of-sample gap shows how results vary by period, not overfitting, and the report says so first. Each walk-forward writes `reports/walk_forward/<id>/` with every window's full backtest record and one `report.html`; `tyche report <id>` rebuilds it. Checked on real data, testing 2010 to 2023: buy-and-hold 12.14% a year against the benchmark's 12.58%, the rotation 4.57% (ahead in 2 of 14 test years), the mean reversion 1.25%. The rotation's in-sample lead on 2005 to 2009 (11 points a year, mostly 2007 and 2008) did not carry into any later fold. Each run takes 2 to 3 minutes and writes about 7 MB.
 
-What is missing before judging a strategy: parameter sweeps with a trial count and a deflated Sharpe ratio (PR 21). Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
+- Parameter sweeps (PR 21, in review): `tyche sweep <name> --from <date>` runs every combination of `config/sweeps/<name>.toml` as a backtest over the same days, picks the highest Sharpe ratio, and reports it with a deflated Sharpe ratio and overfitting warnings ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)). The trial count is every distinct trial of the plugin ever recorded in the workspace. `tyche walk-forward --sweep <name>` picks on each training window. A sweep keeps `trials.json` and the pick's full record (968 KB for the example's 27 trials). Checked on real data, 2005 to 2023: the example sweep's pick (4 holdings, 252-session momentum) has a Sharpe ratio of 0.71 against SPY's 0.57 and a CAGR of 8.28% against 9.59%, with a deflated Sharpe ratio of 98.2% after 27 trials and two parameters at the edge of the grid. SPY itself scores 99.3% on the same test, so the deflated Sharpe ratio filters out luck but is no verdict against the benchmark.
+
+Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -130,8 +133,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 20 | Train/test and walk-forward (**in review**) | In-sample and out-of-sample results reported separately | Decided 2026-11-20 ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)): the walk-forward machinery now, with a train step that keeps the configured parameters until PR 21 plugs in a choice; anchored folds of calendar years by default (5-year first training window, 1-year tests), rolling optional |
-| 21 | Parameter sweeps | Sweeps with a trial count, a deflated Sharpe ratio and overfitting warnings | Plugs a parameter choice into the walk-forward's train step (ADR-0029). Decide what a run's record keeps: a walk-forward already writes about 7 MB, mostly training windows' CSVs, and sweeps multiply runs. Decide how a walk-forward counts as trials |
+| 20 | Train/test and walk-forward (**merged**) | In-sample and out-of-sample results reported separately | Decided 2026-11-20 ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)): the walk-forward machinery now, with a train step that keeps the configured parameters until PR 21 plugs in a choice; anchored folds of calendar years by default (5-year first training window, 1-year tests), rolling optional |
+| 21 | Parameter sweeps (**in review**) | Sweeps with a trial count, a deflated Sharpe ratio and overfitting warnings | Decided 2026-11-19 ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)): one PR, not split; `N` is every distinct trial of the plugin ever recorded in the workspace; the pick is the highest Sharpe ratio; one `trials.json` per sweep plus the pick's full record; the grid in `config/sweeps/<name>.toml`. A walk-forward with `--sweep` picks on each training window; each combination counts once however many folds run it; the out-of-sample result is not deflated. Deflated Sharpe formula checked against the paper's worked example |
 | 22 | Minimum viable capital | For each strategy, the account size at which its edge survives costs; proposed defaults if under $1,000 CAD with five positions does not work | |
 | 23 | Phase 1 wrap-up | User guide (installation, running a backtest), developer guide pages, version 0.1.0 | Stop for Phase 1 review |
 
@@ -166,6 +169,8 @@ Two things in the brief's Phase 1 that this plan moves:
 |---|---|
 | Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
 | Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
+| Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
+| The data cache never marks sessions before an ETF's first bar as covered when a fetch for them returns nothing, so `tyche data fetch`'s own hint cannot fill them (GLD before November 2004, VNQ before September 2004). Workaround in the user guide (parameter sweeps, troubleshooting); a fix belongs in its own PR | Before Phase 2, recommended |
 | Opening an IBKR account and its paper account, if not done yet; approval can take days | Before Phase 2 |
 | Scheduler: APScheduler or cron in the container | Phase 2 |
 | SQLite migration approach | Phase 2 |
@@ -193,6 +198,6 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. Pablo reviews and merges PR 20. Worth a look in [ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md): "Implementation choices made in PR 20, for review there" (every window a backtest of its own from the starting cash, test windows joined by chaining returns, the scheme on the command line rather than in the config, and the record's size).
-2. **Your workspace needs no change for PR 20.** `tyche walk-forward --from 2005-01-03` runs on the cache you already have; it needs the same nine ETFs fetched as a backtest does. Each walk-forward adds about 7 MB to `reports/walk_forward/` in your workspace repository. Earlier notes still apply to older workspaces (`[benchmark]` before PR 16, `[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
-3. Phase 1, PR 21: parameter sweeps, with a trial count, a deflated Sharpe ratio and overfitting warnings, when Pablo says to start it.
+1. Pablo reviews and merges PR 21. Worth a look in [ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md): "Implementation choices made in PR 21, for review there" (the four warnings and the one-half threshold for an isolated peak, trials treated as independent, the longest lookback run first, the example sweep shipped with new workspaces), and "What 98.2% does not say" under the real-data check.
+2. **Your workspace needs one addition for PR 21**: copy `config/sweeps/trend_rotation.toml` from a new workspace (`tyche init --home <scratch-folder>`) if you want the example sweep. Nothing else changes; existing records are counted as trials from their config snapshots. Running the example sweep needs history from December 2003 (its 252-session momentum) and a budget for `trend_rotation`. Earlier notes still apply to older workspaces (`[benchmark]` before PR 16, `[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
+3. Phase 1, PR 22: minimum viable capital, when Pablo says to start it.

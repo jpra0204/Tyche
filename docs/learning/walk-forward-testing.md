@@ -36,12 +36,12 @@ Reading the result:
 - **Both similar**: the choice carries over, at least across these years.
 - **Both bad, or both swinging together**: the strategy depends on the period, which is worth knowing whether or not anything was fitted.
 
-A walk-forward reduces overfitting; it does not remove it. Running many walk-forwards and keeping the best is overfitting again, one level up. That is why trials are counted and results deflated (PR 21), and why one slice of history, the holdout, is used by no experiment at all.
+A walk-forward reduces overfitting; it does not remove it. Running many walk-forwards and keeping the best is overfitting again, one level up. That is why trials are counted and results deflated ([multiple testing](multiple-testing.md)), and why one slice of history, the holdout, is used by no experiment at all.
 
 ## Where is it in Tyche
 
 - `src/tyche/core/backtest/walk_forward.py`: `plan_folds` cuts history into folds of calendar years from dates alone; `chain` joins the test windows' equity; `measure_walk_forward` measures them against the benchmark joined the same way. Pure, no I/O.
-- `src/tyche/runtime/walk_forward.py`: runs each window as a full backtest through `run_and_record`, calls the **train step** between a fold's two runs, and writes `reports/walk_forward/<id>/`. The train step is `keep_configured` until parameter sweeps exist, so for now nothing is chosen and the in-sample/out-of-sample gap measures how the strategy varies between periods, not overfitting.
+- `src/tyche/runtime/walk_forward.py`: runs each window as a full backtest through `run_and_record`, calls the **train step** between a fold's two runs, and writes `reports/walk_forward/<id>/`. Without a sweep the train step is `keep_configured`: nothing is chosen, and the in-sample/out-of-sample gap measures how the strategy varies between periods, not overfitting. With `--sweep <name>` it picks the highest Sharpe ratio of the grid on each training window, and the gap then shows what that choice bought that did not last.
 - `src/tyche/runtime/walk_forward_report.py`: the report, built from the record alone.
 - `tyche walk-forward --from 2005-01-03`; [ADR-0029](../adr/0029-walk-forward-folds-and-a-train-step.md) records the choices.
 

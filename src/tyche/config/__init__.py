@@ -11,6 +11,9 @@ Available now:
   strategy instances with their budgets (``[strategies]`` in ``tyche.toml``) and
   plugin parameters (``config/strategies/<id>.toml``), as ``StrategySpec``s (ADR-0022);
   the backtest settings, with the reserved holdout, from ``[backtest]`` (ADR-0024).
+* ``load_sweep``: reads a parameter sweep, ``config/sweeps/<name>.toml``, as a
+  ``SweepSpec`` (ADR-0030). Sweep files are read on demand and are not part of the
+  config hash.
 
 The file schemas live here; the core only receives domain objects (ADR-0017).
 """
@@ -24,10 +27,13 @@ from tyche.config.loader import (
     MarketProfileFile,
     StrategyFile,
     StrategySpec,
+    SweepFile,
+    SweepSpec,
     TycheConfig,
     TycheFile,
     config_hash,
     load_config,
+    load_sweep,
 )
 from tyche.config.workspace import (
     DEFAULT_HOME,
@@ -51,6 +57,8 @@ __all__ = [
     "MarketProfileFile",
     "StrategyFile",
     "StrategySpec",
+    "SweepFile",
+    "SweepSpec",
     "TycheConfig",
     "TycheFile",
     "Workspace",
@@ -59,5 +67,6 @@ __all__ = [
     "config_hash",
     "init_workspace",
     "load_config",
+    "load_sweep",
     "resolve_home",
 ]

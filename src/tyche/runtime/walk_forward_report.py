@@ -60,6 +60,8 @@ class FoldRecord:
     train: dict[str, Any]
     test_run: dict[str, Any]
     test: dict[str, Any]
+    trials: dict[str, Any] | None = None
+    """The training window's ``trials.json`` when a sweep picked its parameters."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +137,11 @@ def _fold(folder: Path, fold: dict[str, Any]) -> FoldRecord:
         if measured.get("metrics_format") != METRICS_FORMAT:
             raise ReportError(f"{where}: metrics.json is format {measured.get('metrics_format')}")
         windows += [run, measured]
-    return FoldRecord(fold["number"], *windows)
+    trials = None
+    if "trials" in fold["train"]:
+        trials = _json(folder / fold["train"]["trials"], folder)
+    train_run, train, test_run, test = windows
+    return FoldRecord(fold["number"], train_run, train, test_run, test, trials)
 
 
 def _json(path: Path, folder: Path) -> dict[str, Any]:
@@ -172,22 +178,27 @@ def walk_forward_report(record: WalkForwardRecord) -> Document:
         f"Strategies: {strategies}. Every window starts from "
         f"{fmt_amount(study['starting_cash']['amount'])} {study['starting_cash']['currency']}."
     )
+    sweep = study.get("sweep")
     callouts = [
-        Callout(
-            "Out-of-sample here means only that no test window was part of the training "
-            "window before it. The train step kept the configured parameters, so nothing "
-            "was chosen on the training windows: the test windows run the same "
-            "strategies in shorter, fresh-started pieces. The gap between in-sample and "
-            "out-of-sample results therefore shows how results change from one period to "
-            "the next, not overfitting. It measures overfitting once parameters are "
-            "chosen on each training window (parameter sweeps)."
-        ),
+        _train_step_callout(study),
         Callout(
             "Rules chosen by people who have seen this history, or read research about "
             "it, are never fully out-of-sample on it. Only the holdout, from "
             f"{study['holdout_starts']}, is history no experiment has used."
         ),
     ]
+    if sweep is not None:
+        counted = sweep["trials_counted"]
+        callouts.append(
+            Callout(
+                f"Trials counted for {sweep['plugin']}: {counted['total']}, of which this "
+                f"grid holds {counted['this_grid']}. Each combination counts once, however "
+                "many training windows ran it. The out-of-sample result is not deflated, "
+                "because nothing was chosen on it; but running several walk-forwards (other "
+                "grids, other folds) and keeping the best is choosing again, and only the "
+                "trial count shows it."
+            )
+        )
     if study["code"]["git_dirty"]:
         callouts.append(
             Callout(
@@ -200,12 +211,17 @@ def walk_forward_report(record: WalkForwardRecord) -> Document:
         title=f"Walk-forward {study['walk_forward_id']}",
         subtitle=subtitle,
         callouts=tuple(callouts),
-        sections=(
-            _out_of_sample(record),
-            _fold_by_fold(record),
-            _trading(record),
-            _what_ran(record),
-            _limits(record),
+        sections=tuple(
+            section
+            for section in (
+                _out_of_sample(record),
+                _fold_by_fold(record),
+                _picks(record),
+                _trading(record),
+                _what_ran(record),
+                _limits(record),
+            )
+            if section is not None
         ),
     )
 
@@ -294,6 +310,81 @@ def _out_of_sample(record: WalkForwardRecord) -> Section:
         Paragraph("The equity chart's scale is logarithmic: equal heights are equal percentages."),
     ]
     return Section("Out of sample: the test windows joined", tuple(blocks))
+
+
+def _train_step_callout(study: dict[str, Any]) -> Callout:
+    if study.get("sweep") is None:
+        return Callout(
+            "Out-of-sample here means only that no test window was part of the training "
+            "window before it. The train step kept the configured parameters, so nothing "
+            "was chosen on the training windows: the test windows run the same "
+            "strategies in shorter, fresh-started pieces. The gap between in-sample and "
+            "out-of-sample results therefore shows how results change from one period to "
+            "the next, not overfitting. It measures overfitting once parameters are "
+            "chosen on each training window (parameter sweeps)."
+        )
+    return Callout(
+        f"The train step picked parameters on each training window: {study['train_step']}. "
+        "Each test window ran that window's pick, on days the pick had not seen. The gap "
+        "between in-sample and out-of-sample results is now partly what choosing on the "
+        "training window bought that did not last: a large, steady gap is the sign of "
+        "overfitting."
+    )
+
+
+def _picks(record: WalkForwardRecord) -> Section | None:
+    folds = [fold for fold in record.folds if fold.trials is not None]
+    if not folds:
+        return None
+    names = tuple(folds[0].trials["grid"]) if folds[0].trials is not None else ()
+    rows: list[tuple[str, ...]] = []
+    for fold in folds:
+        trials = fold.trials
+        if trials is None:  # pragma: no cover - filtered above
+            continue
+        picked = trials["pick"]
+        deflated = trials["deflated_sharpe"]
+        rows.append(
+            (
+                str(fold.number),
+                _span(fold.train_run),
+                *(_shown(picked["parameters"][name]) for name in names),
+                fmt_ratio(fold.train["strategy"]["sharpe"]),
+                fmt_pct(deflated["probability"]) if deflated is not None else "n/a",
+                fmt_ratio(fold.test["strategy"]["sharpe"]),
+                str(len(trials["warnings"])),
+            )
+        )
+    return Section(
+        "What each training window picked",
+        (
+            Paragraph(
+                "Every combination of the grid ran on each training window; the one with "
+                "the highest Sharpe ratio there ran on the test window after it. The "
+                "deflated Sharpe ratio is the chance that the pick's true Sharpe ratio on "
+                "the training window is above zero, given every trial counted. A pick that "
+                "changes from fold to fold is a sign that the grid's differences are noise. "
+                "Each training window's trials.json lists every trial and the warnings."
+            ),
+            Table(
+                (
+                    "Fold",
+                    "Training window",
+                    *names,
+                    "In-sample Sharpe",
+                    "Deflated",
+                    "Out-of-sample Sharpe",
+                    "Warnings",
+                ),
+                tuple(rows),
+                numeric_from=2 + len(names),
+            ),
+        ),
+    )
+
+
+def _shown(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value)
 
 
 def _fold_by_fold(record: WalkForwardRecord) -> Section:
@@ -433,6 +524,11 @@ def _what_ran(record: WalkForwardRecord) -> Section:
         ("Range asked for", f"{study['range']['first']} to {study['range']['last']}"),
         ("Folds", study["scheme"]["described"]),
         ("Train step", study["train_step"]),
+        *(
+            (("Sweep file", f"{study['sweep']['file']} ({study['sweep']['hash']})"),)
+            if study.get("sweep") is not None
+            else ()
+        ),
         ("Holdout", f"from {study['holdout_starts']}, never used"),
     )
     strategies = tuple(

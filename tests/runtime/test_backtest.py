@@ -110,7 +110,13 @@ class TestTheRunRecord:
         assert record["starting_cash"] == {"amount": "10000", "currency": "USD"}
         assert record["execution"] == {"rebalance_band": "0.10", "price_buffer": "0.02"}
         assert record["strategies"] == [
-            {"id": "buy_and_hold", "plugin": "buy_and_hold", "version": "1", "budget": "1.0"}
+            {
+                "id": "buy_and_hold",
+                "plugin": "buy_and_hold",
+                "version": "1",
+                "budget": "1.0",
+                "parameters": {"symbol": "SPY", "exchange": "ARCX", "asset_class": "etf"},
+            }
         ]
 
     def test_lists_the_data_used(self, config: TycheConfig) -> None:

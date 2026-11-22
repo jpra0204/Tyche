@@ -12,15 +12,15 @@ writes what happened to ``reports/backtests/<run id>/`` in the workspace:
 * ``fills.csv``: every fill, with its costs.
 * ``metrics.json``: the run measured against the benchmark (ADR-0025).
 
-A run that halts is recorded too: every run is a trial, and Phase 1 PR 21 and the
-Phase 3 gate count trials.
+A run that halts is recorded too: every run is a trial, and parameter sweeps
+(ADR-0030) and the Phase 3 gate count trials.
 """
 
 import csv
 import json
 import platform
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -221,7 +221,30 @@ def cached_market(config: TycheConfig, last: date, clock: Clock) -> CachedMarket
     return CachedMarket(calendars, CachedDataProvider(source, cache, calendars, clock))
 
 
-def run_and_record(
+@dataclass(frozen=True, slots=True)
+class MeasuredRun:
+    """A backtest run and measured, not yet recorded.
+
+    Attributes:
+        spec: What ran.
+        strategies: The strategies it ran, with the parameters they were built from.
+        result: What happened.
+        metrics: The run against the benchmark; ``None`` if it could not be measured.
+        metrics_error: Why not, or ``None``.
+        started: When the run started, by the clock.
+        finished: When it finished.
+    """
+
+    spec: BacktestSpec
+    strategies: ConfiguredStrategies
+    result: BacktestResult
+    metrics: BacktestMetrics | None
+    metrics_error: str | None
+    started: datetime
+    finished: datetime
+
+
+def run_and_measure(
     config: TycheConfig,
     market: CachedMarket,
     strategies: ConfiguredStrategies,
@@ -229,15 +252,10 @@ def run_and_record(
     run_id: str,
     first: date,
     last: date,
-    folder: Path,
     clock: Clock,
     code: CodeVersion,
-    part_of: dict[str, Any] | None = None,
-) -> BacktestOutcome:
-    """Run one backtest, measure it, and write its record into ``folder``, a new folder.
-
-    ``part_of`` says which larger study the run belongs to, such as a walk-forward's
-    fold; it is written into ``run.json`` as it is.
+) -> MeasuredRun:
+    """Run one backtest and measure it, writing nothing.
 
     Raises:
         BacktestRequestError: History is missing from the cache.
@@ -264,25 +282,80 @@ def run_and_record(
         raise BacktestRequestError(_fetch_hint(error)) from None
     finished = clock.now()
 
-    currency = profile.cash_currencies[0]
     metrics: BacktestMetrics | None = None
     metrics_error: str | None = None
     try:
-        metrics = measure_backtest(result, currency)
+        metrics = measure_backtest(result, profile.cash_currencies[0])
     except MetricsError as error:
         metrics_error = str(error)
+    return MeasuredRun(spec, strategies, result, metrics, metrics_error, started, finished)
+
+
+def record_run(
+    config: TycheConfig,
+    run: MeasuredRun,
+    *,
+    folder: Path,
+    code: CodeVersion,
+    part_of: dict[str, Any] | None = None,
+) -> BacktestOutcome:
+    """Write a measured run's record into ``folder``, a new folder.
+
+    ``part_of`` says which larger study the run belongs to, such as a walk-forward's
+    fold or a sweep; it is written into ``run.json`` as it is.
+    """
     record = run_record(
         config,
-        spec,
-        result,
+        run.spec,
+        run.result,
         code,
-        started=started,
-        finished=finished,
-        metrics_error=metrics_error,
+        started=run.started,
+        finished=run.finished,
+        metrics_error=run.metrics_error,
         part_of=part_of,
+        parameters=run.strategies.parameters,
     )
-    write_run_record(folder, record, result, currency, metrics)
-    return BacktestOutcome(run_id, result, folder, code, first, last, metrics, metrics_error)
+    currency = config.market_profile.cash_currencies[0]
+    write_run_record(folder, record, run.result, currency, run.metrics)
+    return BacktestOutcome(
+        run.spec.run_id,
+        run.result,
+        folder,
+        code,
+        run.spec.first,
+        run.spec.last,
+        run.metrics,
+        run.metrics_error,
+    )
+
+
+def run_and_record(
+    config: TycheConfig,
+    market: CachedMarket,
+    strategies: ConfiguredStrategies,
+    *,
+    run_id: str,
+    first: date,
+    last: date,
+    folder: Path,
+    clock: Clock,
+    code: CodeVersion,
+    part_of: dict[str, Any] | None = None,
+) -> BacktestOutcome:
+    """Run one backtest, measure it, and write its record into ``folder``, a new folder.
+
+    ``part_of`` says which larger study the run belongs to, such as a walk-forward's
+    fold; it is written into ``run.json`` as it is.
+
+    Raises:
+        BacktestRequestError: History is missing from the cache.
+        HoldoutError: ``last`` reaches the holdout.
+        BacktestError: The range or the setup cannot be run.
+    """
+    run = run_and_measure(
+        config, market, strategies, run_id=run_id, first=first, last=last, clock=clock, code=code
+    )
+    return record_run(config, run, folder=folder, code=code, part_of=part_of)
 
 
 def new_run_id(folder: Path, started: datetime, config_hash: str) -> str:
@@ -323,11 +396,16 @@ def run_record(
     finished: datetime,
     metrics_error: str | None = None,
     part_of: dict[str, Any] | None = None,
+    parameters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The run record: everything needed to reproduce the run and judge what it used.
 
     ``part_of`` is written as it is when the run belongs to a larger study.
+    ``parameters`` are each strategy's parameters as built, by id; without them, each
+    strategy's file's parameters are written. Records written before parameter sweeps
+    have no ``parameters`` field: their strategy files, in ``config``, give them.
     """
+    parameters = parameters or {s.strategy_id: s.parameters for s in config.strategies}
     currency = spec.profile.cash_currencies[0]
     sessions = [s for found in result.sessions.values() for s in found]
     warm_up = [s for found in result.warm_up.values() for s in found]
@@ -373,6 +451,7 @@ def run_record(
                 "plugin": plugins.get(strategy.strategy_id),
                 "version": strategy.version,
                 "budget": str(spec.budgets[strategy.strategy_id]),
+                "parameters": dict(parameters.get(strategy.strategy_id, {})),
             }
             for strategy in spec.strategies
         ],

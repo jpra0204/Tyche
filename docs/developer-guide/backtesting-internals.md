@@ -2,7 +2,7 @@
 
 How a backtest turns history into fills, and what it cannot know. Every rule here is a model of a real broker, chosen to be no kinder than the real one. Reports must state these rules and the parameters used ([ADR-0005](../adr/0005-backtest-paper-live-parity.md): parity of code, not of markets).
 
-*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15, the metrics section in PR 16, the reference check in PR 17 and the walk-forward section in PR 20.*
+*Written in PR 10 with the simulated broker; the universe section added in PR 11, the strategy section in PR 12, the portfolio section in PR 13, the execution section in PR 14, the runner section in PR 15, the metrics section in PR 16, the reference check in PR 17, the walk-forward section in PR 20 and the sweeps section in PR 21.*
 
 ## 1. How time moves
 
@@ -244,7 +244,7 @@ flowchart TD
     A[Check the range against the holdout] --> B["plan_folds: windows of calendar years"]
     B --> C[Next fold]
     C --> D[Backtest the training window<br/>run_and_record into folds/NN-train]
-    D --> E["Train step: keep_configured<br/>(a parameter choice from PR 21)"]
+    D --> E["Train step: keep_configured,<br/>or the pick of a sweep on the training window"]
     E --> F[Backtest the test window<br/>with what the train step chose<br/>into folds/NN-test]
     F --> G{More folds?}
     G -- yes --> C
@@ -256,7 +256,7 @@ flowchart TD
 |---|---|
 | Folds | `plan_folds(first, last, FoldScheme)`, dates only. The first test year is `first.year + train_years`; test windows of `test_years` follow with no gap until `last`. Anchored training windows start at `first`; rolling ones keep `train_years` calendar years |
 | Each window | A backtest of its own, from `starting_cash`, warmed up on the history before it like any backtest. It writes a full record into `folds/<NN>-train/` or `folds/<NN>-test/`, with `part_of` in `run.json` naming the walk-forward, the fold and the window |
-| Train step | `tyche.runtime.walk_forward.keep_configured(config, fold, trained)` returns what the test window runs. Today: the configured strategies, so the training run is measured and reported but changes nothing |
+| Train step | Without `--sweep`, `tyche.runtime.walk_forward.keep_configured(config, fold, trained)` returns the configured strategies, so the training run is measured and reported but changes nothing. With `--sweep <name>`, `run_sweep` runs every combination on the training window; `folds/<NN>-train/` holds the pick's full record and `trials.json`, and the test window runs the pick (section 10) |
 | Joining | `chain` scales each test window's equity (and the amount invested) to start where the previous one ended. The benchmark's equity for each test window comes from that window's `metrics.benchmark_equity` and is chained the same way |
 | Stops | The first window that halts or cannot be measured stops the walk-forward; `walk_forward.json` records the failure and the folds finished. Missing history raises after recording the same |
 | Report | `tyche.runtime.walk_forward_report`, built from the folder alone through `tyche.adapters.reports`. `tyche report <id>` finds a walk-forward under `reports/walk_forward/` |
@@ -265,9 +265,36 @@ What follows from the rules:
 
 - **A test window starts flat.** Its first session's close is the first equity point, before any order has filled, for the strategies and the benchmark alike. Joined, the session between two windows shows no change for either.
 - **With the train step keeping the configured parameters, each anchored training window is the start of the next one.** On real data, fold 13's training run (2005 to 2021) matched the first 4,280 closes of fold 14's (2005 to 2022) in every equity row and every fill, for all three strategies. That is also a lookahead check: where a run ends changes nothing before it. The walk-forward still runs every window, because a parameter choice will make them differ.
-- **Speed.** About ten times a single backtest of the same range with the defaults. On the nine-ETF profile, a walk-forward over 2005 to 2023 takes 2 to 3 minutes.
+- **Speed.** About ten times a single backtest of the same range with the defaults. On the nine-ETF profile, a walk-forward over 2005 to 2023 takes 2 to 3 minutes; with a sweep, multiply by the number of combinations.
 
-## 10. Known limits
+## 10. Parameter sweeps
+
+`tyche sweep <name>` runs every combination of `config/sweeps/<name>.toml` ([ADR-0030](../adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md), learning note: [multiple testing](../learning/multiple-testing.md)). Each combination is a backtest through `run_and_measure`, the same path as `tyche backtest` without the record.
+
+```mermaid
+flowchart TD
+    A[load_sweep: the file, checked against the config] --> B["plan_sweep: build every combination,<br/>count the trials already recorded"]
+    B --> C[Next combination]
+    C --> D["run_and_measure, then a Trial:<br/>metrics and the per-session Sharpe ratio"]
+    D --> E{More?}
+    E -- yes --> C
+    E -- no --> F["pick: the highest Sharpe ratio"]
+    F --> G["deflated_sharpe: N trials counted,<br/>V over this sweep's trials, the pick's T, skew, kurtosis"]
+    G --> H["overfitting_warnings"]
+    H --> I[sweep.json, trials.json,<br/>pick/ full record, report.html]
+```
+
+| Rule | Detail |
+|---|---|
+| Grid | `Grid` keeps the parameters in the order written; `combinations` changes the last one fastest and numbers them from 1. Values are what the strategy file would hold, merged over its parameters by `build_strategies(config, overrides)` |
+| Checks | `plan_sweep` builds every combination through the plugin before anything runs, so a bad value fails with the sweep file named and nothing written |
+| Trials | `trial_key(plugin, version, parameters)` hashes the full parameters. `recorded_trial_keys` reads every `run.json` (its `strategies[].parameters`, or for older records the strategy file in its config snapshot) and every `trials.json` under `reports/`. `N` is the union with the grid's keys |
+| Order | The combination whose strategy has the longest `lookback` (`SweepPlan.longest`) runs first, so missing history fails before other trials spend time; the rest follow in the grid's order, and trials are returned in it |
+| Pick | `pick`: the highest annualised Sharpe ratio, the first in the grid on a tie, never a trial without one. Only the best run so far stays in memory |
+| Deflation | `deflated_sharpe(moments, sharpes, trials)`: equations 1 and 2 of Bailey and López de Prado (2014), in `float` with `statistics.NormalDist`; Sharpe ratios per session. `V` is the sample variance of this sweep's per-session Sharpe ratios; skewness and kurtosis (3 if normal) are of the pick's daily returns |
+| Record | `trials.json` holds every trial's parameters, key and metrics; only the pick keeps `run.json`, `metrics.json`, `equity.csv` and `fills.csv`, in `pick/` (in a walk-forward, in `folds/<NN>-train/` itself) |
+
+## 11. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

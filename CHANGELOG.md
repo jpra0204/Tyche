@@ -106,7 +106,19 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Each walk-forward writes `reports/walk_forward/<id>/`: `walk_forward.json`, `metrics.json`, `equity.csv`, `report.html`, and each window's full backtest record under `folds/`.
 - ADR-0029. User guide: walk-forward. Learning note: walk-forward testing and overfitting. Developer guide: backtesting internals, section 9.
 
+- Parameter sweeps (Phase 1, PR 21): `tyche sweep <name> --from <date>` runs every combination of the values in `config/sweeps/<name>.toml` as a backtest over the same days, picks the highest Sharpe ratio, and reports the pick with a deflated Sharpe ratio (Bailey and López de Prado, 2014) and overfitting warnings: not significant at 95%, a pick at the edge of the grid, an isolated peak, trials that failed (ADR-0030).
+- Trials are counted for good: every distinct trial of a plugin (its version and full parameters) recorded anywhere under `reports/`, plus the sweep's own, is the `N` the pick is deflated for.
+- `tyche walk-forward --sweep <name>`: each training window runs every combination, and its test window runs the pick. Each combination counts as one trial, however many folds run it.
+- Each sweep writes `reports/sweeps/<id>/`: `sweep.json`, `trials.json` (every trial's parameters, key and metrics), the pick's full backtest record in `pick/`, and `report.html`. Other trials keep no equity or fills.
+- `Grid`, `combinations`, `pick`, `trial_key`, `expected_max_sharpe`, `probabilistic_sharpe`, `deflated_sharpe`, `return_moments`, `session_sharpe` and `overfitting_warnings` in `tyche.core.backtest`; `load_sweep` and `SweepSpec` in `tyche.config`; `recorded_trial_keys` in `tyche.runtime.trials`.
+- New workspaces ship an example sweep, `config/sweeps/trend_rotation.toml` (27 combinations).
+- ADR-0030. User guide: parameter sweeps. Learning note: multiple testing and the deflated Sharpe ratio. Developer guide: backtesting internals, section 10.
+
 ### Changed
+
+- A backtest's `run.json` states each strategy's parameters (`strategies[].parameters`), so a trial can be counted. The record format stays 1: the field is added.
+- `build_strategies` takes overrides of a strategy's parameters, and `ConfiguredStrategies` carries the parameters each strategy was built from. `tyche.runtime.backtest.run_and_record` is split into `run_and_measure` and `record_run`.
+- A walk-forward's progress callback is also told the parameters a sweep picked (`None` without a sweep). `tyche report` also finds sweeps; its error for an unknown id now reads `no backtest, walk-forward or sweep record named …`.
 
 - `tyche report <id>` also rebuilds a walk-forward's report, and its error for an unknown id now reads `no backtest or walk-forward record named …`.
 - A backtest's `run.json` gains `part_of` when the run is one window of a walk-forward. The record format stays 1: no field changed meaning.

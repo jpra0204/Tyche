@@ -10,8 +10,10 @@ Keep this folder a **private** git repository. Never push it anywhere public.
 | `config/markets/` | One file per market profile: the instruments followed and the rules for trading them | Yes |
 | `config/costs/` | Trading costs and settlement for each market profile, with the date they were checked | Yes |
 | `config/strategies/` | One file per strategy: which built-in plugin and its parameters. A strategy runs only with a budget in `config/tyche.toml`; the two examples ship without one | Yes |
+| `config/sweeps/` | One file per parameter sweep: a configured strategy and the values to try. The example sweeps the trend rotation | Yes |
 | `reports/backtests/` | One folder per backtest run: what ran, the equity at every close, every fill, the metrics and `report.html` | Yes |
 | `reports/walk_forward/` | One folder per walk-forward: what ran, the test windows joined, `report.html`, and each training and test window's backtest record | Yes |
+| `reports/sweeps/` | One folder per sweep: what ran, every trial's parameters and metrics, the pick's full backtest record, and `report.html` | Yes |
 | `data/` | Market data fetched from Yahoo Finance, for personal use only | **Never** |
 | `.env` | Secrets: Discord webhook, broker connection | **Never** |
 

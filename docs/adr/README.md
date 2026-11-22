@@ -40,6 +40,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0027](0027-example-strategies-fixed-in-advance.md) | Two example strategies, with their rules fixed before any backtest | Accepted (Pablo, 2026-11-19) |
 | [0028](0028-backtest-report-html-and-cost-drag.md) | The backtest report is one HTML file with matplotlib charts, built from the record | Accepted (Pablo, 2026-11-20) |
 | [0029](0029-walk-forward-folds-and-a-train-step.md) | Walk-forward: anchored folds of calendar years, and a train step that keeps the configured parameters until sweeps exist | Accepted (Pablo, 2026-11-20) |
+| [0030](0030-parameter-sweeps-trial-count-and-deflated-sharpe.md) | Parameter sweeps: every recorded trial counted, the pick by Sharpe ratio, and a deflated Sharpe ratio | Accepted (Pablo, 2026-11-19) |
 
 ## Template
 

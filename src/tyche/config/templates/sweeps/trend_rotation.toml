@@ -1,0 +1,30 @@
+# Parameter sweep: an example over the trend rotation (ADR-0030).
+#
+# `tyche sweep trend_rotation --from <date>` runs the strategy once for every
+# combination of the values below (here 3 x 3 x 3 = 27), each a backtest over the
+# same days, and picks the one with the highest Sharpe ratio. Parameters not listed
+# keep the values in config/strategies/<strategy>.toml. The other configured
+# strategies run alongside, unchanged.
+#
+# Every combination is a trial, and trials are counted for good: the pick is reported
+# with a deflated Sharpe ratio that discounts it for every distinct trial of the
+# plugin ever recorded in this workspace. A grid widened after seeing a result, or a
+# second sweep, adds trials and makes the bar higher. Plan a grid from reasons you can
+# state, not from results you have seen.
+#
+# A sweep picks on the same history it reports, so its pick is in-sample. For an
+# out-of-sample result, run `tyche walk-forward --sweep trend_rotation`: each fold
+# picks on its training window and tests the pick on the year after.
+#
+# The file name, without .toml, is the sweep's name.
+
+# The configured strategy whose parameters are swept. It needs a budget under
+# [strategies] in config/tyche.toml.
+strategy = "trend_rotation"
+
+[grid]
+# Each parameter and the values to try, in order. Decimals are strings, as in the
+# strategy file.
+holdings = [2, 3, 4]
+momentum_sessions = [63, 126, 252]
+trend_sessions = [150, 200, 250]
