@@ -129,6 +129,7 @@ Phase 1: core and backtesting, for the `US` profile at end of day. Tyche fetches
 
 ### Changed
 
+- ADR-0031 accepted (2026-11-23). Its proposed small-account defaults are not adopted; they stay open for Phase 2.
 - `TradingCosts.commission` is a `Commission`: the Fixed `CommissionSchedule` or the new `TieredSchedule`. `TycheConfig` gains `tiered_costs`.
 - The config snapshot, and so the config hash, leaves out an optional table that is absent. No existing file has one, so no existing hash changes; a new workspace's hash differs from an older one's because its costs file has `[tiered]`.
 - `tyche report` also finds capital analyses; its error for an unknown id now reads `no backtest, walk-forward, sweep or capital record named …`.

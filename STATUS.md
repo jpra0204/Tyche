@@ -29,7 +29,7 @@
 - PR 20 (walk-forward) is merged; ADR-0029 accepted.
 - PR 21 (parameter sweeps) is merged; ADR-0030 accepted: every distinct trial ever recorded for a plugin is counted, the pick is the highest Sharpe ratio, it is reported with a deflated Sharpe ratio, and a sweep keeps one table of trials plus the pick's full record. One PR, not split.
 - Fix: the data cache now covers sessions before an instrument's first bar when the source has nothing for them, so the fetch hint for GLD and VNQ no longer loops. Merged (#25); no workspace change needed, and no need to delete cache files.
-- PR 22 (minimum viable capital) is merged; ADR-0031 still proposed. Decided with Pablo on 2026-11-22 and 23: the size penalty against a large reference account (within half a point a year, either way), a latest-close check of today's share prices (the one read of a holdout bar), capital varied but not positions, and a USD 100,000 reference after USD 1,000,000 proved too large for the rotation.
+- PR 22 (minimum viable capital) is merged; ADR-0031 accepted on 2026-11-23 (its proposed small-account defaults stay open, below). Decided with Pablo on 2026-11-22 and 23: the size penalty against a large reference account (within half a point a year, either way), a latest-close check of today's share prices (the one read of a holdout bar), capital varied but not positions, and a USD 100,000 reference after USD 1,000,000 proved too large for the rotation.
 - PR 23 (Phase 1 wrap-up) is in review: version 0.1.0; every user-guide command re-run in a fresh workspace; new pages for pipeline contracts and troubleshooting. **Phase 1 stops here for review.**
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
@@ -140,7 +140,7 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 20 | Train/test and walk-forward (**merged**) | In-sample and out-of-sample results reported separately | Decided 2026-11-20 ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)): the walk-forward machinery now, with a train step that keeps the configured parameters until PR 21 plugs in a choice; anchored folds of calendar years by default (5-year first training window, 1-year tests), rolling optional |
 | 21 | Parameter sweeps (**merged**) | Sweeps with a trial count, a deflated Sharpe ratio and overfitting warnings | Decided 2026-11-19 ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)): one PR, not split; `N` is every distinct trial of the plugin ever recorded in the workspace; the pick is the highest Sharpe ratio; one `trials.json` per sweep plus the pick's full record; the grid in `config/sweeps/<name>.toml`. A walk-forward with `--sweep` picks on each training window; each combination counts once however many folds run it; the out-of-sample result is not deflated. Deflated Sharpe formula checked against the paper's worked example |
-| 22 | Minimum viable capital (**merged**) | For each strategy, the account size at which its edge survives costs; proposed defaults if under $1,000 CAD with five positions does not work | Decided 2026-11-22 and 23 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md), proposed): the size penalty against a large reference account, within half a point a year either way; each strategy alone with its configured parameters, only the capital varied; Fixed against Tiered with an assumed exchange fee of USD 0.0030 a share (rates re-checked 2026-11-22); today's share prices from the latest cached close, the one read of a holdout bar; a USD 100,000 reference, flagged if the volume cap binds |
+| 22 | Minimum viable capital (**merged**) | For each strategy, the account size at which its edge survives costs; proposed defaults if under $1,000 CAD with five positions does not work | Decided 2026-11-22 and 23 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md), accepted 2026-11-23): the size penalty against a large reference account, within half a point a year either way; each strategy alone with its configured parameters, only the capital varied; Fixed against Tiered with an assumed exchange fee of USD 0.0030 a share (rates re-checked 2026-11-22); today's share prices from the latest cached close, the one read of a holdout bar; a USD 100,000 reference, flagged if the volume cap binds |
 | 23 | Phase 1 wrap-up (**in review**) | User guide (installation, running a backtest), developer guide pages, version 0.1.0 | Every user-guide command re-run in a fresh workspace on 2026-11-23; new pages: pipeline contracts (developer guide) and troubleshooting (user guide). Stop for Phase 1 review |
 
 Two things in the brief's Phase 1 that this plan moves:
@@ -206,14 +206,13 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 **Phase 1 review.** Nothing in Phase 2 starts until Pablo has reviewed Phase 1 and agreed a Phase 2 PR list.
 
 1. **Review PR 23** (wrap-up: version 0.1.0, pipeline contracts, troubleshooting, the guides checked end to end).
-2. **ADR-0031 is still proposed.** Accept it as written, or say what to change. Its "Implementation choices made in PR 22" and proposed small-account defaults are the parts worth a look.
-3. **Decisions open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; the proposed small-account defaults; whether the Phase 3 gate deflates against zero or against the benchmark.
-4. **After merging PR 23**, if you want a release marker: tag the merge commit `v0.1.0` and push the tag. Tagging publishes to the public repository, so it is yours to do:
+2. **Decisions open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; the proposed small-account defaults; whether the Phase 3 gate deflates against zero or against the benchmark.
+3. **After merging PR 23**, if you want a release marker: tag the merge commit `v0.1.0` and push the tag. Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
    git tag -a v0.1.0 -m "Phase 1: core and backtesting" && git push origin v0.1.0
    ```
 
-5. **Before Phase 2**: the IBKR account and its paper account, if not opened yet; and Phase 2's PR list, which Claude drafts in this file for your agreement before any of its code.
+4. **Before Phase 2**: the IBKR account and its paper account, if not opened yet; and Phase 2's PR list, which Claude drafts in this file for your agreement before any of its code.
 
 **Your workspace**, if created by an older Tyche: [troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche) has one table of everything to copy from a new workspace, by PR. For PR 22, the `[tiered]` table in `config/costs/US.toml`, if you want `tyche capital` to compare Tiered.
