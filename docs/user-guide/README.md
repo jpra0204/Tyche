@@ -13,7 +13,7 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 | [Parameter sweeps](05-parameter-sweeps.md) | Writing a sweep file, running `tyche sweep`, the trial count and the deflated Sharpe ratio, the warnings, and sweeps inside a walk-forward |
 | [Minimum viable capital](06-minimum-viable-capital.md) | Running `tyche capital`: the account size at which each strategy stops losing to its size, Fixed against Tiered, and what a position costs at today's prices |
 | [Troubleshooting](07-troubleshooting.md) | First checks, upgrading a workspace created by an older Tyche, messages any command can print, and common questions |
-| [Risk profiles and guardrails](08-risk-profiles.md) | The three layers of risk limits, making a new profile, checking them, and what the risk gate does to a backtest (`--risk-profile`) |
+| [Risk profiles and guardrails](08-risk-profiles.md) | The three layers of risk limits, making a new profile, checking them, what the risk gate does to a backtest (`--risk-profile`), comparing profiles side by side (`tyche compare-profiles`), and one profile per live stage for a small account |
 
 ## Planned
 
@@ -26,4 +26,4 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 | `13-weekly-review.md` | Running the review and approving or rejecting proposals | Phase 3 |
 | `14-promoting-a-strategy.md` | Taking a strategy from paper to live | Phase 3 |
 
-[Risk profiles and guardrails](08-risk-profiles.md) grows through Phase 2: comparing profiles side by side (PR 5) and switching the paper profile come later.
+[Risk profiles and guardrails](08-risk-profiles.md) grows through Phase 2: switching the paper profile comes later.

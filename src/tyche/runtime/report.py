@@ -196,7 +196,7 @@ def backtest_report(record: Record) -> Document:
         )
     if not run["outcome"]["completed"]:
         callouts.append(Callout(f"The run halted: {run['outcome']['failure']}", Tone.WARNING))
-    halt = _halt(run)
+    halt = halt_of(run)
     if halt is not None:
         callouts.append(
             Callout(
@@ -273,7 +273,7 @@ def _summary(record: Record) -> Section:
         ("Exposure", fmt_pct(mine["exposure"]), fmt_pct(bench["exposure"]), ""),
     )
     benchmark_name = f"{bench['instrument']} total return"
-    halt = _halt(record.run)
+    halt = halt_of(record.run)
     marks = (Mark(_moment(halt["at"]), "halted"),) if halt is not None else ()
     blocks: list[Block] = [
         Paragraph(
@@ -533,7 +533,23 @@ def _risk(run: dict[str, Any]) -> str:
     return text
 
 
-def _halt(run: dict[str, Any]) -> dict[str, Any] | None:
+def halts_callout(halted: Sequence[str], of: str) -> Callout | None:
+    """A warning naming every run of a study the drawdown kill halted, or ``None``.
+
+    ``halted`` names each halted run with its date, such as "trial 4 (2006-06-13)";
+    ``of`` says how many runs there were, such as "27 trials".
+    """
+    if not halted:
+        return None
+    return Callout(
+        f"The drawdown kill halted {len(halted)} of {of}: {', '.join(halted)}. A halted "
+        "run sends no order from that close to its last day, holding what it held, so its "
+        "results from then on are those of not trading, not of the strategies (ADR-0035).",
+        Tone.WARNING,
+    )
+
+
+def halt_of(run: dict[str, Any]) -> dict[str, Any] | None:
     """The drawdown kill's halt, or ``None``, also for a record older than the account rules."""
     rules = run["outcome"].get("account_rules")
     return rules["halt"] if rules is not None else None

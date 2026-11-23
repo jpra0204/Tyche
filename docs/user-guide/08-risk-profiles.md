@@ -114,7 +114,7 @@ Fix the value, or the limit above it if you meant to change that, and check agai
 
 ## What a profile does to a backtest
 
-Every backtest command runs under a risk profile: `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche capital` all take `--risk-profile <name>`, and use `default` without it.
+Every backtest command runs under a risk profile: `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche capital` all take `--risk-profile <name>`, and use `default` without it. `tyche compare-profiles` takes several (below).
 
 ```bash
 uv run tyche backtest --from 2005-01-03 --risk-profile safecash
@@ -161,11 +161,65 @@ The record (`run.json`) has the profile's values under `risk`, the counts by rul
 The Sharpe ratios barely move under the position rules: the same funds, held smaller. Three things to keep in mind:
 
 - **A halt can flatter or hurt a result, by luck.** The rotation fell 15.11% in March 2020 and halted. From then on it held the three funds it had that day, untouched, to the end of 2023. They recovered, so it ended higher than when it kept trading, but its worst fall grew from 15% to 20% (in 2022, with nothing to take it out of those funds). Neither number says anything about the strategy after March 2020.
-
-- **Compare like with like.** A strategy under `default` against SPY held at 100% is not a fair test of the strategy. Run both under the same profile; comparing profiles side by side arrives in Phase 2, PR 5.
+- **Compare like with like.** A strategy under `default` against SPY held at 100% is not a fair test of the strategy. Run both under the same profile, or compare profiles side by side (below).
 - **Small accounts may hold nothing.** With USD 1,000, 20% is about USD 200, less than one share of SPY, so buy-and-hold never buys. Run `tyche capital` to see where your account size stands.
 
 Records written before this change have no `risk` section; their report says they ran before the risk gate.
+
+## Comparing profiles side by side
+
+`tyche compare-profiles` runs your configured strategies once under each risk profile, over the same days, with everything else the same ([ADR-0036](../adr/0036-risk-profiles-side-by-side.md)):
+
+```bash
+uv run tyche compare-profiles --from 2005-01-03                      # every profile in config/risk/
+uv run tyche compare-profiles --from 2005-01-03 --risk-profile default --risk-profile stage-2
+```
+
+It prints one line per profile as it finishes, then where the record and the report are:
+
+```text
+Comparing 4 risk profiles: default, stage-1, stage-2, stage-3
+  default: CAGR 5.14%, Sharpe 0.60, max drawdown 20.36%; daily loss limit hit after 3 sessions; HALTED by the drawdown kill on 2020-03-18, 15.11% below the peak of 21817.50 USD; no order after that
+  stage-1: CAGR 2.71%, Sharpe 0.42, max drawdown 12.43%; daily loss limit hit after 1 session; drawdown kill never hit
+  ...
+```
+
+Everything goes to `reports/profiles/<id>/`: `profiles.json`, each profile's full backtest record under `runs/<profile>/`, and `report.html`. The report shows every profile against the benchmark in one table, their equity and drawdown on one chart each with every halt marked, and what each profile's limits did: gate cuts, daily loss triggers, and when the drawdown kill halted it, with how much of the range was still to run.
+
+Three things it deliberately does not do:
+
+- **It names no best profile.** Choose a profile for the account you will trade and the losses you can sit through, not for the best number in the table. Choosing on these results is a selection, just like picking the best of a sweep, and the more profiles you compare, the better the best one looks by chance.
+- **It adds no trials.** Every profile runs your strategies' configured parameters, which are already counted ([ADR-0030](../adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)), so nothing corrects for the selection either. The report says so at the top.
+- **It does not use the money caps.** Like every research backtest it starts from `starting_cash`. To see a profile at one of your live stages, set `starting_cash` in `config/tyche.toml` to that stage's amount for the comparison (it is part of the config hash, so set it back after), and run `tyche capital` for what whole shares and minimum commissions cost there.
+
+**A profile only ever lowers what a strategy asks for.** It never scales a strategy up to fill its slots. The example rotation asks for a third of the account in each of three funds, so under a one-position profile it holds one fund at a third and keeps the rest in cash. To use a one-position profile fully, the strategy has to ask for one position (for the rotation, `holdings = 1`, which is a new set of parameters and so a new trial).
+
+## Profiles for a small account
+
+`default`'s five positions of 20% cannot trade a small account: at about USD 700, a 20% slot is about USD 140, less than one share of SPY, QQQ, GLD or IWM ([ADR-0031](../adr/0031-minimum-viable-capital.md)). Use one profile per live stage, tightening as the account grows ([ADR-0036](../adr/0036-risk-profiles-side-by-side.md)). Tyche does not ship them: create them in your own workspace, beside `default`.
+
+| File | `max_open_positions` | `max_position_size` | For |
+|---|---|---|---|
+| `config/risk/stage-1.toml` | `1` | `"1.0"` | The first stage: one position, as much of the account as it needs |
+| `config/risk/stage-2.toml` | `2` | `"0.50"` | The second stage |
+| `config/risk/stage-3.toml` | `4` | `"0.25"` | The third stage |
+
+Each keeps `default`'s `risk_per_trade = "0.01"`, `daily_loss_limit = "0.03"` and `drawdown_kill = "0.15"`. The quickest way is to copy `default.toml` and change the two lines.
+
+**Each needs room in your guardrails.** A profile may not exceed `config/guardrails.toml`, so while you trade at stage 1, `max_position_size` there must be at least `"1.0"`, and at stage 2 at least `"0.50"`. `max_open_positions` there must be at least the profile's. Lower the ceiling again as you move to the next stage: the guardrails are the hard limit, and they should be no looser than the stage you are in. `tyche config check` checks every profile against them, and refuses to start if one breaks a limit.
+
+**Switch profile when you move stage**, by hand. Paper and live will run under the profile you choose; backtests take `--risk-profile`.
+
+What these profiles did on real data (Yahoo, 2005 to 2023, USD 10,000, the example rotation alone):
+
+| | CAGR | Max drawdown | Drawdown kill |
+|---|---|---|---|
+| `default` | 5.14% | 20.36% | halted 2020-03-18, 20% of the range left |
+| `stage-1` | 2.71% | 12.43% | never (a third invested: see above) |
+| `stage-2` | 4.59% | 32.81% | halted 2006-06-13, 92% of the range left |
+| `stage-3` | 4.15% | 35.79% | halted 2006-06-13, 92% of the range left |
+
+The halted profiles spent most of these years holding what they had in June 2006, so their figures say little about the strategy. With fewer, larger positions, a 15% fall from the peak comes sooner. Whether 15% is the right drawdown kill for a concentrated profile is part of choosing the profile.
 
 ## Your config hash
 

@@ -272,7 +272,13 @@ def _trial(combination: Combination, run: MeasuredRun, currency: Currency) -> Tr
         return Trial(combination, None, None, f"halted: {run.result.run.failure}")
     if run.metrics is None:
         return Trial(combination, None, None, f"not measured: {run.metrics_error}")
-    return Trial(combination, run.metrics, session_sharpe(equity_points(run.result, currency)))
+    halt = run.result.halt
+    return Trial(
+        combination,
+        run.metrics,
+        session_sharpe(equity_points(run.result, currency)),
+        halted_at=halt.at if halt is not None else None,
+    )
 
 
 # --- the standalone sweep -------------------------------------------------------------
@@ -428,6 +434,7 @@ def _trial_record(trial: Trial, key: str) -> dict[str, Any]:
         "key": key,
         "measured": metrics is not None,
         "failure": trial.failure,
+        "halted_at": trial.halted_at.isoformat() if trial.halted_at is not None else None,
     }
     if metrics is None:
         return record

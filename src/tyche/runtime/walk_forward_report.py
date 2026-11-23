@@ -44,9 +44,12 @@ from tyche.runtime.report import (
     equity_line,
     fmt_amount,
     fmt_budget,
+    fmt_day,
     fmt_pct,
     fmt_points,
     fmt_ratio,
+    halt_of,
+    halts_callout,
 )
 from tyche.runtime.walk_forward import WALK_FORWARD_FILE, WALK_FORWARD_FORMAT
 
@@ -199,6 +202,15 @@ def walk_forward_report(record: WalkForwardRecord) -> Document:
                 "trial count shows it."
             )
         )
+    halted = [
+        f"fold {fold.number}'s {kind} window ({fmt_day(halt['at'])})"
+        for fold in folds
+        for kind, run in (("training", fold.train_run), ("test", fold.test_run))
+        if (halt := halt_of(run)) is not None
+    ]
+    halts = halts_callout(halted, f"{2 * len(folds)} windows")
+    if halts is not None:
+        callouts.append(halts)
     if study["code"]["git_dirty"]:
         callouts.append(
             Callout(

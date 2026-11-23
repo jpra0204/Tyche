@@ -64,6 +64,14 @@ from tyche.runtime.data import (
     fetch_daily_histories,
     instrument_for,
 )
+from tyche.runtime.profiles import (
+    PROFILES_FILE,
+    ProfileRun,
+    chosen_profiles,
+    is_profile_comparison,
+    run_profile_comparison,
+)
+from tyche.runtime.profiles_report import write_profiles_report
 from tyche.runtime.report import ReportError, write_report
 from tyche.runtime.strategies import build_strategies
 from tyche.runtime.sweep import SweepOutcome, SweepPlan, SweepResult, run_configured_sweep
@@ -656,13 +664,98 @@ def capital(
         typer.echo(f"  Report:        not written: {error}")
 
 
+@app.command("compare-profiles")
+def compare_profiles(
+    first: Annotated[
+        datetime,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help="First session date to trade. History before it is used to warm up.",
+            show_default=False,
+        ),
+    ],
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last session date to trade. Defaults to the day before the holdout.",
+            show_default=False,
+        ),
+    ] = None,
+    home: HomeOption = None,
+    risk_profiles: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--risk-profile",
+            help="A risk profile to compare: a file in config/risk/. Repeat it for each "
+            "one; without it, every profile in config/risk/ is compared.",
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Backtest the configured strategies under several risk profiles, side by side.
+
+    Runs one backtest per profile over the same days, with the same strategies and
+    parameters, so only the risk limits differ. Names no best profile, and adds no
+    trial to any strategy's count. The runs and the report go to reports/profiles/ in
+    the workspace.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        configs = chosen_profiles(workspace, tuple(risk_profiles or ()))
+        typer.echo(
+            f"Comparing {len(configs)} risk profiles: "
+            + ", ".join(c.risk_profile.name for c in configs)
+        )
+        outcome = run_profile_comparison(
+            configs,
+            first.date(),
+            last.date() if last is not None else None,
+            progress=_describe_profile_run,
+        )
+    except (
+        WorkspaceError,
+        ConfigError,
+        BacktestRequestError,
+        HoldoutError,
+        BacktestError,
+        DataError,
+    ) as error:
+        _fail(str(error))
+
+    typer.echo(f"Comparison {outcome.comparison_id}: {len(outcome.runs)} profiles")
+    typer.echo(
+        "  Choosing a profile by these in-sample results is a selection too; the "
+        "report names no best one."
+    )
+    typer.echo(f"  Record:        {outcome.folder / PROFILES_FILE}")
+    try:
+        typer.echo(f"  Report:        {write_profiles_report(outcome.folder)}")
+    except ReportError as error:
+        typer.echo(f"  Report:        not written: {error}")
+
+
+def _describe_profile_run(run: ProfileRun) -> None:
+    outcome = run.outcome
+    if outcome.metrics is None:
+        typer.echo(f"  {run.profile}: not measured: {outcome.metrics_error}")
+        return
+    mine = outcome.metrics.strategy
+    typer.echo(
+        f"  {run.profile}: CAGR {_percent(mine.cagr)}, Sharpe {_ratio(mine.sharpe)}, "
+        f"max drawdown {_percent(_depth(mine))}; {_describe_account_rules(outcome.result)}"
+    )
+
+
 @app.command()
 def report(
     run_id: Annotated[
         str,
         typer.Argument(
-            help="The id of a backtest, walk-forward, sweep or capital analysis, as Tyche "
-            "printed it.",
+            help="The id of a backtest, walk-forward, sweep, capital analysis or profile "
+            "comparison, as Tyche printed it.",
             show_default=False,
         ),
     ],
@@ -670,10 +763,11 @@ def report(
 ) -> None:
     """Write report.html for a recorded study, from its record alone.
 
-    `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche capital` write the
-    report themselves; this rebuilds it, for a run recorded before reports existed or
-    after the report changed. It reads only the record folder in reports/backtests/,
-    reports/walk_forward/, reports/sweeps/ or reports/capital/, never the cache.
+    `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital` and
+    `tyche compare-profiles` write the report themselves; this rebuilds it, for a run
+    recorded before reports existed or after the report changed. It reads only the
+    record folder in reports/backtests/, reports/walk_forward/, reports/sweeps/,
+    reports/capital/ or reports/profiles/, never the cache.
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
@@ -684,11 +778,13 @@ def report(
         workspace.reports_dir / "walk_forward",
         workspace.reports_dir / "sweeps",
         workspace.reports_dir / "capital",
+        workspace.reports_dir / "profiles",
     ]
     found = [f / run_id for f in folders if (f / run_id).is_dir()]
     if not run_id or Path(run_id).name != run_id or not found:
         _fail(
-            f"no backtest, walk-forward, sweep or capital record named {run_id!r} in "
+            f"no backtest, walk-forward, sweep, capital or profile comparison record named "
+            f"{run_id!r} in "
             f"{workspace.reports_dir}"
         )
     folder = found[0]
@@ -699,6 +795,8 @@ def report(
             path = write_sweep_report(folder)
         elif is_capital(folder):
             path = write_capital_report(folder)
+        elif is_profile_comparison(folder):
+            path = write_profiles_report(folder)
         else:
             path = write_report(folder)
     except ReportError as error:
