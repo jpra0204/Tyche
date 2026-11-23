@@ -34,6 +34,7 @@ from tyche.core.domain import (
 )
 from tyche.core.events import OrderEvent
 from tyche.core.pipeline.signals import Strategy
+from tyche.core.risk import RiskLimits
 from tyche.strategies import MeanReversion, TrendRotation
 
 TLT = Instrument("TLT", "XNAS", Currency.USD, "XNYS", AssetClass.ETF)
@@ -84,7 +85,9 @@ class Walks:
         return audit_daily_bars(instrument, bars, sessions, adjustment=PriceAdjustment.SPLITS)
 
 
-def run(strategy: Strategy, instruments: tuple[Instrument, ...]) -> BacktestResult:
+def run(
+    strategy: Strategy, instruments: tuple[Instrument, ...], *, risk: RiskLimits = UNBOUND
+) -> BacktestResult:
     profile = replace(US_PROFILE, universe=replace(US_PROFILE.universe, instruments=instruments))
     spec = BacktestSpec(
         run_id="examples",
@@ -94,7 +97,7 @@ def run(strategy: Strategy, instruments: tuple[Instrument, ...]) -> BacktestResu
         costs=US_COSTS,
         strategies=(strategy,),
         budgets={strategy.strategy_id: Decimal(1)},
-        risk=UNBOUND,
+        risk=risk,
         settings=BacktestSettings(holdout_starts=date(2024, 1, 1), starting_cash=usd("10000")),
         first=FIRST,
         last=LAST,

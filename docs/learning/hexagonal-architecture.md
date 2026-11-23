@@ -32,7 +32,7 @@ The name "hexagonal" is only how the original diagram was drawn, with the core a
 
 ## Where it is in Tyche
 
-- Ports: `tyche.core.ports` (`Clock`, `Calendar`, `DataProvider`, `Broker`, `Notifier`, `LLMProvider`, storage).
+- Ports: `tyche.core.ports` (`Clock`, `Calendar`, `DataProvider`, `Broker`, `Notifier`, `LLMProvider`, `JournalStore`).
 - Adapters: `tyche.adapters`, one folder per port.
 - The one place that knows both sides and connects them: `tyche.runtime`, called the **composition root**.
 - The rule is enforced, not just written down. `make imports` fails if the core imports an adapter or a vendor library. See the [repo map](../developer-guide/repo-map.md#dependency-rules).

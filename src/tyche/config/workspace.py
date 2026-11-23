@@ -93,6 +93,16 @@ class Workspace:
         return self.root / "data"
 
     @property
+    def state_dir(self) -> Path:
+        """Operational state: the SQLite database. Gitignored: back it up, never commit it."""
+        return self.root / "state"
+
+    @property
+    def state_database(self) -> Path:
+        """The SQLite file with the journal, and from PR 7 the state across restarts."""
+        return self.state_dir / "tyche.db"
+
+    @property
     def reports_dir(self) -> Path:
         """Backtest records and reports. Committed: each says which code and config made it."""
         return self.root / "reports"
