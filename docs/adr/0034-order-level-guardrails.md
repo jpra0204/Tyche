@@ -1,6 +1,6 @@
 # ADR-0034: Order-level guardrails: size on the capital cap, shrink purchases to the money caps, halt on a short or on leverage
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
