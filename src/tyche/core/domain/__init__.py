@@ -14,9 +14,9 @@ Also the ledger types: ``Order`` with its ``OrderState`` lifecycle, ``Fill``,
 The universe types: ``UniverseRules``, ``UniverseMember``, ``Exclusion`` with its
 ``ExclusionReason``, ``ScoredInstrument``, and the ``DISQUALIFYING_ISSUES``.
 
-And what trading costs (ADR-0020): ``TradingCosts`` with its ``CommissionSchedule``
-and ``RegulatoryFees``, ``TradeCost``, and whole-share sizing with ``whole_shares``
-and ``affordable_shares``.
+And what trading costs (ADR-0020): ``TradingCosts`` with its ``Commission`` (the
+Fixed ``CommissionSchedule`` or the ``TieredSchedule``) and ``RegulatoryFees``,
+``TradeCost``, and whole-share sizing with ``whole_shares`` and ``affordable_shares``.
 
 The signal types (ADR-0021): ``Target``, ``StrategyPosition``, ``WarmingUp`` and
 ``StrategyFailure``, with ``require_strategy_id``.
@@ -39,8 +39,10 @@ from tyche.core.domain.bar_history import (
 )
 from tyche.core.domain.corporate_actions import CashDistribution, DistributionKind, Split
 from tyche.core.domain.costs import (
+    Commission,
     CommissionSchedule,
     RegulatoryFees,
+    TieredSchedule,
     TradeCost,
     TradingCosts,
     affordable_shares,
@@ -95,6 +97,7 @@ __all__ = [
     "BarHistory",
     "CashBalance",
     "CashDistribution",
+    "Commission",
     "CommissionSchedule",
     "Contribution",
     "Currency",
@@ -131,6 +134,7 @@ __all__ = [
     "StrategyFailure",
     "StrategyPosition",
     "Target",
+    "TieredSchedule",
     "TimeInForce",
     "Timeframe",
     "TradeCost",

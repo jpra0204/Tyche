@@ -30,6 +30,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Strategies without memory](strategies-without-memory.md) | Write each rule so the fact it needs is in the bars, the positions or the broker, never in the strategy object |
 | [Walk-forward testing and overfitting](walk-forward-testing.md) | Judge a choice only on history it has not seen: train on the past, test on the next year, and move forward |
 | [Multiple testing and the deflated Sharpe ratio](multiple-testing.md) | Count every version ever tried, and judge the best against what the best of that many tries reaches by luck |
+| [What account size costs](account-size.md) | Run the same strategy on a large account and on yours, change nothing else, and read the difference as the price of being small |
 
 ## Planned
 

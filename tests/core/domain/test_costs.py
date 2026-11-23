@@ -8,12 +8,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tests.support.costs import NO_FEES, US_COSTS, usd
+from tests.support.costs import NO_FEES, TIERED, US_COSTS, US_TIERED_COSTS, usd
 from tyche.core.domain import (
     Currency,
     Money,
     RegulatoryFees,
     Side,
+    TieredSchedule,
     TradeCost,
     affordable_shares,
     whole_shares,
@@ -74,6 +75,59 @@ class TestCommission:
     def test_schedule_refuses_impossible_rates(self, field: str, value: Any, message: str) -> None:
         with pytest.raises(ValueError, match=message):
             replace(FIXED, **{field: value})
+
+
+class TestTiered:
+    # Worked by hand from IBKR Canada's Tiered rates, read on 2026-11-22: commission
+    # 0.0035 a share (min 0.35, max 1%), pass-through 0.000738 of the commission,
+    # clearing 0.0002 a share (max 0.5%), and the assumed exchange fee of 0.0030.
+    @pytest.mark.parametrize(
+        ("shares", "price", "expected"),
+        [
+            # 0.35 minimum + fees 0.02 clearing + 0.30 exchange + 0.0003 pass-through.
+            ("100", "25", "0.68"),
+            # 3.50 + fees 0.20 + 3.00 + 0.0026, rounded up.
+            ("1000", "25", "6.71"),
+            # The 1% cap: 0.02, + fees 0.002 + 0.03 + a fraction of a cent, rounded up.
+            ("10", "0.20", "0.06"),
+        ],
+    )
+    def test_adds_third_party_fees_to_the_commission(
+        self, shares: str, price: str, expected: str
+    ) -> None:
+        assert TIERED.commission(Decimal(shares), usd(price)) == usd(expected)
+
+    def test_clearing_is_capped_at_half_a_percent(self) -> None:
+        no_exchange = replace(TIERED, exchange_fee_per_share=usd("0"))
+        # 1,000 shares at USD 0.02: clearing would be 0.20, capped at 0.10; the
+        # commission is capped at 1% of 20, 0.20.
+        assert no_exchange.commission(Decimal(1000), usd("0.02")) == usd("0.31")
+
+    def test_costs_less_than_fixed_on_a_small_order(self) -> None:
+        tiered = US_TIERED_COSTS.cost_of(Side.BUY, Decimal(3), usd("100")).total
+        fixed = US_COSTS.cost_of(Side.BUY, Decimal(3), usd("100")).total
+
+        assert tiered < fixed
+
+    def test_refuses_mixed_currencies(self) -> None:
+        with pytest.raises(ValueError, match="per_share and exchange_fee_per_share"):
+            replace(TIERED, exchange_fee_per_share=Money.of("0.003", Currency.CAD))
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("per_share", usd("-0.01"), "tiered per_share must be zero or more"),
+            ("clearing_maximum_rate", Decimal(2), "clearing_maximum_rate must be at most 1"),
+            ("nyse_pass_through_rate", Decimal(-1), "nyse_pass_through_rate must be zero"),
+        ],
+    )
+    def test_refuses_impossible_rates(self, field: str, value: Any, message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            replace(TIERED, **{field: value})
+
+    def test_is_a_pricing_plan_for_trading_costs(self) -> None:
+        assert isinstance(US_TIERED_COSTS.commission, TieredSchedule)
+        assert US_TIERED_COSTS.currency is Currency.USD
 
 
 class TestRegulatoryFees:

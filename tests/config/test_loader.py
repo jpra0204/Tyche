@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.support.costs import US_COSTS
+from tests.support.costs import US_COSTS, US_TIERED_COSTS
 from tests.support.profiles import US_PROFILE, US_TEMPLATE_PROFILE
 from tests.support.workspace import BACKTEST
 from tyche.config import (
@@ -84,6 +84,48 @@ class TestValidConfig:
 
     def test_the_packaged_costs_are_the_checked_ibkr_rates(self, workspace: Workspace) -> None:
         assert load_config(workspace).costs == US_COSTS
+
+    def test_the_packaged_tiered_rates_are_the_checked_ibkr_rates(
+        self, workspace: Workspace
+    ) -> None:
+        assert load_config(workspace).tiered_costs == US_TIERED_COSTS
+
+    def test_the_tiered_table_is_optional(self, workspace: Workspace) -> None:
+        without = US_COSTS_TOML[: US_COSTS_TOML.index("[tiered]")]
+        write(workspace, "config/costs/US.toml", without)
+
+        config = load_config(workspace)
+
+        assert config.tiered_costs is None
+        assert config.costs == US_COSTS
+        # An absent optional table is not hashed, so workspaces written before it
+        # existed keep their config hash.
+        assert "tiered" not in config.snapshot["config/costs/US.toml"]
+
+    def test_the_tiered_rates_are_part_of_the_hash(self, workspace: Workspace) -> None:
+        before = load_config(workspace).config_hash
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace(
+                'exchange_fee_per_share = "0.0030"', 'exchange_fee_per_share = "0.0015"'
+            ),
+        )
+
+        assert load_config(workspace).config_hash != before
+
+    def test_impossible_tiered_rates_are_refused(self, workspace: Workspace) -> None:
+        write(
+            workspace,
+            "config/costs/US.toml",
+            US_COSTS_TOML.replace('clearing_maximum_rate = "0.005"', 'clearing_maximum_rate = "2"'),
+        )
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/costs/US.toml: tiered clearing_maximum_rate must be at most 1",
+        ):
+            load_config(workspace)
 
     def test_a_combined_profile_loads(self, workspace: Workspace) -> None:
         write(

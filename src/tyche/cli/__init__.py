@@ -7,7 +7,7 @@ its result or error into text and an exit code. No logic lives here.
 import os
 from collections.abc import Mapping
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
 
@@ -27,6 +27,7 @@ from tyche.config import (
 from tyche.core.backtest import (
     BacktestError,
     BacktestMetrics,
+    CapitalError,
     Fold,
     FoldScheme,
     HoldoutError,
@@ -38,6 +39,17 @@ from tyche.core.backtest import (
 from tyche.core.domain import AssetClass, Money
 from tyche.core.ports import DataError
 from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
+from tyche.runtime.capital import (
+    DEFAULT_AMOUNTS,
+    DEFAULT_POSITIONS,
+    DEFAULT_REFERENCE,
+    DEFAULT_TOLERANCE,
+    CapitalOutcome,
+    CapitalRequest,
+    SizedRun,
+    run_configured_capital,
+)
+from tyche.runtime.capital_report import PLAN_NAMES, is_capital, write_capital_report
 from tyche.runtime.data import (
     DEFAULT_FIRST,
     FetchOutcome,
@@ -491,22 +503,116 @@ def sweep(
 
 
 @app.command()
+def capital(
+    first: Annotated[
+        datetime,
+        typer.Option(
+            "--from",
+            formats=["%Y-%m-%d"],
+            help="First session date to trade. History before it is used to warm up.",
+            show_default=False,
+        ),
+    ],
+    last: Annotated[
+        datetime | None,
+        typer.Option(
+            "--to",
+            formats=["%Y-%m-%d"],
+            help="Last session date to trade. Defaults to the day before the holdout.",
+            show_default=False,
+        ),
+    ] = None,
+    amounts: Annotated[
+        str,
+        typer.Option(
+            "--amounts",
+            help="Starting cash to test, comma-separated, smallest first, in the "
+            "profile's currency.",
+        ),
+    ] = ",".join(str(a) for a in DEFAULT_AMOUNTS),
+    reference: Annotated[
+        str,
+        typer.Option("--reference", help="The large account every amount is compared with."),
+    ] = str(DEFAULT_REFERENCE),
+    tolerance: Annotated[
+        str,
+        typer.Option(
+            "--tolerance",
+            help="The most CAGR an amount may lose to its size and be viable, in points a year.",
+        ),
+    ] = str(DEFAULT_TOLERANCE * 100),
+    positions: Annotated[
+        int,
+        typer.Option(
+            "--positions", help="The most positions the round-trip arithmetic splits into."
+        ),
+    ] = DEFAULT_POSITIONS,
+    home: HomeOption = None,
+) -> None:
+    """Find the smallest account at which each strategy's edge survives costs.
+
+    Each configured strategy runs alone, with the whole account, as a backtest over
+    the same days at every amount and on the reference account, under IBKR Pro Fixed
+    and, if the costs file has a [tiered] table, under Tiered too. An amount is viable
+    when its CAGR is within the tolerance of the reference account's; the minimum
+    viable capital is the smallest amount from which every larger one is viable. Also
+    shows what one round trip costs per position, and how many whole shares of each
+    candidate one position buys at today's prices. The record and its report go to
+    reports/capital/ in the workspace.
+    """
+    try:
+        request = CapitalRequest(
+            amounts=tuple(_decimal(a, "--amounts") for a in amounts.split(",")),
+            reference=_decimal(reference, "--reference"),
+            tolerance=_decimal(tolerance, "--tolerance") / 100,
+            positions=positions,
+        )
+        workspace = Workspace(resolve_home(home, os.environ))
+        config = load_config(workspace)
+        outcome = run_configured_capital(
+            config,
+            request,
+            first.date(),
+            last.date() if last is not None else None,
+            progress=_describe_sized,
+        )
+    except (
+        CapitalError,
+        WorkspaceError,
+        ConfigError,
+        BacktestRequestError,
+        HoldoutError,
+        BacktestError,
+        DataError,
+    ) as error:
+        _fail(str(error))
+
+    for line in _describe_capital(outcome):
+        typer.echo(line)
+    try:
+        typer.echo(f"  Report:        {write_capital_report(outcome.record_dir)}")
+    except ReportError as error:
+        typer.echo(f"  Report:        not written: {error}")
+
+
+@app.command()
 def report(
     run_id: Annotated[
         str,
         typer.Argument(
-            help="The backtest's, walk-forward's or sweep's id, as Tyche printed it.",
+            help="The id of a backtest, walk-forward, sweep or capital analysis, as Tyche "
+            "printed it.",
             show_default=False,
         ),
     ],
     home: HomeOption = None,
 ) -> None:
-    """Write report.html for a recorded backtest, walk-forward or sweep, from its record.
+    """Write report.html for a recorded study, from its record alone.
 
-    `tyche backtest`, `tyche walk-forward` and `tyche sweep` write the report
-    themselves; this rebuilds it, for a run recorded before reports existed or after
-    the report changed. It reads only the record folder in reports/backtests/,
-    reports/walk_forward/ or reports/sweeps/, never the cache.
+    `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche capital` write the
+    report themselves; this rebuilds it, for a run recorded before reports existed or
+    after the report changed. It reads only the record folder in reports/backtests/,
+    reports/walk_forward/, reports/sweeps/ or reports/capital/, never the cache.
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
@@ -516,11 +622,13 @@ def report(
         workspace.reports_dir / "backtests",
         workspace.reports_dir / "walk_forward",
         workspace.reports_dir / "sweeps",
+        workspace.reports_dir / "capital",
     ]
     found = [f / run_id for f in folders if (f / run_id).is_dir()]
     if not run_id or Path(run_id).name != run_id or not found:
         _fail(
-            f"no backtest, walk-forward or sweep record named {run_id!r} in {workspace.reports_dir}"
+            f"no backtest, walk-forward, sweep or capital record named {run_id!r} in "
+            f"{workspace.reports_dir}"
         )
     folder = found[0]
     try:
@@ -528,6 +636,8 @@ def report(
             path = write_walk_forward_report(folder)
         elif is_sweep(folder):
             path = write_sweep_report(folder)
+        elif is_capital(folder):
+            path = write_capital_report(folder)
         else:
             path = write_report(folder)
     except ReportError as error:
@@ -726,6 +836,73 @@ def _describe_out_of_sample(metrics: WalkForwardMetrics) -> list[str]:
         f"  Ahead of the benchmark in {metrics.tests_ahead} of {len(metrics.folds)} test windows"
     )
     return lines
+
+
+def _decimal(text: str, option: str) -> Decimal:
+    try:
+        value = Decimal(text.strip())
+    except InvalidOperation:
+        raise CapitalError(f"{option}: not a number: {text.strip()!r}") from None
+    if not value.is_finite():
+        raise CapitalError(f"{option}: not a finite number: {text.strip()!r}")
+    return value
+
+
+def _describe_sized(run: SizedRun, reference: SizedRun | None) -> None:
+    """One line per run, printed as soon as it is measured."""
+    plan = PLAN_NAMES.get(run.plan, run.plan)
+    head = f"  {run.strategy_id:<16} {plan:<16} {run.amount:>10,}"
+    if run.metrics is None or run.drag is None:
+        typer.echo(f"{head}  {run.failure}")
+        return
+    line = f"{head}  CAGR {_percent(run.cagr):>8}  costs {_percent(run.drag.per_year):>7} a year"
+    if reference is None:
+        line += "  (reference)"
+    elif reference.cagr is not None and run.cagr is not None:
+        line += f"  penalty {_points(reference.cagr - run.cagr):>11}"
+    typer.echo(line)
+
+
+def _describe_capital(outcome: CapitalOutcome) -> list[str]:
+    result = outcome.result
+    currency = result.plans[next(iter(result.plans))].currency
+    lines = [f"Capital {outcome.capital_id}: minimum viable capital, by strategy and plan"]
+    for study in result.studies:
+        for verdict in study.verdicts:
+            plan = PLAN_NAMES.get(verdict.plan, verdict.plan)
+            minimum = (
+                f"{verdict.minimum:,} {currency}"
+                if verdict.minimum is not None
+                else "none of the amounts tested"
+            )
+            measured = verdict.reference.metrics
+            edge = ""
+            if measured is not None:
+                edge = (
+                    f"; reference Sharpe {_ratio(measured.strategy.sharpe)}, benchmark "
+                    f"{_ratio(measured.benchmark.sharpe)}"
+                )
+            if verdict.reference_too_large:
+                minimum, edge = "not judged: the reference account is too large", ""
+            lines.append(f"  {study.strategy_id:<16} {plan:<16} {minimum}{edge}")
+            if verdict.reference_too_large:
+                lines.append(
+                    f"Warning: the volume cap cut {verdict.reference.cut_short:,} of the "
+                    f"reference account's orders short for {study.strategy_id}; run again "
+                    "with a smaller --reference."
+                )
+    lines.append(f"  Code:          {outcome.code}")
+    lines.append(f"  Record:        {outcome.record_dir}")
+    if outcome.code.dirty:
+        lines.append(
+            "Warning: the code had uncommitted changes, so its commit alone does not "
+            "reproduce this analysis."
+        )
+    return lines
+
+
+def _points(value: Decimal) -> str:
+    return f"{(value * 100).quantize(Decimal('0.01')):+} pts"
 
 
 def _percent(value: Decimal | None) -> str:

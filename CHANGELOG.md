@@ -114,7 +114,18 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - New workspaces ship an example sweep, `config/sweeps/trend_rotation.toml` (27 combinations).
 - ADR-0030. User guide: parameter sweeps. Learning note: multiple testing and the deflated Sharpe ratio. Developer guide: backtesting internals, section 10.
 
+- Minimum viable capital (Phase 1, PR 22): `tyche capital --from <date>` runs each configured strategy alone, with the whole account and its configured parameters, at several starting amounts (`--amounts`, default USD 500 to 25,000) and on a reference account (`--reference`, default USD 100,000; a reference whose orders the volume cap cut short is flagged as too large), under IBKR Pro Fixed and Tiered. An amount is viable when its CAGR after costs is within the tolerance of the reference account's, either way (`--tolerance`, default half a point a year); the minimum viable capital is the smallest amount from which every larger amount tested is viable. Each is reported beside the benchmark, which says whether there is an edge to keep (ADR-0031).
+- IBKR Pro Tiered as a pricing plan: `TieredSchedule` in `tyche.core.domain` (first volume tier, pass-through and clearing fees, and an assumed exchange fee per share), and an optional `[tiered]` table in `config/costs/<PROFILE>.toml`. Backtests still use `[commission]`; `tyche capital` compares the two.
+- Beside the backtests, two pieces of arithmetic: what one round trip costs per position, for 1 to `--positions` positions (default 5) at USD 100 a share; and how many whole shares of each candidate one position buys at its latest cached close. That close may lie inside the holdout: only its price is read.
+- Each analysis writes `reports/capital/<id>/`: `capital.json` and `report.html`. Each strategy in it counts as one trial.
+- `size_penalty`, `is_viable`, `minimum_viable` and `round_trip_cost` in `tyche.core.backtest`.
+- ADR-0031. User guide: minimum viable capital. Learning note: what account size costs. Developer guide: backtesting internals, section 11; IBKR facts re-checked on 2026-11-22, with exchange fees and the CAD/USD rate used.
+
 ### Changed
+
+- `TradingCosts.commission` is a `Commission`: the Fixed `CommissionSchedule` or the new `TieredSchedule`. `TycheConfig` gains `tiered_costs`.
+- The config snapshot, and so the config hash, leaves out an optional table that is absent. No existing file has one, so no existing hash changes; a new workspace's hash differs from an older one's because its costs file has `[tiered]`.
+- `tyche report` also finds capital analyses; its error for an unknown id now reads `no backtest, walk-forward, sweep or capital record named …`.
 
 - A backtest's `run.json` states each strategy's parameters (`strategies[].parameters`), so a trial can be counted. The record format stays 1: the field is added.
 - `build_strategies` takes overrides of a strategy's parameters, and `ConfiguredStrategies` carries the parameters each strategy was built from. `tyche.runtime.backtest.run_and_record` is split into `run_and_measure` and `record_run`.

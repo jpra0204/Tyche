@@ -288,13 +288,41 @@ flowchart TD
 |---|---|
 | Grid | `Grid` keeps the parameters in the order written; `combinations` changes the last one fastest and numbers them from 1. Values are what the strategy file would hold, merged over its parameters by `build_strategies(config, overrides)` |
 | Checks | `plan_sweep` builds every combination through the plugin before anything runs, so a bad value fails with the sweep file named and nothing written |
-| Trials | `trial_key(plugin, version, parameters)` hashes the full parameters. `recorded_trial_keys` reads every `run.json` (its `strategies[].parameters`, or for older records the strategy file in its config snapshot) and every `trials.json` under `reports/`. `N` is the union with the grid's keys |
+| Trials | `trial_key(plugin, version, parameters)` hashes the full parameters. `recorded_trial_keys` reads every `run.json` (its `strategies[].parameters`, or for older records the strategy file in its config snapshot), every `trials.json` and every `capital.json` under `reports/`. `N` is the union with the grid's keys |
 | Order | The combination whose strategy has the longest `lookback` (`SweepPlan.longest`) runs first, so missing history fails before other trials spend time; the rest follow in the grid's order, and trials are returned in it |
 | Pick | `pick`: the highest annualised Sharpe ratio, the first in the grid on a tie, never a trial without one. Only the best run so far stays in memory |
 | Deflation | `deflated_sharpe(moments, sharpes, trials)`: equations 1 and 2 of Bailey and López de Prado (2014), in `float` with `statistics.NormalDist`; Sharpe ratios per session. `V` is the sample variance of this sweep's per-session Sharpe ratios; skewness and kurtosis (3 if normal) are of the pick's daily returns |
 | Record | `trials.json` holds every trial's parameters, key and metrics; only the pick keeps `run.json`, `metrics.json`, `equity.csv` and `fills.csv`, in `pick/` (in a walk-forward, in `folds/<NN>-train/` itself) |
 
-## 11. Known limits
+## 11. Minimum viable capital
+
+`tyche capital` runs each configured strategy alone, with a budget of the whole account and its configured parameters, at every amount asked for and on a large reference account, under every pricing plan the costs file holds ([ADR-0031](../adr/0031-minimum-viable-capital.md), learning note: [what account size costs](../learning/account-size.md)). Each run goes through `run_and_measure` with a copy of the configuration whose `starting_cash` and `costs` are replaced (`dataclasses.replace`); nothing else changes, so the config hash in the record still names the workspace's files.
+
+```mermaid
+flowchart TD
+    A[build_strategies: every configured strategy] --> B[Next strategy, alone, budget 1]
+    B --> C["Next plan: Fixed ([commission]),<br/>then Tiered ([tiered]) if present"]
+    C --> D[Reference account first]
+    D --> E["Each amount, smallest first:<br/>run_and_measure, cost_drag, short-of-a-share count"]
+    E --> F["minimum_viable: the smallest amount<br/>from which every larger one is within the tolerance"]
+    F --> G{More plans or strategies?}
+    G -- yes --> B
+    G -- no --> H["latest_closes: each candidate's last cached close"]
+    H --> I[capital.json, report.html]
+```
+
+| Rule | Detail |
+|---|---|
+| Size penalty | `size_penalty`: the reference run's CAGR minus the amount's, after costs, under the same plan |
+| Viable | `is_viable`: the penalty within the tolerance **either way**. A small account far ahead of the large one ran a different strategy, by luck in when it could afford a share |
+| Minimum | `minimum_viable`: walk the amounts from the largest down and stop at the first that is not viable; `None` if the largest is not, or the reference was not measured |
+| Tiered | `TieredSchedule.commission`: the commission (minimum 0.35, maximum 1%), rounded to the cent like Fixed, plus pass-through fees on it, clearing (capped at 0.5%) and an assumed exchange fee per share, those fees rounded up to the cent together. First volume tier only. `TradingCosts.commission` is either plan (`Commission`), so the simulator and sizing need no change |
+| Short of a share | The number of `ExecutionPlanEvent`s with a `PlanLine` marked `BELOW_ONE_SHARE` |
+| Today's prices | `latest_closes` loads each candidate's cache entry and reads its last bar's close and date, which may be inside the holdout. Nothing is run on it; `whole_shares_today` sizes one of `positions` equal positions with `affordable_shares` |
+| Arithmetic | `round_trip_cost`: buy with `affordable_shares`, sell at the same price, both orders' commission and fees plus slippage, over the shares' value; at USD 100 a share, for 1 to `positions` positions |
+| Trials | `capital.json` lists each strategy's `trial_key`; `recorded_trial_keys` reads it. The configured parameters only, so a strategy already backtested adds nothing |
+
+## 12. Known limits
 
 | Limit | Effect | Plan |
 |---|---|---|

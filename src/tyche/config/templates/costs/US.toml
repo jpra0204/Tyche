@@ -36,3 +36,26 @@ sec_fee_rate = "0.0000206"
 taf_per_share_sold = "0"
 # FINRA Consolidated Audit Trail fees, per share, on buys and sells.
 cat_per_share = "0.000003"
+
+[tiered]
+# IBKR Pro Tiered, first volume tier (up to 300,000 shares a month), checked on
+# `checked_on` like the rest of this file. Backtests never use it: they use
+# [commission] above. `tyche capital` runs every amount under both plans, so you can
+# choose the plan for the real account (ADR-0031). Delete this table to compare nothing.
+#
+# commission = min(max(per_share x shares, minimum), maximum_rate x trade value)
+per_share = "0.0035"
+minimum = "0.35"
+maximum_rate = "0.01"
+# NSCC and DTC clearing fees: per share, at most clearing_maximum_rate x trade value.
+clearing_per_share = "0.0002"
+clearing_maximum_rate = "0.005"
+# Pass-through fees, as fractions of the commission.
+nyse_pass_through_rate = "0.000175"
+finra_pass_through_rate = "0.000563"
+# An assumption, not a published fee: exchange fees depend on where an order executes
+# and whether it removes or adds liquidity, known only after the fact. 0.0030 is what
+# NYSE Arca and Nasdaq charged per share to remove liquidity (shares of USD 1 or more)
+# when checked; their opening auctions charged 0.0015. The higher figure overstates
+# the cost of Tyche's orders at the open rather than understating it.
+exchange_fee_per_share = "0.0030"
