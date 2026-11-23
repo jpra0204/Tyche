@@ -2,12 +2,13 @@
 
 Available now: ``open_database``, which opens the SQLite file with safe settings and
 applies the numbered migrations (ADR-0037); ``SqliteJournalStore``, the append-only
-journal of every event with its cause (ADR-0009); and the event ``codec`` it uses.
+journal of every event with its cause (ADR-0009); ``SqliteCheckpointStore``, the state
+each run hands to the next (ADR-0038); and the ``codec`` both use.
 
-Planned (Phase 2): orders, fills, the sleeve book, the account view, peak equity and the
-halt state across restarts (PR 7). Later: proposals and the strategy lifecycle.
+Later: proposals and the strategy lifecycle.
 """
 
+from tyche.adapters.storage.checkpoint import SqliteCheckpointStore
 from tyche.adapters.storage.journal import SqliteJournalStore
 from tyche.adapters.storage.sqlite import (
     Migration,
@@ -20,6 +21,7 @@ from tyche.adapters.storage.sqlite import (
 
 __all__ = [
     "Migration",
+    "SqliteCheckpointStore",
     "SqliteJournalStore",
     "StateDatabaseError",
     "bundled_migrations",

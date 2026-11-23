@@ -82,3 +82,19 @@ def test_refuses_nonsense_additions() -> None:
         book.add("a", SPY, D(0), usd("100"), MON)
     with pytest.raises(SleeveBookError, match="at 0"):
         book.add("a", SPY, D(1), usd("0"), MON)
+
+
+def test_a_book_rebuilt_from_its_state_is_the_same_book() -> None:
+    book = SleeveBook()
+    book.add("alpha", SPY, D(6), usd("470"), MON)
+    book.add("alpha", SPY, D(3), usd("480"), TUE)
+    book.remove("alpha", SPY, D(1))
+    book.add("beta", QQQ, D(2), usd("400"), TUE)
+    book.set_stop("alpha", SPY, RestingStop("stop-1", usd("440")))
+
+    rebuilt = SleeveBook(book.state())
+
+    assert rebuilt.state() == book.state()
+    assert rebuilt.positions_of("alpha") == book.positions_of("alpha")
+    assert rebuilt.stop("alpha", SPY) == RestingStop("stop-1", usd("440"))
+    assert SleeveBook().state().holdings == ()

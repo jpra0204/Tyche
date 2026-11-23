@@ -1,6 +1,6 @@
 # The state database
 
-Tyche's operational state lives in one SQLite file, `state/tyche.db` in the workspace ([ADR-0009](../adr/0009-storage-sqlite-parquet.md), [ADR-0037](../adr/0037-state-database-migrations-and-stored-journal.md)). Today it holds the journal. PR 7 adds what a paper run needs across restarts.
+Tyche's operational state lives in one SQLite file, `state/tyche.db` in the workspace ([ADR-0009](../adr/0009-storage-sqlite-parquet.md), [ADR-0037](../adr/0037-state-database-migrations-and-stored-journal.md)). It holds the journal, and the checkpoint each run hands to the next ([ADR-0038](../adr/0038-checkpoints-across-restarts.md)).
 
 ## How it fits together
 
@@ -13,9 +13,14 @@ flowchart LR
     store --> db[("state/tyche.db<br/>journal table")]
     open["open_database"] -->|settings + migrations| db
     db -->|read run_id| view["JournalView<br/>by type, by cycle, causes_of"]
+    run["end of a run"] -->|Checkpoint| cport["CheckpointStore port<br/>(core.ports)"]
+    cport -.implemented by.-> cstore["SqliteCheckpointStore<br/>(adapters.storage)"]
+    cstore --> codec
+    cstore --> cdb[("state/tyche.db<br/>checkpoint table")]
+    cdb -->|latest| restart["next run's stages"]
 ```
 
-The core knows only the `JournalStore` port and the `StoredJournal` subscriber; it never imports `sqlite3` (an import-linter contract checks this). Everything that touches the file is in `tyche.adapters.storage`.
+The core knows only the `JournalStore` and `CheckpointStore` ports and the `StoredJournal` subscriber; it never imports `sqlite3` (an import-linter contract checks this). Everything that touches the file is in `tyche.adapters.storage`.
 
 ## Opening it
 
@@ -45,6 +50,30 @@ with closing(open_database(workspace.state_database)) as connection:
 
 Triggers refuse every update and delete. To look at a database by hand, open it read-only: `sqlite3 -readonly state/tyche.db`.
 
+## The checkpoint table
+
+What a run leaves for the next one: Tyche's account view, the sleeve book, execution's working orders and wanted stops, and the account rules' memory (the previous close, the peak and any halt). One row per run, taken when the run completes; a run that fails leaves none, and the next run carries on from the last good one ([ADR-0038](../adr/0038-checkpoints-across-restarts.md)).
+
+| Column | Holds |
+|---|---|
+| `number` | The order saved. The latest checkpoint is the highest |
+| `run_id` | The run that ended in this state. Unique: a run saves one checkpoint |
+| `first_seq` | Always 1. With `run_id`, a foreign key to the run's first journal envelope: a run with no stored journal cannot save a checkpoint |
+| `saved_at` | When it was taken, ISO 8601 UTC. Must be later than the latest |
+| `format` | The codec's format number (1) |
+| `payload` | The `Checkpoint` as tagged JSON |
+
+Triggers refuse every update and delete. Reading a checkpoint rebuilds it through its constructor, which checks that its parts agree (the sleeves add up to the account, every resting stop is a working stop order of its sleeve), so a stored checkpoint that does not add up is refused, not loaded.
+
+```python
+from tyche.adapters.storage import SqliteCheckpointStore
+
+store = SqliteCheckpointStore(connection)
+start = store.latest()  # None before the first run
+# ... build the stages from start, warm up, run, then:
+store.save(checkpoint)  # after the run's journal is stored
+```
+
 ## Adding a migration
 
 1. Add `src/tyche/adapters/storage/migrations/NNNN_what_it_does.sql`, numbered one past the last file.
@@ -54,10 +83,12 @@ Triggers refuse every update and delete. To look at a database by hand, open it 
 
 There are no down-migrations. To undo a change, write a new migration that reverses it.
 
-## Changing a stored event
+## Changing a stored event or checkpoint
 
 The journal's rows are never rewritten, so every event ever stored must stay readable.
 
 - **Adding a field with a default** to an event or a value object it carries is compatible: old rows read back with the default.
 - **Anything else** (renaming a class or field, removing a field, changing a field's meaning or type) needs a new `codec.FORMAT` and a reader that still reads the old format. Write an ADR for it.
+- The same holds for every part of a `Checkpoint`: its classes are value objects in `tyche.core.domain`, read back through their constructors.
+- Adding memory to a stage means adding it to that stage's part of the checkpoint. `tests/integration/test_restart.py` fails first if a part is forgotten: a backtest cut in two and carried on from its checkpoint must equal one run straight through.
 - A new event or value object must be exported from `tyche.core.events` or `tyche.core.domain`, or the codec refuses it. `tests/adapters/storage/test_codec.py` checks every exported event type is storable, and `tests/integration/test_journal_round_trip.py` checks that real runs, plus samples of the rare events in `tests/support/events.py`, read back identical. A new event type that a short backtest does not publish needs a sample there.

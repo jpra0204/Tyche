@@ -41,6 +41,7 @@ from typing import Protocol
 
 from tyche.core.domain import (
     Account,
+    AccountRulesState,
     AccountTrigger,
     Contribution,
     Currency,
@@ -396,6 +397,8 @@ class RiskGate:
         money: The guardrails' money caps by currency, or ``None``, exactly as execution
             is given them. With them, holdings are weighed against the equity execution
             sizes on: the account's, or the capital cap if lower (ADR-0034).
+        rules: The account rules' memory from a previous run's checkpoint (ADR-0038):
+            the last close, the peak and any halt. ``None`` to start fresh.
     """
 
     def __init__(
@@ -404,13 +407,14 @@ class RiskGate:
         limits: RiskLimits,
         holdings: Holdings,
         money: Mapping[Currency, MoneyLimits] | None = None,
+        rules: AccountRulesState | None = None,
     ) -> None:
         self._bus = bus
         self._limits = limits
         self._holdings = holdings
         self._money = dict(money) if money is not None else {}
         self._account: AccountEvent | None = None
-        self._rules = AccountRules(limits.profile)
+        self._rules = AccountRules(limits.profile, rules)
         self._closes: dict[Instrument, Money] = {}
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
         bus.subscribe(AccountEvent, self._on_account, name=SUBSCRIBER)
@@ -425,6 +429,10 @@ class RiskGate:
     def halt(self) -> AccountTrigger | None:
         """The drawdown kill that halted trading, or ``None``."""
         return self._rules.halt
+
+    def rules_state(self) -> AccountRulesState:
+        """The account rules' memory, for a checkpoint (ADR-0038)."""
+        return self._rules.state()
 
     def _on_account(self, envelope: Envelope[AccountEvent]) -> None:
         event = envelope.event

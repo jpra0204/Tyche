@@ -20,6 +20,9 @@ Only the dataclasses and enums exported by ``tyche.core.domain`` and
 is written, so the journal never holds a value it could not read back, and a stored
 name never makes the reader import or build anything else.
 
+Checkpoints (ADR-0038) are written the same way, through ``dumps_checkpoint`` and
+``loads_checkpoint``: every part of one is a value object of ``tyche.core.domain``.
+
 ``FORMAT`` is stored with every row. Change it only with a reader for the old format:
 rows are never rewritten (ADR-0009).
 """
@@ -35,6 +38,7 @@ from typing import Any
 
 import tyche.core.domain
 import tyche.core.events
+from tyche.core.domain import Checkpoint
 from tyche.core.events import Event
 
 FORMAT = 1
@@ -72,23 +76,50 @@ def dumps(event: Event) -> str:
     """``event`` as compact JSON text. Raises ``CodecError`` if any part cannot be stored."""
     if not isinstance(event, Event):
         raise CodecError(f"only events are stored, not {type(event).__name__}")
-    try:
-        # ensure_ascii: a stray lone surrogate in a string is escaped, not a broken row.
-        return json.dumps(encode(event), allow_nan=False, separators=(",", ":"))
-    except ValueError as error:  # a NaN or an infinite float
-        raise CodecError(f"{type(event).__name__} cannot be stored: {error}") from error
+    return _dumps(event)
 
 
 def loads(text: str) -> Event:
     """The event that ``dumps`` wrote as ``text``."""
-    try:
-        raw = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise CodecError(f"stored event is not valid JSON: {error}") from error
-    event = decode(raw)
+    event = _loads(text, "event")
     if not isinstance(event, Event):
         raise CodecError(f"stored value is a {type(event).__name__}, not an event")
     return event
+
+
+def dumps_checkpoint(checkpoint: Checkpoint) -> str:
+    """``checkpoint`` as compact JSON text, in the same encoding as events (ADR-0038)."""
+    if not isinstance(checkpoint, Checkpoint):
+        raise CodecError(f"expected a Checkpoint, not {type(checkpoint).__name__}")
+    return _dumps(checkpoint)
+
+
+def loads_checkpoint(text: str) -> Checkpoint:
+    """The checkpoint that ``dumps_checkpoint`` wrote as ``text``.
+
+    Rebuilding it runs its checks again: a stored checkpoint whose parts disagree is
+    refused, not loaded.
+    """
+    checkpoint = _loads(text, "checkpoint")
+    if not isinstance(checkpoint, Checkpoint):
+        raise CodecError(f"stored value is a {type(checkpoint).__name__}, not a checkpoint")
+    return checkpoint
+
+
+def _dumps(value: object) -> str:
+    try:
+        # ensure_ascii: a stray lone surrogate in a string is escaped, not a broken row.
+        return json.dumps(encode(value), allow_nan=False, separators=(",", ":"))
+    except ValueError as error:  # a NaN or an infinite float
+        raise CodecError(f"{type(value).__name__} cannot be stored: {error}") from error
+
+
+def _loads(text: str, what: str) -> Any:
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise CodecError(f"stored {what} is not valid JSON: {error}") from error
+    return decode(raw)
 
 
 def encode(value: object) -> Any:

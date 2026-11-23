@@ -38,5 +38,5 @@ The invariant is what makes the scheme safe. Crossing and splitting are bookkeep
 ## What it costs
 
 - **Attribution is approximate.** A crossed share changes sleeve at the decision's close, while a real order would fill at the next open. The account's totals are exact; how the profit is split between strategies is off by one night's price move on the crossed shares.
-- **More state to get right.** A sleeve book is state that must survive restarts in paper and live trading (Phase 2), and it must be rebuilt or reconciled if it is ever lost.
+- **More state to get right.** A sleeve book is state that must survive restarts in paper and live trading. It cannot be rebuilt from fills alone, because a crossing moves shares with no fill, so it is saved whole in every run's [checkpoint](checkpoints.md) and checked against the account when it is read back.
 - **Crossing assumes the strategies share one account and one risk budget.** If they ever trade in separate accounts, crossing between them stops being possible.

@@ -123,6 +123,33 @@ class FreeRidingViolation:
     purchase_settles_on: date
 
 
+@dataclass(frozen=True, slots=True)
+class SimBrokerState:
+    """The simulated broker's own memory between two sessions (ADR-0038).
+
+    A real broker keeps its account, its orders and its fills while Tyche is stopped.
+    ``SimBroker.state`` and ``SimBroker.resume`` let the simulator do the same, so that
+    a backtest can be stopped after a close and carried on from a checkpoint, as paper
+    will be.
+
+    Attributes:
+        account: The broker's record of the account.
+        orders: Every order it has seen, finished or not, by client order id.
+        lots: Per instrument held, its purchases not yet sold, oldest first, as
+            (shares, settlement date) pairs: what free riding is checked against.
+        fills: Fills made so far, which numbers the next one.
+        free_riding: Every free-riding violation so far.
+        ignored_duplicates: Every repeated client order id so far.
+    """
+
+    account: Account
+    orders: tuple[OrderState, ...]
+    lots: tuple[tuple[Instrument, tuple[tuple[Decimal, date], ...]], ...]
+    fills: int
+    free_riding: tuple[FreeRidingViolation, ...]
+    ignored_duplicates: tuple[str, ...]
+
+
 @dataclass(slots=True)
 class _Lot:
     """Shares from one purchase, and when that purchase settles."""
@@ -189,6 +216,57 @@ class SimBroker:
         bus.subscribe(SessionEvent, self._on_session, name=SUBSCRIBER)
         bus.subscribe(DistributionEvent, self._on_distribution, name=SUBSCRIBER)
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
+
+    @classmethod
+    def resume(
+        cls,
+        bus: EventBus,
+        state: SimBrokerState,
+        costs: TradingCosts,
+        calendars: Mapping[str, Calendar],
+        *,
+        max_volume_participation: Decimal = DEFAULT_MAX_VOLUME_PARTICIPATION,
+    ) -> SimBroker:
+        """A broker on a new bus that carries on from ``state``, taken between sessions.
+
+        Its open orders start working at the next open, as they would have.
+        """
+        broker = cls(
+            bus, state.account, costs, calendars, max_volume_participation=max_volume_participation
+        )
+        broker._orders = {o.order.client_order_id: _Working(o) for o in state.orders}
+        broker._lots = {
+            instrument: [_Lot(quantity, settles_on) for quantity, settles_on in lots]
+            for instrument, lots in state.lots
+        }
+        broker._fills = state.fills
+        broker._free_riding = list(state.free_riding)
+        broker._duplicates = list(state.ignored_duplicates)
+        return broker
+
+    def state(self) -> SimBrokerState:
+        """The broker's memory, for ``resume``. Only between sessions.
+
+        Raises:
+            SimBrokerError: a session is open.
+        """
+        if self._sessions:
+            raise SimBrokerError(
+                f"the broker's state can only be taken between sessions; "
+                f"{', '.join(sorted(self._sessions))} is open"
+            )
+        return SimBrokerState(
+            account=self._account,
+            orders=tuple(self._orders[o].state for o in sorted(self._orders)),
+            lots=tuple(
+                (instrument, tuple((lot.quantity, lot.settles_on) for lot in lots))
+                for instrument, lots in sorted(self._lots.items(), key=lambda item: str(item[0]))
+                if lots
+            ),
+            fills=self._fills,
+            free_riding=tuple(self._free_riding),
+            ignored_duplicates=tuple(self._duplicates),
+        )
 
     # --- the Broker port ------------------------------------------------------------
 

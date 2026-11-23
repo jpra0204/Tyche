@@ -13,6 +13,7 @@ from tyche.core.sim.broker import (
     FreeRidingViolation,
     SimBroker,
     SimBrokerError,
+    SimBrokerState,
 )
 from tyche.core.sim.clock import SimClock
 from tyche.core.sim.replay import HistoricalReplay, cycle_id
@@ -24,6 +25,7 @@ __all__ = [
     "HistoricalReplay",
     "SimBroker",
     "SimBrokerError",
+    "SimBrokerState",
     "SimClock",
     "cycle_id",
     "settlement_date",

@@ -14,7 +14,15 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from tyche.core.domain import Instrument, Money, StrategyPosition, require_strategy_id
+from tyche.core.domain import (
+    Instrument,
+    Money,
+    SleeveHolding,
+    SleeveState,
+    SleeveStop,
+    StrategyPosition,
+    require_strategy_id,
+)
 from tyche.core.domain.account import COST_PLACES
 
 
@@ -53,13 +61,23 @@ def _instrument_key(instrument: Instrument) -> tuple[str, str]:
 class SleeveBook:
     """Shares held per sleeve and instrument, with each sleeve's resting stop.
 
-    Implements the signals stage's ``PositionBook``. Starts empty: a run starts with
-    cash only.
+    Implements the signals stage's ``PositionBook``.
+
+    Args:
+        start: The book as a previous run left it (ADR-0038), or ``None`` for an empty
+            one: a backtest starts with cash only.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, start: SleeveState | None = None) -> None:
         self._holdings: dict[_Key, _Holding] = {}
         self._stops: dict[_Key, RestingStop] = {}
+        if start is not None:
+            for h in start.holdings:
+                self._holdings[(h.strategy_id, h.instrument)] = _Holding(
+                    h.quantity, h.cost, h.entry_date
+                )
+            for s in start.stops:
+                self._stops[(s.strategy_id, s.instrument)] = RestingStop(s.client_order_id, s.price)
 
     # --- reading -----------------------------------------------------------------
 
@@ -115,6 +133,24 @@ class SleeveBook:
                 )
             )
         return tuple(positions)
+
+    def state(self) -> SleeveState:
+        """The whole book, for a checkpoint: what a ``SleeveBook(start=...)`` rebuilds."""
+        keys = sorted(self._holdings, key=lambda k: (k[0], *_instrument_key(k[1])))
+        holdings = tuple(
+            SleeveHolding(
+                s,
+                i,
+                self._holdings[(s, i)].quantity,
+                self._holdings[(s, i)].cost,
+                self._holdings[(s, i)].entry_date,
+            )
+            for s, i in keys
+        )
+        stops = tuple(
+            SleeveStop(s, i, stop.client_order_id, stop.price) for s, i, stop in self.stops
+        )
+        return SleeveState(holdings, stops)
 
     # --- changing ------------------------------------------------------------------
 

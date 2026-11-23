@@ -23,7 +23,14 @@ the risk gate publishes what it finds and applies it.
 from datetime import datetime
 from decimal import Decimal
 
-from tyche.core.domain import Account, AccountTrigger, Currency, Money, RiskRule
+from tyche.core.domain import (
+    Account,
+    AccountRulesState,
+    AccountTrigger,
+    Currency,
+    Money,
+    RiskRule,
+)
 from tyche.core.risk.limits import RiskProfile
 
 _SHOWN = Decimal("0.0001")
@@ -34,20 +41,33 @@ class AccountRules:
 
     Args:
         profile: The active risk profile, whose two account limits apply.
+        start: What a previous run left (ADR-0038): its last close, the equity there,
+            the peak and any halt. ``None`` for a run that starts fresh. A halt carried
+            in stays: a restart from a checkpoint never lifts it.
     """
 
-    def __init__(self, profile: RiskProfile) -> None:
+    def __init__(self, profile: RiskProfile, start: AccountRulesState | None = None) -> None:
         self._profile = profile
-        self._previous: dict[Currency, Money] = {}
-        self._peak: dict[Currency, Money] = {}
-        self._latest: datetime | None = None
+        start = start or AccountRulesState()
+        self._previous: dict[Currency, Money] = {m.currency: m for m in start.previous}
+        self._peak: dict[Currency, Money] = {m.currency: m for m in start.peak}
+        self._latest: datetime | None = start.last_close
         self._daily_loss: AccountTrigger | None = None
-        self._halt: AccountTrigger | None = None
+        self._halt: AccountTrigger | None = start.halt
 
     @property
     def halt(self) -> AccountTrigger | None:
         """The drawdown kill that halted trading, or ``None``. Never cleared in a run."""
         return self._halt
+
+    def state(self) -> AccountRulesState:
+        """The memory a checkpoint keeps: what ``AccountRules(start=...)`` rebuilds."""
+        return AccountRulesState(
+            last_close=self._latest,
+            previous=tuple(self._previous[c] for c in sorted(self._previous)),
+            peak=tuple(self._peak[c] for c in sorted(self._peak)),
+            halt=self._halt,
+        )
 
     def peak(self, currency: Currency) -> Money | None:
         """The highest close of equity in ``currency`` so far, or ``None`` before any."""

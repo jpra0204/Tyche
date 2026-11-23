@@ -47,7 +47,7 @@ from tyche.core.events import (
     SessionPhase,
 )
 from tyche.core.pipeline.journal import InMemoryJournal
-from tyche.core.sim import HistoricalReplay, SimBroker, SimClock
+from tyche.core.sim import HistoricalReplay, SimBroker, SimBrokerError, SimClock
 
 NYSE = ExchangeCalendarsCalendar("XNYS", first=date(2023, 12, 1), last=date(2024, 3, 31))
 CALENDARS = {"XNYS": NYSE}
@@ -574,3 +574,23 @@ def test_end_to_end_with_the_replay_and_the_engine() -> None:
     account = broker.account()
     assert account.distributions_received(Currency.USD) == usd("10")
     assert account.cash(Currency.USD).settled == usd("4009")  # 5000 - 1001 + 10
+
+
+def test_its_state_can_only_be_taken_between_sessions() -> None:
+    market = Market()
+    market.bus.publish(SessionEvent(session(TUE), SessionPhase.OPEN), source="replay")
+    market.bus.drain()
+
+    with pytest.raises(SimBrokerError, match="only be taken between sessions"):
+        market.broker.state()
+
+
+def test_a_resumed_broker_has_the_same_state() -> None:
+    market = Market(holding("10"))
+    market.submit(order("stop-1", Side.SELL, "4", stop="90", tif=TimeInForce.GTC))
+
+    state = market.broker.state()
+    resumed = SimBroker.resume(EventBus(TickingClock().now), state, PLAIN, CALENDARS)
+
+    assert resumed.state() == state
+    assert resumed.account() == market.broker.account()
