@@ -12,6 +12,7 @@ For Pablo as a developer, and for any Claude Code session working on the code.
 | [Conventions](conventions.md) | Coding rules, testing strategy, git workflow, definition of done |
 | [Pipeline contracts](pipeline-contracts.md) | What each pipeline stage takes in, promises to put out, keeps between events, and does when something is wrong |
 | [Backtesting internals](backtesting-internals.md) | How the replay, the universe rules, what a strategy sees and the simulated broker turn history into fills; how a run is measured; walk-forward, sweeps and minimum viable capital; the known limits |
+| [The state database](state-database.md) | `state/tyche.db`: how it is opened, the journal table, adding a migration, and changing an event that is stored |
 | [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md) | Commissions, fractional shares, cash-account settlement and currency conversion, checked against IBKR's pages and dated |
 
 For the end-to-end flow of an event from data to fill, see the [system overview](../architecture/system-overview.md#5-the-event-flow) and the [event catalog](../architecture/event-catalog.md).

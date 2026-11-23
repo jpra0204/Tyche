@@ -107,17 +107,19 @@ There is no third kind. A stage never logs a problem and carries on with a guess
 | Publishes | One `AccountEvent` at every session close, before that close's decision cycle |
 | Promises | The same ledger rules as the broker's own record (`Account`), built only from the facts the broker reports, so that reconciliation (Phase 2) has two independent records to compare |
 
-### 8. Journal (`tyche.core.pipeline.journal.InMemoryJournal`)
+### 8. Journal (`tyche.core.pipeline.journal`: `InMemoryJournal`, `StoredJournal`)
 
 | | |
 |---|---|
 | Subscribes to | `Event`: everything |
-| Promises | Every envelope in delivery order, with `seq`, `caused_by` and `cycle_id`, so any order can be traced back to the bar that caused it (`causes_of`) |
-| Phase 2 | A journal stored in SQLite, with the same subscription |
+| Promises | Every envelope in delivery order, with `seq`, `caused_by` and `cycle_id`, so any order can be traced back to the input that started its cycle (`JournalView.causes_of`) |
+| `InMemoryJournal` | Keeps the run in memory. Backtests use it; their record is their run folder |
+| `StoredJournal` | Appends each envelope to a `JournalStore` under its run id, committed before the next handler runs ([ADR-0037](../adr/0037-state-database-migrations-and-stored-journal.md)). Subscribed **first**, so a failing handler leaves the event it failed on stored. A refused envelope, or a `RunEvent` for another run, halts the bus. The paper cycle (PR 14) will use it |
+| Reading back | `JournalView(store.read(run_id))` answers the same questions as the in-memory journal |
 
 ## Order of subscription
 
-The bus delivers each event to its subscribers in the order they subscribed, so the wiring order is part of the contract. A backtest (`run_backtest` in `tyche.core.backtest.runner`) subscribes in pipeline order: universe, screening, signals, portfolio, the risk gate, account state, execution, the broker, and the journal last (it still receives everything). The order that matters is **account state before execution**: a `FillEvent` updates Tyche's account before execution splits it between sleeves, and each decision finds the `AccountEvent` of the same close. Paper and live will use the same wiring.
+The bus delivers each event to its subscribers in the order they subscribed, so the wiring order is part of the contract. A backtest (`run_backtest` in `tyche.core.backtest.runner`) subscribes in pipeline order: universe, screening, signals, portfolio, the risk gate, account state, execution, the broker, and the journal last (it still receives everything). The order that matters is **account state before execution**: a `FillEvent` updates Tyche's account before execution splits it between sleeves, and each decision finds the `AccountEvent` of the same close. Paper and live will use the same wiring, with one difference: the `StoredJournal` subscribes **first**, so that every event is on disk before any stage acts on it.
 
 ## Adding or changing a stage
 

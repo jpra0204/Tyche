@@ -21,6 +21,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `tyche compare-profiles --from <date> [--risk-profile <name>]...` (Phase 2, PR 5, ADR-0036): the configured strategies once per risk profile (every profile in `config/risk/` by default), over the same days, side by side. Writes `reports/profiles/<id>/` with `profiles.json`, each profile's full backtest record under `runs/<profile>/`, and `report.html`: one table and one equity and drawdown chart for every profile against the benchmark, every halt marked, and what each profile's limits did. It names no best profile and adds no trial; the report warns that choosing on these results is a selection. `tyche report <id>` rebuilds it.
 - Sweep trials (`trials.json`) and capital runs (`capital.json`) record `halted_at`; the sweep, walk-forward and capital reports warn of every run the drawdown kill halted.
 - User guide: comparing profiles side by side, and one risk profile per live stage for a small account (`stage-1`, `stage-2`, `stage-3`, created in your workspace, not shipped).
+- The state database (Phase 2, PR 6, ADR-0037): `tyche.adapters.storage.open_database` opens `state/tyche.db` (`Workspace.state_database`) with foreign keys, write-ahead logging and `synchronous = FULL`, and applies numbered SQL migrations (`migrations/NNNN_*.sql`), each in one transaction with its `user_version`; a file from a later Tyche is refused.
+- A durable journal: the `JournalStore` port, `SqliteJournalStore` (an append-only `journal` table keyed by run and `seq`, each cause a foreign key) and `StoredJournal`, which stores every envelope as it is delivered and halts the bus if the store refuses one. Events are stored as tagged JSON (`tyche.adapters.storage.codec`) for Tyche's own types only, and read back identical. Nothing writes to it yet; the paper cycle will.
+- `JournalView`: the in-memory journal's questions (by type, by cycle, `causes_of`) over any run's envelopes, including one read back from the store.
+- Developer guide: the state database. Learning note: schema migrations and an append-only log.
 
 ### Changed
 

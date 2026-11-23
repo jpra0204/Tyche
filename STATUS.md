@@ -11,6 +11,7 @@
 - PR 3 (order-level guardrails) is merged (#35, re-landed on `main` through #36 because #35 merged into #34's branch); [ADR-0034](docs/adr/0034-order-level-guardrails.md) accepted on 2026-11-23. Decided with Pablo on 2026-11-23, before any code: with money caps, size as if equity were the capital cap; a purchase over a cap shrinks to the whole shares that fit.
 - PR 4 (the daily loss limit and the drawdown kill) is merged (#37); [ADR-0035](docs/adr/0035-account-rules-and-the-drawdown-halt.md) accepted on 2026-11-23. Decided with Pablo on 2026-11-23, before any code: a backtest halted by the drawdown kill runs on to its last day with no orders, holding what it held, as an account nobody restarted would.
 - PR 5 (risk profiles side by side) is merged (#39); [ADR-0036](docs/adr/0036-risk-profiles-side-by-side.md) accepted on 2026-11-23. Decided with Pablo on 2026-11-23, before any code: a comparison adds no trial and names no best profile, with a warning; one small-account profile per live stage (`stage-1` 1 position up to 100%, `stage-2` 2 up to 50%, `stage-3` 4 up to 25%); documented in the user guide, not shipped in the template.
+- PR 6 (SQLite state store and a durable journal) is in review; [ADR-0037](docs/adr/0037-state-database-migrations-and-stored-journal.md) is *Proposed*. Decided with Pablo on 2026-11-23, before any code: numbered SQL migrations versioned by `user_version`, no new dependency. Proposed in the ADR, for review: events stored as tagged JSON with a format number; one commit per envelope with the stored journal subscribed first; only paper and live write to it, backtests keep the in-memory journal.
 
 **Phase 1 is done.** All 23 PRs are merged (the last, #28, on 2026-11-23), every ADR up to 0031 is accepted, and the version is 0.1.0. Its PR list and decisions are kept below for reference.
 
@@ -96,7 +97,9 @@ Recommended, still: turn on *Automatically delete head branches* in the GitHub r
 
 - Risk profiles side by side (Phase 2, PR 5): `tyche compare-profiles --from <date> [--risk-profile <name>]...` runs the configured strategies once per profile (every profile in `config/risk/` by default) over the same days, and writes `reports/profiles/<id>/` with `profiles.json`, each profile's full record under `runs/<profile>/`, and a report: one table and one equity and drawdown chart for every profile against the benchmark, each halt marked with the share of the range still to run, and what each profile's limits did. It names no best profile and adds no trial; the report warns that choosing on its results is a selection ([ADR-0036](docs/adr/0036-risk-profiles-side-by-side.md), accepted 2026-11-23). Sweep trials and capital runs now record `halted_at`, and the sweep, walk-forward and capital reports warn of every halted run. The user guide gives one profile per live stage (`stage-1`, `stage-2`, `stage-3`) to create in your workspace. On real data, the example rotation alone, 2005 to 2023, USD 10,000: `default` 5.14% CAGR, halted 2020-03-18; `stage-1` 2.71%, never halted, but only a third invested, because **a profile only lowers what a strategy asks for** and the rotation asks for a third in each of three funds; `stage-2` 4.59% and `stage-3` 4.15%, both halted on 2006-06-13 with 92% of the range still to run. At USD 700 `stage-2` halted on the same day and the others ran 1.2% to 1.6% a year.
 
-Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
+- State database and a durable journal (Phase 2, PR 6): `open_database` opens `state/tyche.db` with foreign keys, write-ahead logging and `synchronous = FULL`, and applies numbered SQL migrations in one transaction each, versioned by `user_version`; it refuses a file from a later Tyche. The journal table is append-only (triggers refuse updates and deletes), keyed by run and `seq`, with each cause a foreign key. `StoredJournal` writes every envelope through the `JournalStore` port, committed before the next handler runs; a refusal halts the bus. Events are stored as tagged JSON for a closed list of Tyche's own types and read back identical: checked on every event of two real backtests and on samples of the rare ones ([ADR-0037](docs/adr/0037-state-database-migrations-and-stored-journal.md), proposed). **Not yet:** nothing writes to it; the paper cycle will (PR 14). State across restarts is PR 7.
+
+Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier and LLM adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
 
@@ -132,7 +135,7 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 6 | SQLite state store and a durable journal | A storage port and a SQLite adapter (standard-library `sqlite3`); the append-only journal of every event with its cause ([ADR-0009](docs/adr/0009-storage-sqlite-parquet.md)) | Open decision: the migration approach. My recommendation: numbered SQL files and SQLite's `user_version`, with no new dependency |
+| 6 | SQLite state store and a durable journal (**in review**) | A storage port and a SQLite adapter (standard-library `sqlite3`); the append-only journal of every event with its cause ([ADR-0009](docs/adr/0009-storage-sqlite-parquet.md)) | Decided 2026-11-23, before any code: numbered SQL files and SQLite's `user_version`, with no new dependency. Proposed in [ADR-0037](docs/adr/0037-state-database-migrations-and-stored-journal.md): events as tagged JSON with a format number, one commit per envelope, paper and live only |
 | 7 | State across restarts | Orders, fills, the sleeve book, Tyche's account view, peak equity and the halt state saved and reloaded, so a restart carries on where the last run stopped; signals windows rebuilt from the cache through `SignalsStage.warm_up` ([ADR-0021](docs/adr/0021-strategies-see-a-window-handed-in.md)) | Carried from [ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md): the sleeve book stored, or rebuilt from fills |
 | 8 | Kill switch | The `KILL` flag file plus `tyche kill` and `tyche resume`; checked at startup and at every cycle; no new orders, optional flatten; the drawdown halt shares its state. `kill-switch` runbook | Decide: whether a flatten cancels resting stops first, and what it does with an order already working |
 | 9 | Logs, secrets and the Discord notifier | Structured logs in daily files, with secrets redacted; `.env` and `.env.example`; the `Notifier` port and a Discord webhook adapter; the alerts of brief §9 that exist by then (risk limit, kill switch, data failure, run failed) | Verify Discord's current webhook limits (message size, rate limits). Decide: `pydantic-settings` or the standard library for `.env` |
@@ -261,7 +264,7 @@ Two things in the brief's Phase 1 that this plan moves:
 | PR 22's proposed defaults for a small account: Tiered for the real account (yours to choose at IBKR); low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). The positions part is decided: one risk profile per live stage (PR 5, ADR-0036) | Before paper trading (PR 14) |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
 | Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
-| SQLite migration approach | Phase 2, PR 6 |
+| Accept or change [ADR-0037](docs/adr/0037-state-database-migrations-and-stored-journal.md) (the state database, its migrations and the stored journal) | PR 6's review |
 
 Decisions that belong to a Phase 1 PR are listed in the plan above.
 
@@ -286,17 +289,4 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-Create the three stage profiles in your own workspace ([profiles for a small account](docs/user-guide/08-risk-profiles.md#profiles-for-a-small-account)) and set its guardrails for stage 1. Then **Phase 2, PR 6 (SQLite state store and a durable journal)**, when you say to start it. Its decision: the migration approach.
-
-Your workspace's guardrails are your own values now, and it passes `tyche config check` (checked 2026-11-23). Your IBKR account and its paper account are open and approved, so PR 10 is not waiting on anything.
-
-Also decided on 2026-11-23: **never move `holdout_starts` later** is now never-do rule 9 in `CLAUDE.md`; and **no capital rule in the Phase 3 gate.** Promotion stays a manual decision for now, so whether a strategy is viable at your account size is evidence you read in `tyche capital`, not an automatic block.
-
-1. **Decisions still open from Phase 1**, in the table above: requiring the CI check on `main`; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
-2. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
-
-   ```bash
-   git tag -a v0.1.0 979937f -m "Phase 1: core and backtesting" && git push origin v0.1.0
-   ```
-
-**Your workspace**, if created by an older Tyche: [troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche) has one table of everything to copy from a new workspace, by PR. For PR 22, the `[tiered]` table in `config/costs/US.toml`, if you want `tyche capital` to compare Tiered.
+Review PR 6 (SQLite state store and a durable journal) and [ADR-0037](docs/adr/0037-state-database-migrations-and-stored-journal.md). If you have not yet, create the three stage profiles in your own workspace ([profiles for a small account](docs/user-guide/08-risk-profiles.md#profiles-for-a-small-account)) and set its guardrails for stage 1. Then **Phase 2, PR 7 (state across restarts)**, when you say to start it. Its decision, carried from ADR-0023: store the sleeve book, or rebuild it from fills.

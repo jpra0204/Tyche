@@ -34,6 +34,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [What account size costs](account-size.md) | Run the same strategy on a large account and on yours, change nothing else, and read the difference as the price of being small |
 | [Functional core, imperative shell](functional-core.md) | Put the rules in a pure function of plain values, and keep the wiring in a thin wrapper around it |
 | [Circuit breakers and latches](circuit-breakers.md) | Watch the whole account, trip at a limit, and stay tripped until a person resets it |
+| [Schema migrations and an append-only log](schema-migrations.md) | Number every change to the tables and never edit a shipped one; make every stored row say what it is and how it was written |
 
 ## Planned
 

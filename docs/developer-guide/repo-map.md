@@ -53,7 +53,7 @@ src/tyche/
 │   ├── clocks/             wall clock
 │   ├── notifiers/          Discord webhook
 │   ├── llm/                claude-code (later ollama, anthropic-api)
-│   ├── storage/            SQLite repositories
+│   ├── storage/            the state database: migrations, event codec, journal store
 │   └── reports/            report rendering
 ├── config/               the workspace, config file schemas, loading, config hash
 │   └── templates/          files `tyche init` copies into a new workspace
