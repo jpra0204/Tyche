@@ -153,6 +153,7 @@ class TestConfigCheck:
             result.stdout
         )
         assert "the money caps in paper and live" in result.stdout
+        assert "the daily loss limit and the drawdown kill in every run" in result.stdout
 
     def test_checks_against_the_chosen_risk_profile(self, home: Path) -> None:
         runner.invoke(app, ["init"])
@@ -440,6 +441,9 @@ class TestBacktest:
         assert (
             "Risk profile:  default; the risk gate shrank 41 contributions and blocked 0 entries"
         ) in out
+        assert "Account rules: daily loss limit hit after 0 sessions; drawdown kill never hit" in (
+            out
+        )
         assert "Data issues:   1, listed by `tyche data fetch`" in out
         assert re.search(r"^  Metrics\s+strategy\s+SPY@ARCX total return$", out, re.MULTILINE)
         for figure in ("CAGR", "Volatility", "Sharpe (rf 0)", "Sortino (rf 0)", "Max drawdown"):

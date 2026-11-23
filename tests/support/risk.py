@@ -2,7 +2,8 @@
 
 ``UNBOUND`` is a test profile whose limits never bind for the example strategies:
 risk per trade of 100% (no stop can lose more than the whole position), a position
-may be all of equity, and more open positions than any test holds. The golden-file and
+may be all of equity, more open positions than any test holds, and a daily loss
+limit and a drawdown kill of 99%, which no test loses. The golden-file and
 reference tests run under it, so the risk gate approves their trades unchanged and
 their expected results stay those of the code they were checked against (ADR-0033).
 
@@ -39,14 +40,16 @@ def profile(
     risk_per_trade: str = "1",
     open_positions: int = 1000,
     position_size: str = "1",
+    daily_loss: str = "0.99",
+    drawdown: str = "0.99",
 ) -> RiskProfile:
     return RiskProfile(
         name=name,
         risk_per_trade=Decimal(risk_per_trade),
         max_open_positions=open_positions,
         max_position_size=Decimal(position_size),
-        daily_loss_limit=Decimal("0.5"),
-        drawdown_kill=Decimal("0.5"),
+        daily_loss_limit=Decimal(daily_loss),
+        drawdown_kill=Decimal(drawdown),
     )
 
 

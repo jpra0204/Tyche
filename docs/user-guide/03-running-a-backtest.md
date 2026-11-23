@@ -89,6 +89,7 @@ Backtest 20261123T145931Z-239f4f5d: completed
   Final equity:  14567.81 USD (+45.68%)
   Fills:         98; free-riding violations: 0
   Risk profile:  default; the risk gate shrank 4,781 contributions and blocked 0 entries
+  Account rules: daily loss limit hit after 0 sessions; drawdown kill never hit
   Metrics           strategy  SPY@ARCX total return
     CAGR               2.00%       9.59%
     Volatility         3.69%      19.31%
@@ -108,6 +109,7 @@ Backtest 20261123T145931Z-239f4f5d: completed
 - **Metrics** put your strategies, all together, beside the benchmark. Both start from the same equity at the same first close and are measured on the same closes with the same formulas, defined below.
 - **Turnover, costs and trades** are about your strategies only: the benchmark pays nothing and never trades. **Costs** here are commissions and regulatory fees; slippage is in the prices, and the report's cost-drag section counts it too.
 - **Risk profile** names the profile the risk gate applied, and how often it cut what a strategy asked for. Here buy-and-hold asks for all of its budget in SPY at every close and `default` caps a position at 20%, so it holds a fifth of the account: that is why its return is far below the benchmark's while its Sharpe ratio is about the same. Without limits the same run ends at 52,168 USD ([risk profiles](08-risk-profiles.md#expect-smaller-numbers-under-default)).
+- **Account rules** says how many sessions ended with a loss at or beyond the profile's daily loss limit (no entry or addition at those closes), and whether the drawdown kill halted trading. A halted run still goes to its last day, but sends no order after the halt; read anything after that date as "what if nobody restarted it" ([risk profiles](08-risk-profiles.md#what-a-profile-does-to-a-backtest)).
 - **Fills** counts every trade. **Free-riding violations** should always be 0 ([costs and settlement](../developer-guide/ibkr-canada-costs-and-settlement.md)).
 - **Code** is Tyche's version and the git commit it ran from. If the code had uncommitted changes, it ends in `.dirty` and a warning says the commit alone cannot reproduce the run.
 

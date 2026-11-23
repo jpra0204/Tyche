@@ -1,4 +1,4 @@
-"""Risk types: what the risk layer changed, and why (ADR-0033, ADR-0034).
+"""Risk types: what the risk layer changed, and why (ADR-0033, ADR-0034, ADR-0035).
 
 A ``RiskAdjustment`` records one change the risk gate made to one sleeve's
 contribution to one instrument: which rule, measured over what (``RiskScope``), what
@@ -9,15 +9,22 @@ so the journal can say why a target was not approved as proposed.
 ``MoneyLimits`` are the guardrails' money caps in one currency, in the form execution
 and the gate use them. An ``OrderAdjustment`` records one purchase execution cut, in
 shares, to fit them; it is published as a ``RiskEvent`` too.
+
+An ``AccountTrigger`` records one of the two account rules reaching its limit at a
+session close: the daily loss limit (no entries or additions at that close) or the
+drawdown kill (a halt that lasts until a manual restart). It is published as a
+``RiskEvent``, and the halt is carried on every ``ApprovedPortfolioEvent`` after it.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.money import Money
 from tyche.core.domain.signals import require_strategy_id
+from tyche.core.domain.validation import require_utc
 
 
 class RiskRule(StrEnum):
@@ -38,9 +45,20 @@ class RiskRule(StrEnum):
     MAX_TOTAL_CAPITAL = "max_total_capital"
     """A purchase would take what is invested above the guardrails' capital cap."""
 
+    DAILY_LOSS_LIMIT = "daily_loss_limit"
+    """The account lost at least this much since the previous close: no entries or
+    additions at this close (ADR-0015)."""
+
+    DRAWDOWN_KILL = "drawdown_kill"
+    """The account fell at least this much below its peak: trading halts until a manual
+    restart."""
+
 
 ORDER_RULES = frozenset({RiskRule.MAX_ORDER_VALUE, RiskRule.MAX_TOTAL_CAPITAL})
 """The rules execution's order check applies; the gate applies the others."""
+
+ACCOUNT_RULES = frozenset({RiskRule.DAILY_LOSS_LIMIT, RiskRule.DRAWDOWN_KILL})
+"""The rules measured on the account's equity, recorded as an ``AccountTrigger``."""
 
 
 class RiskScope(StrEnum):
@@ -108,6 +126,10 @@ class RiskAdjustment:
             raise ValueError(f"{label}: a block, and only a block, approves a weight of zero")
         if self.rule in ORDER_RULES or self.scope is RiskScope.ORDER:
             raise ValueError(f"{label}: order rules are recorded as an OrderAdjustment")
+        if self.rule is RiskRule.DRAWDOWN_KILL:
+            raise ValueError(f"{label}: the drawdown kill halts; it adjusts nothing")
+        if self.rule is RiskRule.DAILY_LOSS_LIMIT and self.scope is not RiskScope.ACCOUNT:
+            raise ValueError(f"{label}: the daily loss limit is measured on the account")
         if not self.reason.strip():
             raise ValueError(f"{label}: needs a reason")
 
@@ -192,6 +214,62 @@ class OrderAdjustment:
         if self.limit.currency is not self.instrument.currency or not self.limit.is_positive:
             raise ValueError(
                 f"{label}: the limit must be a positive {self.instrument.currency} amount"
+            )
+        if not self.reason.strip():
+            raise ValueError(f"{label}: needs a reason")
+
+
+@dataclass(frozen=True, slots=True)
+class AccountTrigger:
+    """An account rule that reached its limit at one session close (ADR-0015, ADR-0035).
+
+    Both rules compare two equity values of the same currency: the daily loss limit
+    this close's with the previous close's, the drawdown kill this close's with the
+    highest close so far. ``loss`` is the fall as a fraction of the reference.
+
+    Attributes:
+        rule: ``daily_loss_limit`` or ``drawdown_kill``.
+        at: The session close it was measured at.
+        reference: The previous close's equity, or the peak equity.
+        equity: The equity at ``at``.
+        limit: The profile's limit, a fraction of ``reference``.
+        reason: The gate's explanation, for the journal.
+    """
+
+    rule: RiskRule
+    at: datetime
+    reference: Money
+    equity: Money
+    limit: Decimal
+    reason: str
+
+    @property
+    def scope(self) -> RiskScope:
+        return RiskScope.ACCOUNT
+
+    @property
+    def loss(self) -> Decimal:
+        """The fall from ``reference`` to ``equity``, as a fraction of ``reference``."""
+        return (self.reference.amount - self.equity.amount) / self.reference.amount
+
+    def __post_init__(self) -> None:
+        label = f"{self.rule} trigger"
+        if self.rule not in ACCOUNT_RULES:
+            raise ValueError(f"{label}: {self.rule} is not an account rule")
+        require_utc(self.at, f"{label} at")
+        if self.reference.currency is not self.equity.currency:
+            raise ValueError(
+                f"{label}: the reference is in {self.reference.currency}, the equity in "
+                f"{self.equity.currency}"
+            )
+        if not self.reference.is_positive:
+            raise ValueError(f"{label}: the reference equity must be above 0")
+        if not isinstance(self.limit, Decimal) or not 0 < self.limit < 1:
+            raise ValueError(f"{label}: the limit must be above 0 and below 1, got {self.limit}")
+        if self.loss < self.limit:
+            raise ValueError(
+                f"{label}: a fall of {self.loss} from {self.reference} to {self.equity} is "
+                f"below the limit {self.limit}"
             )
         if not self.reason.strip():
             raise ValueError(f"{label}: needs a reason")

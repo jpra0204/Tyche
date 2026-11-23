@@ -3,7 +3,9 @@
 It acts on ``ApprovedPortfolioEvent`` only (ADR-0006). At each decision it:
 
 1. **Reads each sleeve and instrument** the way ADR-0022 says: a contribution's weight,
-   zero for an instrument decided on and not targeted, or keep what is held.
+   zero for an instrument decided on and not targeted, or keep what is held. When the
+   approval carries the drawdown kill's halt, everything is kept and no order is sent
+   (ADR-0035); stops already resting stay at the broker.
 2. **Sizes** each weight in whole shares of the account's equity at the last close,
    rounding down. A holding within the rebalance band of its target is kept as it is;
    entries and exits always trade.
@@ -331,6 +333,12 @@ class ExecutionStage:
         )
         self._bus.publish(ExecutionPlanEvent(approved.as_of, _lines(plans), sized_on))
 
+        if approved.halt is not None:
+            # Everything was kept, so there is nothing to send; resting stops stay as
+            # they are, not even placed again (ADR-0035).
+            if sales or owed_on_purchase:
+                raise ExecutionError("a halted decision planned an order")
+            return
         for instrument, owed in sorted(sales.items(), key=lambda item: _key(item[0])):
             self._send_market(instrument, Side.SELL, owed, stamp, at)
         self._update_stops(sales, stamp, at)
@@ -354,7 +362,8 @@ class ExecutionStage:
             wanted = approved.wanted(strategy_id, instrument) if strategy_id in sleeve_ids else KEEP
             if wanted is KEEP:
                 if held:
-                    plans[strategy_id] = _Plan(held, held, PlanNote.KEEP)
+                    kept = PlanNote.HALTED if approved.halt is not None else PlanNote.KEEP
+                    plans[strategy_id] = _Plan(held, held, kept)
                 continue
 
             weight = wanted.weight if wanted is not None else Decimal(0)

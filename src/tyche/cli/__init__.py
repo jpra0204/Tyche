@@ -37,7 +37,7 @@ from tyche.core.backtest import (
     WalkForwardError,
     WalkForwardMetrics,
 )
-from tyche.core.domain import ORDER_RULES, AssetClass, Money
+from tyche.core.domain import ORDER_RULES, AssetClass, Money, RiskRule
 from tyche.core.ports import DataError
 from tyche.core.risk import DEFAULT_RISK_PROFILE
 from tyche.runtime.backtest import (
@@ -206,9 +206,9 @@ def config_check(
     )
     typer.echo(f"  Guardrails:     long only, no leverage; {caps}")
     typer.echo(
-        "                  (applied: risk per trade, positions and position size in every "
-        "run; long only and no leverage in every run; the money caps in paper and live; "
-        "the daily loss limit and the drawdown kill come later in Phase 2)"
+        "                  (applied: risk per trade, positions, position size, the daily "
+        "loss limit and the drawdown kill in every run; long only and no leverage in every "
+        "run; the money caps in paper and live)"
     )
     typer.echo("  Strategies:")
     for spec in config.strategies:
@@ -731,6 +731,7 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money, risk_profile: 
         f"  Fills:         {len(result.fills)}; free-riding violations: {len(result.free_riding)}"
     )
     lines.append(f"  Risk profile:  {risk_profile}; {_describe_adjustments(result)}")
+    lines.append(f"  Account rules: {_describe_account_rules(result)}")
     issues = sum(len(h.issues) for h in result.histories)
     if issues:
         lines.append(f"  Data issues:   {issues}, listed by `tyche data fetch`")
@@ -763,6 +764,20 @@ def _describe_adjustments(result: BacktestResult) -> str:
     if orders:
         text += f"; the money caps cut {_count(sum(orders.values()), 'purchase')}"
     return text
+
+
+def _describe_account_rules(result: BacktestResult) -> str:
+    daily = sum(1 for t in result.triggers if t.rule is RiskRule.DAILY_LOSS_LIMIT)
+    text = f"daily loss limit hit after {_count(daily, 'session')}; "
+    halt = result.halt
+    if halt is None:
+        return text + "drawdown kill never hit"
+    return text + (
+        f"HALTED by the drawdown kill on {halt.at.date()}, "
+        f"{(halt.loss * 100).quantize(Decimal('0.01'))}% below the peak of "
+        f"{halt.reference.amount.quantize(Decimal('0.01'))} {halt.reference.currency}; "
+        "no order after that"
+    )
 
 
 def _describe_metrics(metrics: BacktestMetrics) -> list[str]:

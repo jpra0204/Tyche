@@ -15,7 +15,7 @@ import pytest
 from tests.support.costs import US_COSTS, usd
 from tests.support.market import QQQ, SPY, bar
 from tests.support.profiles import US_PROFILE
-from tests.support.risk import UNBOUND
+from tests.support.risk import UNBOUND, guardrails, profile
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.backtest import (
     BacktestError,
@@ -29,12 +29,15 @@ from tyche.core.domain import (
     Currency,
     Instrument,
     MoneyLimits,
+    PlanNote,
     PriceAdjustment,
+    RiskRule,
     Side,
     audit_daily_bars,
 )
-from tyche.core.events import ExecutionPlanEvent, RunEvent, RunMode
+from tyche.core.events import ExecutionPlanEvent, OrderEvent, RunEvent, RunMode
 from tyche.core.ports import Calendar
+from tyche.core.risk import RiskLimits
 from tyche.strategies.buy_and_hold import BuyAndHold
 
 NYSE = ExchangeCalendarsCalendar("XNYS", first=date(2023, 6, 1), last=date(2024, 3, 31))
@@ -50,7 +53,15 @@ class SyntheticData:
     calendar: Calendar = NYSE
     extra_sessions: int = 0
     """Sessions past ``last`` to add anyway, as a provider with a bug would."""
+    crash_on: date | None = None
+    """From this day on, SPY trades at three quarters of its price."""
     calls: list[tuple[Instrument, date, date]] = field(default_factory=list)
+
+    def price(self, instrument: Instrument, day: date, index: int) -> float:
+        price = START_PRICES[instrument] + (0.1 * index if instrument == SPY else 0.0)
+        if instrument == SPY and self.crash_on is not None and day >= self.crash_on:
+            price *= 0.75
+        return price
 
     def daily_bars(self, instrument: Instrument, first: date, last: date) -> BarHistory:
         self.calls.append((instrument, first, last))
@@ -60,7 +71,7 @@ class SyntheticData:
         bars = [
             bar(
                 s.day,
-                START_PRICES[instrument] + (0.1 * i if instrument == SPY else 0.0),
+                self.price(instrument, s.day, i),
                 instrument=instrument,
                 timestamp=s.closes_at,
             )
@@ -191,6 +202,52 @@ class TestTheRun:
             ]
 
         assert fingerprint() == fingerprint()
+
+
+CRASH = date(2024, 1, 17)
+"""SPY falls by a quarter at this close in ``SyntheticData(crash_on=CRASH)``."""
+
+KILL_LIMITS = RiskLimits(guardrails(), profile(daily_loss="0.03", drawdown="0.15"))
+"""Limits under which that fall trips the daily loss limit and the drawdown kill."""
+
+
+class TestTheDrawdownKill:
+    """A halted backtest runs on to its last day, sending no order (ADR-0035)."""
+
+    def test_halts_trading_at_the_close_that_falls_too_far(self) -> None:
+        result = run_backtest(spec(risk=KILL_LIMITS), SyntheticData(crash_on=CRASH), calendars())
+
+        assert [t.rule for t in result.triggers] == [
+            RiskRule.DAILY_LOSS_LIMIT,
+            RiskRule.DRAWDOWN_KILL,
+        ]
+        halt = result.halt
+        assert halt is not None
+        assert halt.at.date() == CRASH
+        assert halt.loss >= Decimal("0.15")
+
+    def test_runs_on_to_the_last_day_sending_no_order(self) -> None:
+        result = run_backtest(spec(risk=KILL_LIMITS), SyntheticData(crash_on=CRASH), calendars())
+        halt = result.halt
+        assert halt is not None
+
+        assert result.run.completed, result.run.failure
+        assert result.closes[-1].as_of.date() == LAST
+        assert result.account == result.broker_account
+        orders = [e for e in result.journal.of_type(OrderEvent) if e.occurred_at >= halt.at]
+        assert orders == []
+        later = [e.event for e in result.journal.of_type(ExecutionPlanEvent)]
+        later = [p for p in later if p.as_of >= halt.at]
+        assert later
+        assert {line.note for p in later for line in p.lines} == {PlanNote.HALTED}
+        position = result.account.position(SPY)
+        assert position is not None
+        assert position.quantity > 0
+
+    def test_a_profile_that_does_not_bind_changes_nothing(self) -> None:
+        result = run_backtest(spec(), SyntheticData(crash_on=CRASH), calendars())
+
+        assert result.triggers == []
 
 
 class TestRefusedSetups:

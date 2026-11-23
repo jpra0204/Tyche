@@ -1,8 +1,8 @@
 # Risk profiles and guardrails
 
-This page explains the three files that hold Tyche's risk limits, how to make a new risk profile, how to check them, and what they do to a backtest. The decisions behind them are in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md) and [ADR-0033](../adr/0033-risk-gate-position-rules.md).
+This page explains the three files that hold Tyche's risk limits, how to make a new risk profile, how to check them, and what they do to a backtest. The decisions behind them are in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md), [ADR-0033](../adr/0033-risk-gate-position-rules.md), [ADR-0015](../adr/0015-daily-loss-limit.md) and [ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md).
 
-> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **The risk gate applies the position rules** (risk per trade, max open positions, max position size) to every backtest. **Execution enforces long only and no leverage** in every run, and the **money caps** in paper and live (not in research backtests; see below). Not yet applied: the daily loss limit and the drawdown kill switch (Phase 2, PR 4). This page grows with each.
+> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **The risk gate applies the position rules** (risk per trade, max open positions, max position size) and **the account rules** (the daily loss limit and the drawdown kill) to every backtest. **Execution enforces long only and no leverage** in every run, and the **money caps** in paper and live (not in research backtests; see below). Not yet: lifting a drawdown halt by hand, which arrives with the kill switch (Phase 2, PR 8). Until then a halt lasts to the end of the run.
 
 ## The three layers
 
@@ -100,7 +100,7 @@ Only these three can be set per strategy. The daily loss limit and the drawdown 
   Risk profile:   default: risk per trade 0.01, 5 positions, position size 0.20, daily loss 0.03, drawdown kill 0.15
                   also within the guardrails: safecash
   Guardrails:     long only, no leverage; capital 700 USD, order 350 USD
-                  (applied: risk per trade, positions and position size in every run; long only and no leverage in every run; the money caps in paper and live; the daily loss limit and the drawdown kill come later in Phase 2)
+                  (applied: risk per trade, positions, position size, the daily loss limit and the drawdown kill in every run; long only and no leverage in every run; the money caps in paper and live)
 ```
 
 A breach stops Tyche, naming the file, the key, its value and the limit:
@@ -128,25 +128,39 @@ The risk gate sits between what the strategies want and what is traded. It only 
 | `max_open_positions` | Positions already held keep their place. New ones fill the free places, the largest first; the rest are not entered. A position the strategy is selling frees its place |
 | `max_position_size` | Caps each instrument, at every close, including what is already held. When several strategies hold one instrument, each one's share shrinks by the same proportion |
 
-The backtest's summary says which profile ran and how often the gate cut something:
+Two more rules are measured on the whole account, at every close, before that close's decision:
+
+| Rule | What the gate does |
+|---|---|
+| `daily_loss_limit` | If equity fell at least this much since the previous close, nothing is entered or added to at this close: every target above what is held comes down to the holding. Sales and reductions still go through. The next close starts fresh |
+| `drawdown_kill` | If equity is at least this much below its highest close so far, **trading halts**: from that close on, no order of any kind is sent. What is held stays held, and a stop already resting at the broker can still sell. Nothing in a run lifts the halt, not even a new high |
+
+Equity here is the whole account: cash plus positions at the latest close, after every fee.
+
+**What a halted backtest does.** It runs on to its last day, holding whatever it held at the halt, marked at each close, with dividends credited. That is what your paper or live account would do if you never restarted it; the backtest cannot know when you would. So the result after a halt is the result of *not trading*, not of the strategy: read it that way. Its metrics still cover the whole range, so it stays comparable with the benchmark and with other runs.
+
+The backtest's summary says which profile ran, how often the gate cut something, and what the account rules did:
 
 ```text
-  Risk profile:  default; the risk gate shrank 4,781 contributions and blocked 0 entries
+  Risk profile:  default; the risk gate shrank 10,909 contributions and blocked 0 entries
+  Account rules: daily loss limit hit after 3 sessions; HALTED by the drawdown kill on 2020-03-18, 15.11% below the peak of 21817.50 USD; no order after that
 ```
 
-The record (`run.json`) has the profile's values under `risk`, and the counts by rule under `outcome.risk_adjustments`; the report shows both under **What ran**.
+The record (`run.json`) has the profile's values under `risk`, the counts by rule under `outcome.risk_adjustments`, and the account rules under `outcome.account_rules`: how many closes hit the daily loss limit, and the halt (`at`, `peak`, `equity`, `drawdown`, `limit`) or `null`. The report shows the counts under **What ran**; a halt also gets a warning at the top and a dashed line marked "halted" on the equity and drawdown charts.
 
 ### Expect smaller numbers under `default`
 
 `default` caps every position at 20% of equity, so a strategy that wants to be fully invested in one fund holds a fifth of the account and leaves the rest in cash, which earns nothing in the simulator. On Yahoo data from 2005 to 2023, with USD 10,000:
 
-| | No limits (as recorded before Phase 2) | `default` |
-|---|---|---|
-| Buy-and-hold SPY | 52,168 USD; max drawdown 53% | 14,568 USD; max drawdown 13% |
-| Trend rotation | 30,049 USD; max drawdown 30% | 23,464 USD; max drawdown 15% |
-| Mean reversion | 12,735 USD; max drawdown 12% | 10,650 USD; max drawdown 6% |
+| | No limits (as recorded before Phase 2) | `default`, position rules only (PR 2) | `default`, account rules too (PR 4) |
+|---|---|---|---|
+| Buy-and-hold SPY | 52,168 USD; max drawdown 53% | 14,568 USD; max drawdown 13% | unchanged |
+| Trend rotation | 30,049 USD; max drawdown 30% | 23,464 USD; max drawdown 15% | 25,915 USD; max drawdown 20%; **halted 2020-03-18** |
+| Mean reversion | 12,735 USD; max drawdown 12% | 10,650 USD; max drawdown 6% | unchanged |
 
-The Sharpe ratios barely move: the same funds, held smaller. Two things to keep in mind:
+The Sharpe ratios barely move under the position rules: the same funds, held smaller. Three things to keep in mind:
+
+- **A halt can flatter or hurt a result, by luck.** The rotation fell 15.11% in March 2020 and halted. From then on it held the three funds it had that day, untouched, to the end of 2023. They recovered, so it ended higher than when it kept trading, but its worst fall grew from 15% to 20% (in 2022, with nothing to take it out of those funds). Neither number says anything about the strategy after March 2020.
 
 - **Compare like with like.** A strategy under `default` against SPY held at 100% is not a fair test of the strategy. Run both under the same profile; comparing profiles side by side arrives in Phase 2, PR 5.
 - **Small accounts may hold nothing.** With USD 1,000, 20% is about USD 200, less than one share of SPY, so buy-and-hold never buys. Run `tyche capital` to see where your account size stands.

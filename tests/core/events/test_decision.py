@@ -232,8 +232,9 @@ class TestRiskEvent:
         )
 
     def test_carries_the_profile_and_the_adjustment(self) -> None:
-        event = RiskEvent(AS_OF, "default", self.adjustment())
-        assert (event.profile, event.adjustment.after) == ("default", Decimal("0.2"))
+        adjustment = self.adjustment()
+        event = RiskEvent(AS_OF, "default", adjustment)
+        assert (event.profile, event.adjustment) == ("default", adjustment)
 
     def test_needs_a_profile(self) -> None:
         with pytest.raises(ValueError, match="needs the name of the risk profile"):

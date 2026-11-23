@@ -12,7 +12,7 @@ Each layer may only be stricter than the one above it:
 
 This module describes the limits and checks that the layers fit together;
 ``RiskLimits`` bundles the three for one run. It applies nothing: ``RiskGate`` applies
-the position rules (ADR-0033), and the account rules arrive in Phase 2's PR 4. A
+the position rules (ADR-0033) and the account rules (ADR-0015, ADR-0035). A
 check returns every ``LimitBreach`` at once, as plain data, so that the config layer
 can name the file each one came from.
 """

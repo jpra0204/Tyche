@@ -1,5 +1,7 @@
-"""``RiskAdjustment``: one change the risk gate made, and why (ADR-0033)."""
+"""Risk types: ``RiskAdjustment`` (ADR-0033), ``MoneyLimits`` and ``OrderAdjustment``
+(ADR-0034), ``AccountTrigger`` (ADR-0035)."""
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -8,6 +10,7 @@ import pytest
 from tests.support.costs import usd
 from tests.support.market import SPY
 from tyche.core.domain import (
+    AccountTrigger,
     Currency,
     Money,
     MoneyLimits,
@@ -154,3 +157,69 @@ class TestOrderAdjustment:
                 Money.of("690", Currency.CAD),
                 "over the cap",
             )
+
+
+def trigger(**changes: Any) -> AccountTrigger:
+    fields: dict[str, Any] = {
+        "rule": RiskRule.DRAWDOWN_KILL,
+        "at": datetime(2008, 10, 9, 20, tzinfo=UTC),
+        "reference": usd("10000"),
+        "equity": usd("8500"),
+        "limit": Decimal("0.15"),
+        "reason": "fell below the peak",
+    }
+    fields.update(changes)
+    return AccountTrigger(**fields)
+
+
+class TestAccountTrigger:
+    def test_measures_the_fall_from_the_reference(self) -> None:
+        found = trigger()
+        assert found.loss == Decimal("0.15")
+        assert found.scope is RiskScope.ACCOUNT
+
+    @pytest.mark.parametrize(
+        ("changes", "message"),
+        [
+            ({"rule": RiskRule.MAX_POSITION_SIZE}, "not an account rule"),
+            ({"equity": usd("8501")}, "below the limit"),
+            ({"equity": Money.of("8000", Currency.CAD)}, "in CAD"),
+            ({"reference": usd("0"), "equity": usd("-1")}, "must be above 0"),
+            ({"limit": Decimal(1)}, "below 1"),
+            ({"at": datetime(2008, 10, 9, 20)}, "at"),  # noqa: DTZ001
+            ({"reason": " "}, "needs a reason"),
+        ],
+    )
+    def test_refuses_what_is_not_a_trigger(self, changes: dict[str, Any], message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            trigger(**changes)
+
+
+def test_the_drawdown_kill_is_not_an_adjustment() -> None:
+    with pytest.raises(ValueError, match="halts; it adjusts nothing"):
+        RiskAdjustment(
+            RiskRule.DRAWDOWN_KILL,
+            RiskScope.ACCOUNT,
+            RiskAction.BLOCK,
+            "a",
+            SPY,
+            Decimal("0.2"),
+            Decimal(0),
+            Decimal("0.15"),
+            "halted",
+        )
+
+
+def test_the_daily_loss_limit_is_measured_on_the_account() -> None:
+    with pytest.raises(ValueError, match="measured on the account"):
+        RiskAdjustment(
+            RiskRule.DAILY_LOSS_LIMIT,
+            RiskScope.STRATEGY,
+            RiskAction.BLOCK,
+            "a",
+            SPY,
+            Decimal("0.2"),
+            Decimal(0),
+            Decimal("0.03"),
+            "lost too much",
+        )

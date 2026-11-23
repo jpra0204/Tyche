@@ -1,7 +1,7 @@
-"""The risk gate's position rules (ADR-0033)."""
+"""The risk gate: its position rules (ADR-0033) and its account rules (ADR-0015, ADR-0035)."""
 
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -11,6 +11,7 @@ from tests.support.recording import Recorder, TickingClock
 from tests.support.risk import DEFAULT, UNBOUND, guardrails, profile
 from tyche.core.domain import (
     Account,
+    AccountTrigger,
     AssetClass,
     Contribution,
     Currency,
@@ -26,6 +27,7 @@ from tyche.core.domain import (
     SleeveStatus,
 )
 from tyche.core.events import (
+    KEEP,
     AccountEvent,
     ApprovedPortfolioEvent,
     BarEvent,
@@ -291,6 +293,72 @@ class TestOpenPositions:
         assert approved(result.targets) == {("a", "QQQ"): Decimal("0.2")}
 
 
+def daily_loss(loss: str = "0.05") -> AccountTrigger:
+    return AccountTrigger(
+        RiskRule.DAILY_LOSS_LIMIT,
+        AS_OF,
+        usd("10000"),
+        usd(str(10000 - 10000 * Decimal(loss))),
+        Decimal("0.03"),
+        "lost too much",
+    )
+
+
+def drawdown(at: datetime = AS_OF) -> AccountTrigger:
+    return AccountTrigger(
+        RiskRule.DRAWDOWN_KILL, at, usd("10000"), usd("8000"), Decimal("0.15"), "too far down"
+    )
+
+
+class TestDailyLossLimit:
+    def test_blocks_every_entry(self) -> None:
+        proposed = proposal({SPY: {"a": "0.2"}, QQQ: {"b": "0.1"}})
+        result = review(proposed, {}, CLOSES, UNBOUND, daily_loss=daily_loss())
+        assert result.targets == ()
+        assert [(a.rule, a.scope, a.action) for a in result.adjustments] == [
+            (RiskRule.DAILY_LOSS_LIMIT, RiskScope.ACCOUNT, RiskAction.BLOCK)
+        ] * 2
+        assert result.adjustments[0].limit == Decimal("0.03")
+        assert "equity fell 0.0500" in result.adjustments[0].reason
+
+    def test_cuts_an_addition_back_to_the_holding(self) -> None:
+        proposed = proposal({SPY: {"a": "0.3"}})
+        result = review(
+            proposed, {("a", SPY): Decimal("0.2")}, CLOSES, UNBOUND, daily_loss=daily_loss()
+        )
+        assert approved(result.targets) == {("a", "SPY"): Decimal("0.2")}
+        [cut] = result.adjustments
+        assert cut.action is RiskAction.SHRINK
+        assert "a keeps the 0.2" in cut.reason
+
+    def test_lets_exits_reductions_and_holdings_through(self) -> None:
+        proposed = proposal({SPY: {"a": "0"}, QQQ: {"a": "0.1"}, IWM: {"a": "0.2"}})
+        held = {("a", SPY): Decimal("0.2"), ("a", QQQ): Decimal("0.2"), ("a", IWM): Decimal("0.2")}
+        result = review(proposed, held, CLOSES, UNBOUND, daily_loss=daily_loss())
+        assert result.targets == proposed.targets
+        assert result.adjustments == ()
+
+    def test_blocks_entering_an_instrument_another_sleeve_holds(self) -> None:
+        proposed = proposal({SPY: {"a": "0.2", "b": "0.1"}})
+        held = {("a", SPY): Decimal("0.2")}
+        result = review(proposed, held, CLOSES, UNBOUND, daily_loss=daily_loss())
+        assert approved(result.targets) == {("a", "SPY"): Decimal("0.2")}
+
+    def test_applies_before_the_position_rules(self) -> None:
+        proposed = proposal({SPY: {"a": "0.5"}})
+        held = {("a", SPY): Decimal("0.3")}
+        result = review(proposed, held, CLOSES, DEFAULT, daily_loss=daily_loss())
+        assert [a.rule for a in result.adjustments] == [
+            RiskRule.DAILY_LOSS_LIMIT,
+            RiskRule.MAX_POSITION_SIZE,
+        ]
+        assert approved(result.targets) == {("a", "SPY"): Decimal("0.2")}
+
+    def test_refuses_a_trigger_of_another_rule(self) -> None:
+        with pytest.raises(RiskGateError, match="drawdown_kill"):
+            review(proposal({SPY: {"a": "0.1"}}), {}, CLOSES, UNBOUND, daily_loss=drawdown())
+
+
 class TestLimits:
     def test_refuse_a_profile_above_the_guardrails(self) -> None:
         with pytest.raises(ValueError, match="exceeds the guardrails"):
@@ -347,6 +415,32 @@ class TestApprovedPortfolioEvent:
             )
 
 
+class TestHaltedApproval:
+    def test_keeps_everything(self) -> None:
+        proposed = proposal({SPY: {"a": "0.1"}})
+        halted = ApprovedPortfolioEvent(AS_OF, proposed.sleeves, (), "default", halt=drawdown())
+        assert halted.wanted("a", SPY) is KEEP
+        assert halted.wanted("a", QQQ) is KEEP
+
+    def test_approves_nothing(self) -> None:
+        proposed = proposal({SPY: {"a": "0.1"}})
+        with pytest.raises(ValueError, match="approves nothing"):
+            ApprovedPortfolioEvent(
+                AS_OF, proposed.sleeves, proposed.targets, "default", halt=drawdown()
+            )
+
+    def test_only_the_drawdown_kill_halts(self) -> None:
+        proposed = proposal({SPY: {"a": "0.1"}})
+        with pytest.raises(ValueError, match="only the drawdown kill"):
+            ApprovedPortfolioEvent(AS_OF, proposed.sleeves, (), "default", halt=daily_loss())
+
+    def test_cannot_be_halted_by_a_later_trigger(self) -> None:
+        proposed = proposal({SPY: {"a": "0.1"}})
+        later = drawdown(AS_OF + timedelta(days=1))
+        with pytest.raises(ValueError, match="after it"):
+            ApprovedPortfolioEvent(AS_OF, proposed.sleeves, (), "default", halt=later)
+
+
 class FakeHoldings:
     def __init__(self, shares: Mapping[tuple[str, Instrument], str]) -> None:
         self._shares = {k: Decimal(v) for k, v in shares.items()}
@@ -394,11 +488,17 @@ class TestRiskGate:
 
         risk = [e for e in recorder if isinstance(e.event, RiskEvent)]
         cuts = [e.event for e in recorder if isinstance(e.event, RiskEvent)]
+        assert all(isinstance(c.adjustment, RiskAdjustment) for c in cuts)
         [approval] = [e for e in recorder if isinstance(e.event, ApprovedPortfolioEvent)]
         [approved_event] = [
             e.event for e in recorder if isinstance(e.event, ApprovedPortfolioEvent)
         ]
-        assert [c.adjustment.instrument for c in cuts] == [QQQ, SPY]
+        assert [
+            c.adjustment.instrument for c in cuts if isinstance(c.adjustment, RiskAdjustment)
+        ] == [
+            QQQ,
+            SPY,
+        ]
         assert all(c.profile == "default" for c in cuts)
         assert all(e.source == "risk" for e in [*risk, approval])
         assert risk[-1].seq < approval.seq
@@ -441,3 +541,70 @@ class TestRiskGate:
 
         assert rules(uncapped) == [RiskRule.RISK_PER_TRADE]
         assert rules(capped) == [RiskRule.MAX_POSITION_SIZE]
+
+
+class TestAccountRulesInTheGate:
+    """The gate measures every close and applies what triggers (ADR-0015, ADR-0035)."""
+
+    def setup_method(self) -> None:
+        self.bus = EventBus(TickingClock().now)
+        self.gate = RiskGate(self.bus, DEFAULT, FakeHoldings({}))
+        self.recorder = Recorder(self.bus)
+        self.bus.publish(BarEvent(bar(date(2024, 1, 5), 100.0)), source="feed")
+
+    def close(self, day: int, equity: str, *, decide: TargetPortfolioEvent | None = None) -> None:
+        at = AS_OF + timedelta(days=day)
+        account = Account.empty().deposit(usd(equity))
+        self.bus.publish(AccountEvent(at, account), source="account")
+        if decide is not None:
+            self.bus.publish(
+                TargetPortfolioEvent(at, decide.sleeves, decide.targets), source="portfolio"
+            )
+        self.bus.drain()
+
+    def triggers(self) -> list[AccountTrigger]:
+        return [
+            e.event.adjustment
+            for e in self.recorder
+            if isinstance(e.event, RiskEvent) and isinstance(e.event.adjustment, AccountTrigger)
+        ]
+
+    def approvals(self) -> list[ApprovedPortfolioEvent]:
+        return [e.event for e in self.recorder if isinstance(e.event, ApprovedPortfolioEvent)]
+
+    def test_publishes_a_trigger_at_the_close_even_without_a_decision(self) -> None:
+        self.close(0, "10000")
+        self.close(1, "9600")
+        [found] = self.triggers()
+        assert found.rule is RiskRule.DAILY_LOSS_LIMIT
+        [event] = [e for e in self.recorder if isinstance(e.event, RiskEvent)]
+        assert event.source == "risk"
+        assert isinstance(event.event, RiskEvent)
+        assert event.event.profile == "default"
+
+    def test_the_daily_loss_limit_blocks_entries_at_its_own_close_only(self) -> None:
+        wants_spy = proposal({SPY: {"a": "0.1"}})
+        self.close(0, "10000")
+        self.close(1, "9600", decide=wants_spy)
+        self.close(2, "9600", decide=wants_spy)
+        blocked, approved_next = self.approvals()
+        assert blocked.targets == ()
+        assert [a.rule for a in blocked.adjustments] == [RiskRule.DAILY_LOSS_LIMIT]
+        assert approved_next.adjustments == ()
+        assert approved_next.targets == wants_spy.targets
+
+    def test_after_the_drawdown_kill_every_approval_is_halted(self) -> None:
+        wants_spy = proposal({SPY: {"a": "0.1"}})
+        self.close(0, "10000")
+        self.close(1, "9800")
+        self.close(2, "8400", decide=wants_spy)  # 16% below the peak, 14% in the day
+        self.close(3, "12000", decide=wants_spy)  # a new high clears nothing
+        halted, still_halted = self.approvals()
+        [daily, kill] = self.triggers()
+        assert (daily.rule, kill.rule) == (RiskRule.DAILY_LOSS_LIMIT, RiskRule.DRAWDOWN_KILL)
+        assert self.gate.halt == kill
+        for approval in (halted, still_halted):
+            assert approval.halt == kill
+            assert approval.targets == ()
+            assert approval.adjustments == ()
+            assert approval.sleeves == wants_spy.sleeves

@@ -33,6 +33,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Layered limits](layered-limits.md) | Guardrails above profiles above strategy limits, each only stricter, all checked before anything runs |
 | [What account size costs](account-size.md) | Run the same strategy on a large account and on yours, change nothing else, and read the difference as the price of being small |
 | [Functional core, imperative shell](functional-core.md) | Put the rules in a pure function of plain values, and keep the wiring in a thin wrapper around it |
+| [Circuit breakers and latches](circuit-breakers.md) | Watch the whole account, trip at a limit, and stay tripped until a person resets it |
 
 ## Planned
 
