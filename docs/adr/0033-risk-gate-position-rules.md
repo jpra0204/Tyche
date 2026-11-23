@@ -1,6 +1,6 @@
 # ADR-0033: The risk gate's position rules: what it cuts, in what order, and how it says so
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
