@@ -45,7 +45,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0032](0032-risk-limits-in-three-layers.md) | Risk limits in three layers: guardrail ceilings, named profiles, stricter strategy limits | Accepted (Pablo, 2026-11-23) |
 | [0033](0033-risk-gate-position-rules.md) | The risk gate's position rules: what it cuts, in what order, and how it says so | Accepted (Pablo, 2026-11-23) |
 | [0034](0034-order-level-guardrails.md) | Order-level guardrails: size on the capital cap, shrink purchases to the money caps, halt on a short or on leverage | Accepted (Pablo, 2026-11-23) |
-| [0035](0035-account-rules-and-the-drawdown-halt.md) | The account rules: the daily loss limit in the gate, and a drawdown halt that a backtest runs through | Proposed |
+| [0035](0035-account-rules-and-the-drawdown-halt.md) | The account rules: the daily loss limit in the gate, and a drawdown halt that a backtest runs through | Accepted (Pablo, 2026-11-23) |
 
 ## Template
 
