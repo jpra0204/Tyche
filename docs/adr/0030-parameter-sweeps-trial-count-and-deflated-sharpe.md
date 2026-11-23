@@ -60,7 +60,19 @@ Yahoo data from 2003 to 2023 in a scratch workspace, USD 10,000, the trend rotat
 - **What 98.2% does not say.** Its null hypothesis is a true Sharpe ratio of zero, a low bar over 19 years. Holding SPY clears it too: the same formula gives the benchmark 99.3% against zero. The deflated Sharpe ratio says the pick is unlikely to be pure luck. It does not say the pick beats the benchmark: its CAGR trails SPY's by 1.3 points a year, and its higher Sharpe ratio was found in-sample, at the edge of the grid. Whether the Phase 3 gate should deflate against the benchmark's Sharpe ratio rather than zero is left open (`STATUS.md`).
 - The sweep took 16.5 minutes with another run sharing the machine. Its record is 968 KB, of which the pick's full record is 704 KB.
 
-A walk-forward with the same sweep (`tyche walk-forward --from 2005-01-03 --sweep trend_rotation`, 14 folds) was still running when the PR opened; its out-of-sample result is added here in the same PR.
+A walk-forward with the same sweep (`tyche walk-forward --from 2005-01-03 --sweep trend_rotation`, the default 14 folds, testing 2010 to 2023), added after PR 21 merged because it was still running then:
+
+| Out of sample, 2010 to 2023 | Sweep picks on each training window | Configured parameters (PR 20, no sweep) | SPY total return |
+|---|---|---|---|
+| CAGR | 4.29% | 4.57% | 12.58% |
+| Sharpe (rf 0) | 0.42 | 0.42 | 0.77 |
+| Max drawdown | 21.26% | 21.92% | 33.70% |
+| Test years ahead of the benchmark | 3 of 14 | 2 of 14 | |
+
+- **The picks did not settle.** Seven different combinations were picked across the 14 training windows: 252-session momentum in fold 1, then 63 sessions with 2, 3 or 4 holdings for folds 2 to 10, then 252 sessions with 4 holdings for folds 11 to 13, then 63 sessions again.
+- **13 of the 14 training picks were significant**: deflated Sharpe ratios from 94.3% (fold 2) to 98.9% (fold 13), with 27 trials counted. Out of sample they earned no more than the parameters fixed in advance, and a third of the benchmark's return.
+- This is the case the deflated Sharpe ratio cannot catch on its own. A pick can be very unlikely to be pure luck over its training years and still carry no advantage into the next year. Choosing among these parameters by in-sample Sharpe ratio bought nothing.
+- It took 2 hours 22 minutes, sharing the machine with another run for part of it. The record is 7.8 MB.
 
 ## Alternatives considered
 
