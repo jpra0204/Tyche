@@ -15,10 +15,17 @@ one out-of-sample result (``measure_walk_forward``). Everything goes to
   as ``tyche backtest`` writes it, without a report of its own.
 
 The train step sits between a fold's two runs: it decides what the test window runs.
-Until parameter sweeps exist (Phase 1, PR 21) it is ``keep_configured``: nothing is
-chosen, so a test window runs the configured strategies, exactly as any backtest
-would. The training run is still made and recorded, so that in-sample and
-out-of-sample results are always reported side by side.
+
+* Without a sweep it is ``keep_configured``: nothing is chosen, so a test window runs
+  the configured strategies, exactly as any backtest would. The training run is still
+  made and recorded, so that in-sample and out-of-sample results are always reported
+  side by side.
+* With a sweep (``tyche walk-forward --sweep <name>``, ADR-0030), every combination of
+  the grid runs on the training window, and the test window runs the one with the
+  highest Sharpe ratio there. The training window's folder then holds the pick's full
+  record and ``trials.json``, with every combination's results and the pick's
+  deflated Sharpe ratio. Each combination counts as one trial, however many folds
+  run it.
 
 A walk-forward stops at the first window that halts or cannot be measured, and is
 recorded up to there.
@@ -27,7 +34,7 @@ recorded up to there.
 import csv
 import json
 import platform
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -35,7 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from tyche.adapters.clocks import SystemClock
-from tyche.config import TycheConfig
+from tyche.config import SweepSpec, TycheConfig
 from tyche.core.backtest import (
     BacktestError,
     Fold,
@@ -61,10 +68,20 @@ from tyche.runtime.backtest import (
     conventions_record,
     current_code_version,
     new_run_id,
+    record_run,
     run_and_record,
     series_record,
 )
 from tyche.runtime.strategies import ConfiguredStrategies, build_strategies
+from tyche.runtime.sweep import (
+    SweepPlan,
+    SweepResult,
+    TrialProgress,
+    plan_sweep,
+    run_sweep,
+    write_trials,
+)
+from tyche.runtime.trials import TRIALS_FILE
 
 WALK_FORWARD_FORMAT = 1
 """Version of the layout of ``walk_forward.json`` and of the walk-forward's
@@ -73,7 +90,15 @@ WALK_FORWARD_FORMAT = 1
 WALK_FORWARD_FILE = "walk_forward.json"
 
 TRAIN_STEP = "keep the configured parameters"
-"""What the train step does, as the record states it."""
+"""What the train step does without a sweep, as the record states it."""
+
+
+def sweep_train_step(plan: SweepPlan) -> str:
+    """What the train step does with a sweep, as the record states it."""
+    return (
+        f"pick the highest Sharpe ratio of sweep {plan.sweep.name!r} "
+        f"({len(plan.combinations)} combinations of {plan.strategy_id}) on the training window"
+    )
 
 
 class WindowKind(StrEnum):
@@ -83,8 +108,9 @@ class WindowKind(StrEnum):
     TEST = "test"
 
 
-Progress = Callable[[Fold, WindowKind, BacktestOutcome], None]
-"""Told about every window as soon as it is recorded, for the command to print."""
+Progress = Callable[[Fold, WindowKind, BacktestOutcome, Mapping[str, Any] | None], None]
+"""Told about every window as soon as it is recorded, for the command to print, with
+the parameters a sweep picked on a training window (``None`` without a sweep)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +126,8 @@ class WalkForwardOutcome:
         finished: The folds run to the end of their test window, in order.
         metrics: The test windows chained and measured; ``None`` if it stopped early.
         failure: Why it stopped before the end, or ``None``.
+        plan: The sweep run on every training window; ``None`` without one.
+        picks: Each finished training window's sweep, by fold number.
     """
 
     walk_forward_id: str
@@ -110,6 +138,8 @@ class WalkForwardOutcome:
     finished: tuple[FoldResult, ...]
     metrics: WalkForwardMetrics | None
     failure: str | None
+    plan: SweepPlan | None = None
+    picks: Mapping[int, SweepResult] | None = None
 
     @property
     def completed(self) -> bool:
@@ -121,9 +151,8 @@ def keep_configured(
 ) -> ConfiguredStrategies:
     """The train step: what a fold's test window runs, decided on its training window.
 
-    For now it keeps the configured strategies and parameters, and ignores the
-    training run. Parameter sweeps (Phase 1, PR 21) replace it with a choice made on
-    the training window alone.
+    Without a sweep, it keeps the configured strategies and parameters, and ignores
+    the training run. With one, the walk-forward picks from the sweep instead.
     """
     del fold, trained  # nothing is chosen yet
     return build_strategies(config)
@@ -144,6 +173,8 @@ class _Study:
     clock: Clock
     code: CodeVersion
     started: datetime
+    plan: SweepPlan | None
+    train_step: str
 
 
 def run_configured_walk_forward(
@@ -155,11 +186,15 @@ def run_configured_walk_forward(
     clock: Clock | None = None,
     code: CodeVersion | None = None,
     progress: Progress | None = None,
+    sweep: SweepSpec | None = None,
+    trial_progress: TrialProgress | None = None,
 ) -> WalkForwardOutcome:
     """Walk forward from ``first`` to ``last``, and record every window and the result.
 
     ``last`` defaults to the day before the holdout; ``scheme`` to anchored folds with
-    a five-year first training window and one-year test windows.
+    a five-year first training window and one-year test windows. With ``sweep``, each
+    training window runs every combination of its grid and the test window runs the
+    pick; ``trial_progress`` is told about each trial.
 
     Raises:
         BacktestRequestError: The range cannot be run as asked, or history is missing
@@ -168,13 +203,16 @@ def run_configured_walk_forward(
         HoldoutError: ``last`` reaches the holdout.
         WalkForwardError: The range leaves no test window.
         BacktestError: A window cannot be set up.
-        ConfigError: A strategy cannot be built from its file.
+        ConfigError: A strategy cannot be built from its file, or a sweep's combination
+            cannot be built.
+        TrialCountError: A sweep's trials cannot be counted.
     """
     clock = clock or SystemClock()
     last = checked_range(config, first, last)
     scheme = scheme or FoldScheme()
     folds = plan_folds(first, last, scheme)
     build_strategies(config)  # a bad strategy file fails before anything is written
+    plan = plan_sweep(config, sweep) if sweep is not None else None
     root = config.workspace.reports_dir / "walk_forward"
     walk_forward_id = new_run_id(root, clock.now(), config.config_hash)
     study = _Study(
@@ -189,18 +227,45 @@ def run_configured_walk_forward(
         clock=clock,
         code=code or current_code_version(),
         started=clock.now(),
+        plan=plan,
+        train_step=sweep_train_step(plan) if plan is not None else TRAIN_STEP,
     )
     currency = config.market_profile.cash_currencies[0]
 
     finished: list[FoldResult] = []
+    picks: dict[int, SweepResult] = {}
     failure: str | None = None
     try:
         for fold in folds:
-            trained = _window(study, fold, WindowKind.TRAIN, build_strategies(config), progress)
+            if plan is None:
+                trained = _window(study, fold, WindowKind.TRAIN, build_strategies(config), progress)
+                chosen = keep_configured(config, fold, trained)
+            else:
+                swept = _sweep_window(study, plan, fold, trial_progress)
+                train_folder = study.folder / fold_folder(fold, WindowKind.TRAIN)
+                if swept.best is None or swept.best_run is None:
+                    train_folder.mkdir(parents=True)
+                    write_trials(train_folder, swept, pick_record=None)
+                    failure = (
+                        f"fold {fold.number}'s train window: no combination of the sweep "
+                        "has a Sharpe ratio, so nothing can be picked"
+                    )
+                    break
+                picks[fold.number] = swept
+                trained = record_run(
+                    config,
+                    swept.best_run,
+                    folder=train_folder,
+                    code=study.code,
+                    part_of=_part_of(study, fold, WindowKind.TRAIN, swept.best.combination.number),
+                )
+                write_trials(train_folder, swept, pick_record=".")
+                if progress is not None:
+                    progress(fold, WindowKind.TRAIN, trained, swept.best.combination.values)
+                chosen = plan.strategies(swept.best.combination)
             failure = _failure(fold, WindowKind.TRAIN, trained)
             if failure is not None:
                 break
-            chosen = keep_configured(config, fold, trained)
             tested = _window(study, fold, WindowKind.TEST, chosen, progress)
             failure = _failure(fold, WindowKind.TEST, tested)
             if failure is not None:
@@ -214,7 +279,7 @@ def run_configured_walk_forward(
             )
     except (BacktestRequestError, BacktestError) as error:
         if study.folder.exists():
-            _write_record(study, finished, None, f"stopped: {error}")
+            _write_record(study, finished, None, f"stopped: {error}", picks)
         raise
 
     metrics: WalkForwardMetrics | None = None
@@ -223,9 +288,18 @@ def run_configured_walk_forward(
             metrics = measure_walk_forward(finished)
         except MetricsError as error:
             failure = f"the test windows could not be measured: {error}"
-    _write_record(study, finished, metrics, failure)
+    _write_record(study, finished, metrics, failure, picks)
     return WalkForwardOutcome(
-        walk_forward_id, study.folder, study.code, scheme, folds, tuple(finished), metrics, failure
+        walk_forward_id,
+        study.folder,
+        study.code,
+        scheme,
+        folds,
+        tuple(finished),
+        metrics,
+        failure,
+        plan,
+        picks,
     )
 
 
@@ -252,16 +326,38 @@ def _window(
         folder=study.folder / fold_folder(fold, kind),
         clock=study.clock,
         code=study.code,
-        part_of={
-            "walk_forward": study.walk_forward_id,
-            "fold": fold.number,
-            "window": kind.value,
-            "train_step": TRAIN_STEP,
-        },
+        part_of=_part_of(study, fold, kind),
     )
     if progress is not None:
-        progress(fold, kind, outcome)
+        progress(fold, kind, outcome, None)
     return outcome
+
+
+def _sweep_window(
+    study: _Study, plan: SweepPlan, fold: Fold, trial_progress: TrialProgress | None
+) -> SweepResult:
+    return run_sweep(
+        plan,
+        study.market,
+        run_id=f"{study.walk_forward_id}-{fold.number:02d}-{WindowKind.TRAIN.value}",
+        first=fold.train.first,
+        last=fold.train.last,
+        clock=study.clock,
+        code=study.code,
+        progress=trial_progress,
+    )
+
+
+def _part_of(
+    study: _Study, fold: Fold, kind: WindowKind, trial: int | None = None
+) -> dict[str, Any]:
+    return {
+        "walk_forward": study.walk_forward_id,
+        "fold": fold.number,
+        "window": kind.value,
+        "train_step": study.train_step,
+        **({"trial": trial} if trial is not None else {}),
+    }
 
 
 def _failure(fold: Fold, kind: WindowKind, outcome: BacktestOutcome) -> str | None:
@@ -281,9 +377,10 @@ def _write_record(
     finished: Sequence[FoldResult],
     metrics: WalkForwardMetrics | None,
     failure: str | None,
+    picks: Mapping[int, SweepResult],
 ) -> None:
     study.folder.mkdir(parents=True, exist_ok=True)
-    record = walk_forward_record(study, finished, metrics, failure)
+    record = walk_forward_record(study, finished, metrics, failure, picks)
     _write_json(study.folder / WALK_FORWARD_FILE, record)
     if metrics is None:
         return
@@ -313,8 +410,11 @@ def walk_forward_record(
     finished: Sequence[FoldResult],
     metrics: WalkForwardMetrics | None,
     failure: str | None,
+    picks: Mapping[int, SweepResult] | None = None,
 ) -> dict[str, Any]:
     """``walk_forward.json``: what ran, fold by fold, and how it ended."""
+    picks = picks or {}
+    plan = study.plan
     config, code = study.config, study.code
     done = {result.fold.number for result in finished}
     plugins = {s.strategy_id: s.plugin for s in config.strategies}
@@ -339,7 +439,25 @@ def walk_forward_record(
             "test_years": study.scheme.test_years,
             "described": str(study.scheme),
         },
-        "train_step": TRAIN_STEP,
+        "train_step": study.train_step,
+        "sweep": (
+            {
+                "name": plan.sweep.name,
+                "file": plan.sweep.source,
+                "hash": plan.sweep.sweep_hash,
+                "content": dict(plan.sweep.snapshot),
+                "strategy": plan.strategy_id,
+                "plugin": plan.plugin,
+                "combinations": len(plan.combinations),
+                "trials_counted": {
+                    "total": plan.trials_counted,
+                    "this_grid": len(set(plan.keys)),
+                    "recorded_before": plan.earlier_trials,
+                },
+            }
+            if plan is not None
+            else None
+        ),
         "holdout_starts": config.backtest.holdout_starts.isoformat(),
         "starting_cash": {
             "amount": str(config.backtest.starting_cash.amount),
@@ -359,6 +477,7 @@ def walk_forward_record(
                 "train": _window_record(study, fold, WindowKind.TRAIN),
                 "test": _window_record(study, fold, WindowKind.TEST),
                 "finished": fold.number in done,
+                "picked": _picked(picks.get(fold.number)),
             }
             for fold in study.folds
         ],
@@ -375,11 +494,27 @@ def walk_forward_record(
 
 def _window_record(study: _Study, fold: Fold, kind: WindowKind) -> dict[str, Any]:
     window = fold.train if kind is WindowKind.TRAIN else fold.test
-    return {
+    record = {
         "first": window.first.isoformat(),
         "last": window.last.isoformat(),
         "run_id": f"{study.walk_forward_id}-{fold.number:02d}-{kind.value}",
         "record": fold_folder(fold, kind),
+    }
+    if study.plan is not None and kind is WindowKind.TRAIN:
+        record["trials"] = f"{fold_folder(fold, kind)}/{TRIALS_FILE}"
+    return record
+
+
+def _picked(swept: SweepResult | None) -> dict[str, Any] | None:
+    """What a training window's sweep picked, for ``walk_forward.json``."""
+    if swept is None or swept.best is None:
+        return None
+    deflated = swept.deflated
+    return {
+        "trial": swept.best.combination.number,
+        "parameters": dict(swept.best.combination.values),
+        "deflated_sharpe": f"{deflated.probability:.6f}" if deflated is not None else None,
+        "warnings": len(swept.warnings),
     }
 
 

@@ -28,6 +28,7 @@ _TEMPLATES = {
     "strategies/buy_and_hold.toml": "config/strategies/buy_and_hold.toml",
     "strategies/mean_reversion.toml": "config/strategies/mean_reversion.toml",
     "strategies/trend_rotation.toml": "config/strategies/trend_rotation.toml",
+    "sweeps/trend_rotation.toml": "config/sweeps/trend_rotation.toml",
     "env.example": ".env",
     "gitignore": ".gitignore",
     "README.md": "README.md",
@@ -64,6 +65,11 @@ class Workspace:
     def strategies_dir(self) -> Path:
         """One file per strategy instance: its plugin and parameters (ADR-0022)."""
         return self.config_dir / "strategies"
+
+    @property
+    def sweeps_dir(self) -> Path:
+        """One file per parameter sweep: a strategy and the values to try (ADR-0030)."""
+        return self.config_dir / "sweeps"
 
     @property
     def env_file(self) -> Path:

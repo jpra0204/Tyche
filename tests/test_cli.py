@@ -445,7 +445,7 @@ class TestBacktest:
         result = runner.invoke(app, ["report", run_id])
 
         assert result.exit_code == 1
-        assert f"no backtest or walk-forward record named {run_id!r}" in plain(result.stderr)
+        assert f"no backtest, walk-forward or sweep record named {run_id!r}" in plain(result.stderr)
 
     def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
         result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])
@@ -483,29 +483,33 @@ class TestBacktest:
         assert "Error: the run halted: a stage failed" in plain(result.stderr)
 
 
+def fetch_spy_and_qqq(home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A new workspace whose cache holds SPY and QQQ from October 2021 to December 2023."""
+    nyse = ExchangeCalendarsCalendar("XNYS", first=date(2021, 1, 1), last=date(2024, 1, 31))
+
+    def fake_fetcher(
+        cache_dir: Path | None = None,
+    ) -> Callable[[str, date, date], list[YahooRow]]:
+        def fetch(ticker: str, start: date, end: date) -> list[YahooRow]:
+            days = [s.day for s in nyse.sessions_between(start, end) if s.day < end]
+            return [row(day, 400.0 + i) for i, day in enumerate(days)]
+
+        return fetch
+
+    monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    keep_candidates(home / "tyche-workspace", "SPY", "QQQ")
+    for symbol, exchange in (("SPY", "ARCX"), ("QQQ", "XNAS")):
+        arguments = ["data", "fetch", symbol, "--exchange", exchange]
+        result = runner.invoke(app, [*arguments, "--from", "2021-10-01", "--to", "2023-12-29"])
+        assert result.exit_code == 0, result.output
+    return home / "tyche-workspace"
+
+
 class TestWalkForward:
     @pytest.fixture
     def fetched(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        """A workspace whose cache holds SPY and QQQ from October 2021 to December 2023."""
-        nyse = ExchangeCalendarsCalendar("XNYS", first=date(2021, 1, 1), last=date(2024, 1, 31))
-
-        def fake_fetcher(
-            cache_dir: Path | None = None,
-        ) -> Callable[[str, date, date], list[YahooRow]]:
-            def fetch(ticker: str, start: date, end: date) -> list[YahooRow]:
-                days = [s.day for s in nyse.sessions_between(start, end) if s.day < end]
-                return [row(day, 400.0 + i) for i, day in enumerate(days)]
-
-            return fetch
-
-        monkeypatch.setattr(runtime_data, "yfinance_fetcher", fake_fetcher)
-        assert runner.invoke(app, ["init"]).exit_code == 0
-        keep_candidates(home / "tyche-workspace", "SPY", "QQQ")
-        for symbol, exchange in (("SPY", "ARCX"), ("QQQ", "XNAS")):
-            arguments = ["data", "fetch", symbol, "--exchange", exchange]
-            result = runner.invoke(app, [*arguments, "--from", "2021-10-01", "--to", "2023-12-29"])
-            assert result.exit_code == 0, result.output
-        return home / "tyche-workspace"
+        return fetch_spy_and_qqq(home, monkeypatch)
 
     def test_runs_records_and_summarises(self, fetched: Path) -> None:
         result = runner.invoke(app, ["walk-forward", "--from", "2022-01-03", "--train-years", "1"])
@@ -588,4 +592,95 @@ class TestWalkForward:
         assert "Report:" not in result.stdout
         assert "Error: the walk-forward stopped: fold 1's test window halted: oops" in plain(
             result.stderr
+        )
+
+
+ROTATION_ON_TWO = """plugin = "trend_rotation"
+
+[parameters]
+holdings = 1
+momentum_sessions = 20
+trend_sessions = 50
+instruments = [
+    { symbol = "SPY", exchange = "ARCX", asset_class = "etf" },
+    { symbol = "QQQ", exchange = "XNAS", asset_class = "etf" },
+]
+"""
+
+
+class TestSweep:
+    @pytest.fixture
+    def fetched(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """A workspace running the trend rotation over SPY and QQQ, cached from October
+        2021 to December 2023, with a sweep of four combinations named ``small``."""
+        workspace = fetch_spy_and_qqq(home, monkeypatch)
+        tyche = workspace / "config" / "tyche.toml"
+        text = tyche.read_text(encoding="utf-8")
+        tyche.write_text(text.replace('buy_and_hold = "1.0"', 'trend_rotation = "1.0"'))
+        (workspace / "config/strategies/trend_rotation.toml").write_text(ROTATION_ON_TWO)
+        (workspace / "config/sweeps/small.toml").write_text(
+            'strategy = "trend_rotation"\n[grid]\nholdings = [1, 2]\nmomentum_sessions = [10, 40]\n'
+        )
+        return workspace
+
+    def test_runs_records_and_summarises(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["sweep", "small", "--from", "2022-06-01"])
+
+        assert result.exit_code == 0, result.output
+        out = result.stdout
+        assert (
+            "Sweep small: 4 combinations of trend_rotation (trend_rotation); 4 trials counted "
+            "with the 0 already recorded" in out
+        )
+        assert re.search(
+            r"^  Trial   1/4  holdings=1 momentum_sessions=10  Sharpe +\S+  CAGR +\S+%$",
+            out,
+            re.MULTILINE,
+        )
+        assert re.search(r"^Sweep \d{8}T\d{6}Z-[0-9a-f]{8}: 4 trials, 4 measured$", out, re.M)
+        assert re.search(
+            r"^  Pick:          trial \d, holdings=\d momentum_sessions=\d+ \(in-sample\)$",
+            out,
+            re.M,
+        )
+        assert re.search(r"^  Deflated Sharpe ratio: \d+\.\d% after 4 trials", out, re.M)
+        report = re.search(r"Report:\s+(\S+)", out)
+        assert report is not None
+        assert Path(report.group(1)).is_file()
+        assert Path(report.group(1)).is_relative_to(fetched / "reports" / "sweeps")
+
+    def test_a_strategy_without_a_budget_is_refused(self, home: Path) -> None:
+        assert runner.invoke(app, ["init"]).exit_code == 0
+
+        result = runner.invoke(app, ["sweep", "trend_rotation", "--from", "2022-06-01"])
+
+        assert result.exit_code == 1
+        assert "'trend_rotation' has no budget under [strategies]" in plain(result.stderr)
+
+    def test_report_rebuilds_a_sweeps_report(self, fetched: Path) -> None:
+        ran = runner.invoke(app, ["sweep", "small", "--from", "2022-06-01"])
+        found = re.search(r"^Sweep (\d\S+):", ran.stdout, re.MULTILINE)
+        assert found is not None
+        page = fetched / "reports" / "sweeps" / found.group(1) / "report.html"
+        page.unlink()
+
+        result = runner.invoke(app, ["report", found.group(1)])
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout == f"Report: {page}\n"
+
+    def test_a_walk_forward_can_pick_from_a_sweep(self, fetched: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["walk-forward", "--from", "2022-01-03", "--train-years", "1", "--sweep", "small"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "  Train step: sweep small (config/sweeps/small.toml), highest Sharpe ratio" in (
+            result.stdout
+        )
+        assert re.search(
+            r"^  Fold  1 train 2022-01-03 to 2022-12-31  picked holdings=\d momentum_sessions=\d+$",
+            result.stdout,
+            re.MULTILINE,
         )

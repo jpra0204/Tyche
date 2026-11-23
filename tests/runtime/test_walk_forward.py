@@ -229,7 +229,8 @@ class TestProgress:
     def test_is_told_about_every_window_in_order(self, config: TycheConfig) -> None:
         seen: list[tuple[int, str]] = []
 
-        def progress(fold: Any, kind: Any, outcome: BacktestOutcome) -> None:
+        def progress(fold: Any, kind: Any, outcome: BacktestOutcome, picked: Any) -> None:
+            assert picked is None  # no sweep, nothing picked
             seen.append((fold.number, kind.value))
 
         walk(config, date(2021, 1, 4), scheme=FoldScheme(1, 1), progress=progress)

@@ -112,6 +112,7 @@ class TestInitWorkspace:
             "config/strategies/buy_and_hold.toml",
             "config/strategies/mean_reversion.toml",
             "config/strategies/trend_rotation.toml",
+            "config/sweeps/trend_rotation.toml",
             "config/tyche.toml",
         ]
 

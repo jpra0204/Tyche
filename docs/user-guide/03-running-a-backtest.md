@@ -129,7 +129,7 @@ A run of 19 years with two instruments takes a few seconds.
 
 A figure that cannot be computed (a Sharpe ratio for a run with no ups and downs, a win rate with no closed trade) shows as `n/a`.
 
-**These numbers are not a verdict.** A strategy that shows a higher CAGR or Sharpe than the benchmark on one backtest has not proven an edge: it may be luck, or the result of trying many versions. Out-of-sample testing ([walk-forward](04-walk-forward.md)) and overfitting checks (PR 21) come before any such claim.
+**These numbers are not a verdict.** A strategy that shows a higher CAGR or Sharpe than the benchmark on one backtest has not proven an edge: it may be luck, or the result of trying many versions. Out-of-sample testing ([walk-forward](04-walk-forward.md)) and a trial count with a deflated Sharpe ratio ([parameter sweeps](05-parameter-sweeps.md)) come before any such claim.
 
 ## The record
 
@@ -219,7 +219,7 @@ Neither beats holding SPY. The rotation's worst fall was 29.7% (2018 to 2020) ag
 | `… gives strategy 'trend_rotation' a budget, but config/strategies/trend_rotation.toml does not exist` (or `mean_reversion`) | Your workspace was created before PR 18. Copy the file from a new workspace (`uv run tyche init --home <scratch-folder>`) into your `config/strategies/`. |
 | `no bar of the benchmark SPY@ARCX on or before …` | Fetch the benchmark's history from before your first day, as for a candidate. |
 | `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json` and without a report; the message says why. |
-| `Error: no backtest or walk-forward record named …` | `tyche report` takes the run id exactly as `tyche backtest` printed it: the record folder's name under `reports/backtests/`. |
+| `Error: no backtest, walk-forward or sweep record named …` | `tyche report` takes the run id exactly as `tyche backtest` printed it: the record folder's name under `reports/backtests/`. |
 | `… run.json is record format …` | The record was written by a different version of Tyche than the one reading it. |
 | `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, into the `[universe]` table of your `config/markets/US.toml`. |
 | `Error: the run halted: …` | A stage found something it cannot handle and stopped the run rather than guess (fail closed). The record is still written. The message names the problem; please share it, since it usually means a bug. |

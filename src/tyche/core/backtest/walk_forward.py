@@ -10,8 +10,9 @@ training window and the test window right after it::
     ...                              ...
 
 Each window is its own backtest, from the starting cash. Whatever is chosen on a
-training window (from Phase 1 PR 21, parameters; until then nothing, the configured
-strategies are kept) is then run on the test window, which it has not seen. A test
+training window (with a parameter sweep, the parameters with the highest Sharpe ratio;
+without one, nothing: the configured strategies are kept, ADR-0030) is then run on the
+test window, which it has not seen. A test
 window is in-sample for nothing: it is the closest a backtest gets to the future.
 
 This module does no I/O and runs nothing. It plans the folds from dates alone

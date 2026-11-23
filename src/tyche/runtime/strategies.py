@@ -6,8 +6,9 @@ neither may import the other.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -25,34 +26,68 @@ class ConfiguredStrategies:
     Attributes:
         strategies: One per configured instance, ordered by id.
         budgets: Each one's fraction of account equity, by id.
+        parameters: Each one's parameters as built, by id: the strategy file's, with
+            any override applied. A run record states them, so that every trial can be
+            counted (ADR-0030).
     """
 
     strategies: tuple[Strategy, ...]
     budgets: Mapping[str, Decimal]
+    parameters: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
-def build_strategies(config: TycheConfig) -> ConfiguredStrategies:
-    """Build every configured strategy, or raise ``ConfigError`` naming the file and key."""
-    strategies = tuple(_build(spec, config) for spec in config.strategies)
-    return ConfiguredStrategies(strategies, config.budgets)
+Overrides = Mapping[str, Mapping[str, Any]]
+"""Parameters to replace, by strategy id: what a parameter sweep varies (ADR-0030)."""
 
 
-def _build(spec: StrategySpec, config: TycheConfig) -> Strategy:
+def build_strategies(
+    config: TycheConfig, overrides: Overrides | None = None, *, source: str | None = None
+) -> ConfiguredStrategies:
+    """Build every configured strategy, or raise ``ConfigError`` naming the file and key.
+
+    ``overrides`` replaces some of a strategy's parameters, and keeps the others from
+    its file. ``source`` names where the overrides came from, for messages (a sweep
+    file); without it, the strategy file is named.
+    """
+    overrides = overrides or {}
+    unknown = sorted(set(overrides) - {spec.strategy_id for spec in config.strategies})
+    if unknown:
+        raise ConfigError(f"{source or 'overrides'}: no configured strategy {unknown[0]!r}")
+    parameters = {
+        spec.strategy_id: {**spec.parameters, **overrides.get(spec.strategy_id, {})}
+        for spec in config.strategies
+    }
+    strategies = tuple(
+        _build(
+            spec,
+            config,
+            parameters[spec.strategy_id],
+            source if spec.strategy_id in overrides and source else spec.source,
+        )
+        for spec in config.strategies
+    )
+    return ConfiguredStrategies(strategies, config.budgets, parameters)
+
+
+def _build(
+    spec: StrategySpec, config: TycheConfig, parameters: Mapping[str, Any], source: str
+) -> Strategy:
     plugin = PLUGINS.get(spec.plugin)
     if plugin is None:
         known = ", ".join(sorted(PLUGINS))
         raise ConfigError(f"{spec.source}: plugin: unknown plugin {spec.plugin!r}; known: {known}")
+    where = source
 
     def lookup(symbol: str, exchange: str, asset_class: AssetClass) -> Instrument:
         try:
             return instrument_for(symbol, exchange, asset_class, config.market_profile)
         except FetchRequestError as error:
-            raise ConfigError(f"{spec.source}: parameters: {error}") from None
+            raise ConfigError(f"{where}: parameters: {error}") from None
 
     try:
-        strategy = plugin.create(spec.strategy_id, spec.parameters, lookup)
+        strategy = plugin.create(spec.strategy_id, parameters, lookup)
     except ValidationError as error:
-        raise ConfigError(_describe(spec.source, error)) from None
+        raise ConfigError(_describe(where, error)) from None
     if strategy.strategy_id != spec.strategy_id:
         raise ConfigError(
             f"{spec.source}: plugin {spec.plugin!r} built a strategy named "
