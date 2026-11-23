@@ -24,16 +24,18 @@ from decimal import Decimal
 from tyche.core.backtest.settings import BacktestSettings
 from tyche.core.domain import (
     Account,
+    AccountTrigger,
     BarHistory,
     Currency,
     Fill,
     MarketProfile,
     MoneyLimits,
+    RiskRule,
     Session,
     TradingCosts,
 )
 from tyche.core.engine import Engine, RunResult
-from tyche.core.events import AccountEvent, EventBus, FillEvent, RunMode
+from tyche.core.events import AccountEvent, EventBus, FillEvent, RiskEvent, RunMode
 from tyche.core.pipeline.execution import AccountState, ExecutionStage, SleeveBook
 from tyche.core.pipeline.journal import InMemoryJournal
 from tyche.core.pipeline.portfolio import PortfolioStage
@@ -125,6 +127,21 @@ class BacktestResult:
         """Every fill, in the order the broker reported them."""
         return [envelope.event.fill for envelope in self.journal.of_type(FillEvent)]
 
+    @property
+    def triggers(self) -> list[AccountTrigger]:
+        """Every account rule that reached its limit, oldest first (ADR-0035)."""
+        return [
+            envelope.event.adjustment
+            for envelope in self.journal.of_type(RiskEvent)
+            if isinstance(envelope.event.adjustment, AccountTrigger)
+        ]
+
+    @property
+    def halt(self) -> AccountTrigger | None:
+        """The drawdown kill that halted trading, or ``None``. A halted run still runs
+        to its last day, sending no order (ADR-0035)."""
+        return next((t for t in self.triggers if t.rule is RiskRule.DRAWDOWN_KILL), None)
+
 
 def run_backtest(
     spec: BacktestSpec, data: DataProvider, calendars: Mapping[str, Calendar]
@@ -138,6 +155,8 @@ def run_backtest(
 
     A run that starts and then halts (a stage failing closed) does not raise: its
     ``RunResult`` says why it stopped, and the result holds everything up to then.
+    The drawdown kill is not such a halt: it stops trading, not the run, which goes on
+    to its last day with every holding kept and no order sent (``BacktestResult.halt``).
     """
     spec.settings.require_before_holdout(spec.last)
     if spec.first > spec.last:

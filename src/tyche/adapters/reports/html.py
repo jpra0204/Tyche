@@ -34,6 +34,9 @@ from matplotlib.ticker import (
 COLOURS = ("#1f5fa8", "#8c8c8c", "#c0392b", "#2e8b57")
 """Line colours, in order: the strategy, then the benchmark, then any others."""
 
+MARK_COLOUR = "#b35900"
+"""Colour of a marked moment and its label."""
+
 RASTER_DPI = 150
 """Resolution of the lines and areas inside each chart: sharp on screen and in print."""
 
@@ -84,6 +87,14 @@ class Line:
 
 
 @dataclass(frozen=True, slots=True)
+class Mark:
+    """A moment marked on a chart with a dashed vertical line and a label."""
+
+    at: datetime
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
 class Chart:
     """A line chart over time.
 
@@ -94,6 +105,7 @@ class Chart:
         log_scale: A logarithmic vertical axis, for growth over years.
         percent: Values are fractions, shown as percentages.
         shade: Fill between each line and zero, for drawdowns and exposure.
+        marks: Moments to mark, such as the day trading halted.
     """
 
     title: str
@@ -102,6 +114,7 @@ class Chart:
     log_scale: bool = False
     percent: bool = False
     shade: bool = False
+    marks: tuple[Mark, ...] = ()
 
 
 type Block = Paragraph | Bullets | Callout | Table | Chart
@@ -186,6 +199,20 @@ def render_chart_svg(chart: Chart) -> str:
                 axes.fill_between(
                     moments, values, 0, color=colour, alpha=0.12, linewidth=0, rasterized=True
                 )
+        for mark in chart.marks:
+            moment = _year(mark.at)
+            axes.axvline(moment, color=MARK_COLOUR, linewidth=0.9, linestyle="--")
+            axes.annotate(
+                mark.label,
+                (moment, 1.0),
+                xycoords=("data", "axes fraction"),
+                xytext=(3, -3),
+                textcoords="offset points",
+                ha="left",
+                va="top",
+                color=MARK_COLOUR,
+                fontsize=8,
+            )
         if chart.log_scale:
             axes.set_yscale("log")
             # Labels at 1, 2 and 5 of each power of ten: 10,000, 20,000, 50,000...

@@ -15,12 +15,14 @@ from hypothesis import strategies as st
 
 from tests.support.risk import guardrails, profile
 from tyche.core.domain import (
+    AccountTrigger,
     AssetClass,
     Contribution,
     Currency,
     Instrument,
     InstrumentTarget,
     Money,
+    RiskRule,
     Sleeve,
     SleeveStatus,
 )
@@ -205,3 +207,22 @@ def test_new_positions_only_fill_free_places(case: Case) -> None:
         mine = [k for k in case.held if k[0] == strategy_id]
         entries = {k for k in approved if k[0] == strategy_id and k not in case.held}
         assert len(entries) <= max(limit - len(staying(case, approved, mine)), 0)
+
+
+LOSING_DAY = AccountTrigger(
+    RiskRule.DAILY_LOSS_LIMIT,
+    AS_OF,
+    Money(Decimal(10000), Currency.USD),
+    Money(Decimal(9500), Currency.USD),
+    Decimal("0.03"),
+    "lost 5% since the previous close",
+)
+
+
+@given(cases())
+def test_after_a_losing_session_nothing_is_entered_or_added_to(case: Case) -> None:
+    result = review(case.proposed, case.held, case.closes, case.limits, daily_loss=LOSING_DAY)
+    ApprovedPortfolioEvent(AS_OF, case.proposed.sleeves, result.targets, "test", result.adjustments)
+    for key, weight in weights(result.targets).items():
+        holding = case.held.get(key, Decimal(0))
+        assert weight <= holding.quantize(WEIGHT_PLACES, rounding=ROUND_CEILING)

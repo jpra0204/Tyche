@@ -9,12 +9,14 @@ from decimal import Decimal
 from enum import Enum
 
 from tyche.core.domain import (
+    AccountTrigger,
     Contribution,
     Exclusion,
     Instrument,
     InstrumentTarget,
     OrderAdjustment,
     RiskAdjustment,
+    RiskRule,
     ScoredInstrument,
     Sleeve,
     SleeveStatus,
@@ -249,23 +251,25 @@ class TargetPortfolioEvent(Event):
 
 @dataclass(frozen=True, slots=True)
 class RiskEvent(Event):
-    """One change the risk layer made, under one rule (ADR-0033, ADR-0034).
+    """One thing the risk layer did, under one rule (ADR-0033, ADR-0034, ADR-0035).
 
-    The risk gate publishes one for every contribution it shrinks or blocks, before
-    the ``ApprovedPortfolioEvent`` that lists them all. Execution publishes one for
-    every purchase it cuts to fit the guardrails' money caps, before its
-    ``ExecutionPlanEvent``.
+    The risk gate publishes one for every account rule that reaches its limit at a
+    session close, as soon as that close's ``AccountEvent`` arrives, and one for every
+    contribution it shrinks or blocks, before the ``ApprovedPortfolioEvent`` that lists
+    them all. Execution publishes one for every purchase it cuts to fit the guardrails'
+    money caps, before its ``ExecutionPlanEvent``.
 
     Attributes:
-        as_of: The decision time.
+        as_of: The decision time, or for an account rule the close it was measured at.
         profile: The name of the active risk profile.
-        adjustment: What changed, under which rule, and why: a ``RiskAdjustment`` (a
-            weight, from the gate) or an ``OrderAdjustment`` (shares, from execution).
+        adjustment: What happened, under which rule, and why: a ``RiskAdjustment`` (a
+            weight, from the gate), an ``OrderAdjustment`` (shares, from execution) or
+            an ``AccountTrigger`` (an account rule reached its limit, from the gate).
     """
 
     as_of: datetime
     profile: str
-    adjustment: RiskAdjustment | OrderAdjustment
+    adjustment: RiskAdjustment | OrderAdjustment | AccountTrigger
 
     def __post_init__(self) -> None:
         require_utc(self.as_of, "RiskEvent as_of")
@@ -318,6 +322,10 @@ class ApprovedPortfolioEvent(Event):
     ``adjustments``, in the order the gate made it, and was published as a
     ``RiskEvent`` just before this event.
 
+    Once the drawdown kill has triggered, every approval carries it as ``halt``, with
+    no targets and no adjustments, and ``wanted`` keeps everything: execution sends no
+    order until a manual restart (ADR-0035).
+
     Attributes:
         as_of: The decision time.
         sleeves: One per strategy with a budget, ordered by strategy id.
@@ -326,6 +334,7 @@ class ApprovedPortfolioEvent(Event):
         profile: The name of the risk profile the gate applied.
         adjustments: Every change the gate made to the proposal, in order. Empty when
             it approved the proposal as it was.
+        halt: The drawdown kill that halted trading, or ``None``.
     """
 
     as_of: datetime
@@ -333,12 +342,22 @@ class ApprovedPortfolioEvent(Event):
     targets: tuple[InstrumentTarget, ...]
     profile: str
     adjustments: tuple[RiskAdjustment, ...] = ()
+    halt: AccountTrigger | None = None
 
     def __post_init__(self) -> None:
         _require_portfolio("ApprovedPortfolioEvent", self.as_of, self.sleeves, self.targets)
         if not self.profile.strip():
             raise ValueError("ApprovedPortfolioEvent: needs the name of the risk profile")
         _require_adjustments(self.targets, self.adjustments)
+        if self.halt is not None:
+            if self.halt.rule is not RiskRule.DRAWDOWN_KILL:
+                raise ValueError(
+                    f"ApprovedPortfolioEvent: only the drawdown kill halts, not {self.halt.rule}"
+                )
+            if self.halt.at > self.as_of:
+                raise ValueError("ApprovedPortfolioEvent: halted by a trigger after it")
+            if self.targets or self.adjustments:
+                raise ValueError("ApprovedPortfolioEvent: a halted approval approves nothing")
 
     def sleeve(self, strategy_id: str) -> Sleeve:
         return _sleeve(self.sleeves, strategy_id)
@@ -348,9 +367,11 @@ class ApprovedPortfolioEvent(Event):
 
         Returns the sleeve's contribution if it has one; ``None`` if it decided on the
         instrument and did not target it (a target of zero); ``KEEP`` otherwise (not
-        offered this cycle, or the sleeve failed): keep what it holds.
+        offered this cycle, the sleeve failed, or trading is halted): keep what it holds.
         """
         sleeve = self.sleeve(strategy_id)
+        if self.halt is not None:
+            return KEEP
         if sleeve.status is not SleeveStatus.DECIDED or instrument not in sleeve.decided_on:
             return KEEP
         for target in self.targets:

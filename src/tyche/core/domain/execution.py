@@ -79,6 +79,10 @@ class PlanNote(StrEnum):
     CAPPED = "capped"
     """The purchase was cut to fit the guardrails' money caps (ADR-0034)."""
 
+    HALTED = "halted"
+    """The drawdown kill has halted trading: what the sleeve holds is kept, and no
+    order is sent (ADR-0035)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PlanLine:

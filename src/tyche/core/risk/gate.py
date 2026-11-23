@@ -1,13 +1,21 @@
 """The risk gate (pipeline stage 5): the only publisher of ``ApprovedPortfolioEvent``.
 
 Execution acts on nothing else (ADR-0006), so every order passes through here by
-construction. ``RiskGate`` applies the position rules of the active risk profile and
-of each strategy's ``[risk]`` table to every proposed portfolio (ADR-0033). It only
-ever lowers or removes a contribution, never raises or adds one, and records every
-change as a ``RiskAdjustment``, published as a ``RiskEvent``.
+construction. ``RiskGate`` applies the account rules of the active risk profile
+(ADR-0015, ADR-0035) and the position rules of the profile and of each strategy's
+``[risk]`` table (ADR-0033) to every proposed portfolio. It only ever lowers or
+removes a contribution, never raises or adds one, and records every change as a
+``RiskAdjustment``, published as a ``RiskEvent``.
 
-The rules, in the order they apply (``review``):
+At every session close it measures the account (``AccountRules``) and publishes a
+``RiskEvent`` for each account rule that triggers. Once the **drawdown kill** has
+triggered, every decision is approved with nothing in it and the halt attached:
+execution keeps every holding and sends no order, for the rest of the run.
 
+Otherwise the rules, in the order they apply (``review``):
+
+0. **The daily loss limit**, if it triggered at this close: every contribution above
+   what its sleeve holds comes down to the holding, so nothing is entered or added to.
 1. **Each contribution on its own.** A strategy's own ``max_position_size`` caps its
    contribution. Then **risk per trade**, on entries and additions that carry a stop:
    the loss from the decision's close to the stop may be at most ``risk_per_trade`` of
@@ -33,6 +41,7 @@ from typing import Protocol
 
 from tyche.core.domain import (
     Account,
+    AccountTrigger,
     Contribution,
     Currency,
     Instrument,
@@ -54,6 +63,7 @@ from tyche.core.events import (
     RiskEvent,
     TargetPortfolioEvent,
 )
+from tyche.core.risk.account import AccountRules
 from tyche.core.risk.limits import RiskLimits
 
 SUBSCRIBER = "risk"
@@ -184,6 +194,27 @@ class _Reviewer:
         self.weights[key] = after
 
     # --- the rules -------------------------------------------------------------------
+
+    def daily_loss(self, trigger: AccountTrigger) -> None:
+        """No entry and no addition after a losing session (ADR-0015)."""
+        why = (
+            f"daily loss limit {trigger.limit}: equity fell "
+            f"{trigger.loss.quantize(Decimal('0.0001'))} since the previous close, so "
+            "nothing is entered or added to at this close"
+        )
+        for key in self.contributions:
+            holding = self.held.get(key, Decimal(0))
+            allowed = _up(holding)
+            if self.weights[key] > allowed:
+                reason = why if not holding else f"{why}; {key[0]} keeps the {allowed} it holds"
+                self.adjust(
+                    key,
+                    allowed,
+                    RiskRule.DAILY_LOSS_LIMIT,
+                    RiskScope.ACCOUNT,
+                    trigger.limit,
+                    reason,
+                )
 
     def each_contribution(self) -> None:
         for key, contribution in self.contributions.items():
@@ -318,8 +349,11 @@ def review(
     held: Mapping[tuple[str, Instrument], Decimal],
     closes: Mapping[Instrument, Money],
     limits: RiskLimits,
+    *,
+    daily_loss: AccountTrigger | None = None,
 ) -> Review:
-    """Apply the position rules to one proposed portfolio. Pure: no bus, no state.
+    """Apply the daily loss limit and the position rules to one proposed portfolio.
+    Pure: no bus, no state.
 
     Args:
         proposed: The proposal.
@@ -328,12 +362,19 @@ def review(
         closes: The latest close of every instrument, at least of every one whose
             target carries a stop.
         limits: The guardrails, the active profile and each strategy's own limits.
+        daily_loss: The daily loss limit's trigger at the decision's close, or ``None``
+            when it did not trigger.
 
     Raises:
-        RiskGateError: A target with a stop has no closing price.
+        RiskGateError: A target with a stop has no closing price, or ``daily_loss`` is
+            not a daily loss trigger.
     """
+    if daily_loss is not None and daily_loss.rule is not RiskRule.DAILY_LOSS_LIMIT:
+        raise RiskGateError(f"review was given a {daily_loss.rule} trigger as the daily loss")
     with localcontext(prec=_PRECISION, rounding=ROUND_FLOOR):
         reviewer = _Reviewer(proposed, held, closes, limits)
+        if daily_loss is not None:
+            reviewer.daily_loss(daily_loss)
         reviewer.each_contribution()
         reviewer.sleeve_positions()
         reviewer.account_positions()
@@ -345,7 +386,8 @@ class RiskGate:
     """Pipeline stage 5. Approves every ``TargetPortfolioEvent``, within the limits.
 
     Subscribe it after the account state, so that each decision finds the snapshot of
-    the same close, as execution does.
+    the same close, as execution does. It measures the account rules at every
+    ``AccountEvent``, whether or not a decision follows.
 
     Args:
         bus: The run's event bus.
@@ -368,6 +410,7 @@ class RiskGate:
         self._holdings = holdings
         self._money = dict(money) if money is not None else {}
         self._account: AccountEvent | None = None
+        self._rules = AccountRules(limits.profile)
         self._closes: dict[Instrument, Money] = {}
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
         bus.subscribe(AccountEvent, self._on_account, name=SUBSCRIBER)
@@ -378,14 +421,30 @@ class RiskGate:
         # ``repr`` gives the shortest decimal that round-trips, as execution reads it.
         self._closes[bar.instrument] = Money(Decimal(repr(bar.close)), bar.instrument.currency)
 
+    @property
+    def halt(self) -> AccountTrigger | None:
+        """The drawdown kill that halted trading, or ``None``."""
+        return self._rules.halt
+
     def _on_account(self, envelope: Envelope[AccountEvent]) -> None:
-        self._account = envelope.event
+        event = envelope.event
+        self._account = event
+        for trigger in self._rules.close(event.as_of, event.account):
+            self._bus.publish(RiskEvent(event.as_of, self._limits.profile.name, trigger))
 
     def _on_target(self, envelope: Envelope[TargetPortfolioEvent]) -> None:
         proposed = envelope.event
-        held = self._held(self._snapshot(proposed))
-        result = review(proposed, held, self._closes, self._limits)
+        account = self._snapshot(proposed)
         name = self._limits.profile.name
+        halt = self._rules.halt
+        if halt is not None:
+            self._bus.publish(
+                ApprovedPortfolioEvent(proposed.as_of, proposed.sleeves, (), name, halt=halt)
+            )
+            return
+        held = self._held(account)
+        daily_loss = self._rules.daily_loss(proposed.as_of)
+        result = review(proposed, held, self._closes, self._limits, daily_loss=daily_loss)
         for adjustment in result.adjustments:
             self._bus.publish(RiskEvent(proposed.as_of, name, adjustment))
         self._bus.publish(

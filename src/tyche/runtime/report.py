@@ -29,6 +29,7 @@ from tyche.adapters.reports import (
     Chart,
     Document,
     Line,
+    Mark,
     Paragraph,
     Section,
     Table,
@@ -195,6 +196,23 @@ def backtest_report(record: Record) -> Document:
         )
     if not run["outcome"]["completed"]:
         callouts.append(Callout(f"The run halted: {run['outcome']['failure']}", Tone.WARNING))
+    halt = _halt(run)
+    if halt is not None:
+        callouts.append(
+            Callout(
+                f"The drawdown kill halted trading on {fmt_day(halt['at'])}: equity of "
+                f"{fmt_amount(halt['equity']['amount'])} {halt['equity']['currency']} was "
+                f"{fmt_pct(halt['drawdown'])} below its peak of "
+                f"{fmt_amount(halt['peak']['amount'])} {halt['peak']['currency']}, at or "
+                "beyond the limit of "
+                f"{fmt_pct(halt['limit'])}. From that close on, no order was sent: what was "
+                "held stayed held, marked at each close, with any stop already resting still "
+                "able to sell. In paper or live, trading would resume only when you restart "
+                "it; the backtest cannot know when you would, so it shows what happens if "
+                "you do not.",
+                Tone.WARNING,
+            )
+        )
     return Document(
         title=f"Backtest {run['run_id']}",
         subtitle=subtitle,
@@ -255,6 +273,8 @@ def _summary(record: Record) -> Section:
         ("Exposure", fmt_pct(mine["exposure"]), fmt_pct(bench["exposure"]), ""),
     )
     benchmark_name = f"{bench['instrument']} total return"
+    halt = _halt(record.run)
+    marks = (Mark(_moment(halt["at"]), "halted"),) if halt is not None else ()
     blocks: list[Block] = [
         Paragraph(
             f"Your strategies together, against the benchmark, {bench['instrument']}'s "
@@ -275,6 +295,7 @@ def _summary(record: Record) -> Section:
             ),
             metrics["currency"],
             log_scale=True,
+            marks=marks,
         ),
         Chart(
             "Drawdown: fall from the highest close so far",
@@ -285,6 +306,7 @@ def _summary(record: Record) -> Section:
             "below peak",
             percent=True,
             shade=True,
+            marks=marks,
         ),
         Paragraph("The equity chart's scale is logarithmic: equal heights are equal percentages."),
     ]
@@ -474,6 +496,12 @@ def _risk(run: dict[str, Any]) -> str:
         f"{risk['max_open_positions']} positions of at most "
         f"{fmt_pct(risk['max_position_size'])} each"
     )
+    applied = risk.get("applied", [])
+    if "drawdown_kill" in applied:
+        text += (
+            f", a daily loss limit of {fmt_pct(risk['daily_loss_limit'])} and a drawdown "
+            f"kill at {fmt_pct(risk['drawdown_kill'])}"
+        )
     for strategy_id, own in risk["strategies"].items():
         text += f"; {strategy_id}'s own " + ", ".join(f"{k} {v}" for k, v in own.items())
     caps = risk.get("money_caps")
@@ -489,7 +517,26 @@ def _risk(run: dict[str, Any]) -> str:
     text += f". The gate shrank {shrunk} contributions and blocked {blocked}"
     if orders:
         text += f"; the money caps cut {sum(orders.values())} purchases"
+    rules = run["outcome"].get("account_rules")
+    if rules is not None:
+        daily = rules["daily_loss_limit_triggers"]
+        text += (
+            f". The daily loss limit triggered after {daily} "
+            f"{'session' if daily == 1 else 'sessions'}"
+        )
+        halt = rules["halt"]
+        text += (
+            f", and the drawdown kill halted trading on {fmt_day(halt['at'])}"
+            if halt is not None
+            else ", and the drawdown kill never triggered"
+        )
     return text
+
+
+def _halt(run: dict[str, Any]) -> dict[str, Any] | None:
+    """The drawdown kill's halt, or ``None``, also for a record older than the account rules."""
+    rules = run["outcome"].get("account_rules")
+    return rules["halt"] if rules is not None else None
 
 
 def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:

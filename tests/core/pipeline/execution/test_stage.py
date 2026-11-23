@@ -19,6 +19,7 @@ from tests.support.recording import Recorder, TickingClock
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.domain import (
     Account,
+    AccountTrigger,
     Bar,
     Contribution,
     Currency,
@@ -31,6 +32,7 @@ from tyche.core.domain import (
     PlanLine,
     PlanNote,
     PriceAdjustment,
+    RiskRule,
     Side,
     Sleeve,
     SleeveStatus,
@@ -141,11 +143,17 @@ class Desk:
             self.bus.drain()
 
     def decide(
-        self, day: date, sleeves: tuple[Sleeve, ...], *targets: InstrumentTarget
+        self,
+        day: date,
+        sleeves: tuple[Sleeve, ...],
+        *targets: InstrumentTarget,
+        halt: AccountTrigger | None = None,
     ) -> list[Event]:
         """Publish the approved portfolio for ``day``'s close; return what it caused."""
         before = len(self.recorder)
-        approved = ApprovedPortfolioEvent(close_of(day), sleeves, targets, "pass-through")
+        approved = ApprovedPortfolioEvent(
+            close_of(day), sleeves, targets, "pass-through", halt=halt
+        )
         self.bus.publish(approved, source="risk", cycle_id=f"XNYS:{day.isoformat()}:1d")
         self.bus.drain()
         return self.recorder.events[before + 1 :]
@@ -506,6 +514,46 @@ class TestStops:
 
         assert [q for _, q, _ in self.stop_orders(desk)] == [D(30)]
         assert desk.book.positions_of("b")[0].stop_price is None
+
+
+def halted_on(day: date) -> AccountTrigger:
+    return AccountTrigger(
+        RiskRule.DRAWDOWN_KILL,
+        close_of(day),
+        usd("10000"),
+        usd("8000"),
+        D("0.15"),
+        "fell 20% below the peak",
+    )
+
+
+class TestHalted:
+    """After the drawdown kill, execution keeps everything and sends nothing (ADR-0035)."""
+
+    def test_keeps_every_holding_and_sends_no_order(self) -> None:
+        desk = TestStops().entered_with_a_stop()
+        desk.trade(THU, ohlc(THU, "100"))
+
+        # The strategy wants out of SPY and into QQQ; the halt keeps SPY and buys nothing.
+        caused = desk.decide(
+            THU,
+            (decided("a", "1", SPY, QQQ),),
+            halt=halted_on(WED),
+        )
+
+        assert desk.submitted(caused) == []
+        assert not any(isinstance(e, CancelRequestEvent) for e in caused)
+        assert desk.plan(caused) == (PlanLine("a", SPY, D(50), D(50), note=PlanNote.HALTED),)
+        assert desk.book.held("a", SPY) == 50
+
+    def test_a_stop_already_resting_can_still_sell(self) -> None:
+        desk = TestStops().entered_with_a_stop()
+        desk.decide(WED, (decided("a", "1", SPY),), halt=halted_on(WED))
+
+        desk.trade(THU, ohlc(THU, "96", low="94"))
+
+        assert [f.fill.side for f in desk.fills()] == [Side.BUY, Side.SELL]
+        assert desk.book.positions_of("a") == ()
 
 
 class TestSettlementAtTheEndOfTheCalendar:

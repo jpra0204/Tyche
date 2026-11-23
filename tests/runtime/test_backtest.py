@@ -14,11 +14,20 @@ from pathlib import Path
 import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
+from tests.core.backtest.test_runner import CRASH, KILL_LIMITS, SyntheticData
+from tests.core.backtest.test_runner import calendars as runner_calendars
+from tests.core.backtest.test_runner import spec as runner_spec
 from tests.support.workspace import keep_candidates
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data import YFinanceSource
 from tyche.config import TycheConfig, Workspace, init_workspace, load_config
-from tyche.core.backtest import BacktestMetrics, BacktestResult, HoldoutError, MetricsError
+from tyche.core.backtest import (
+    BacktestMetrics,
+    BacktestResult,
+    HoldoutError,
+    MetricsError,
+    run_backtest,
+)
 from tyche.core.domain import AssetClass, Currency
 from tyche.core.sim import SimClock
 from tyche.runtime import backtest as runtime_backtest
@@ -26,6 +35,8 @@ from tyche.runtime.backtest import (
     BacktestOutcome,
     BacktestRequestError,
     CodeVersion,
+    account_rules_record,
+    adjustments_record,
     current_code_version,
     run_configured_backtest,
 )
@@ -150,7 +161,13 @@ class TestTheRunRecord:
             "max_position_size": "0.20",
             "daily_loss_limit": "0.03",
             "drawdown_kill": "0.15",
-            "applied": ["risk_per_trade", "max_open_positions", "max_position_size"],
+            "applied": [
+                "risk_per_trade",
+                "max_open_positions",
+                "max_position_size",
+                "daily_loss_limit",
+                "drawdown_kill",
+            ],
             "strategies": {},
             "money_caps": None,  # a research backtest keeps its own starting cash
         }
@@ -158,6 +175,29 @@ class TestTheRunRecord:
         # at 20% every time.
         sessions = len(NYSE.sessions_between(FIRST, LAST))
         assert record["outcome"]["risk_adjustments"] == {"max_position_size.shrink": sessions}
+        assert record["outcome"]["account_rules"] == {
+            "daily_loss_limit_triggers": 0,
+            "halt": None,
+        }
+
+    def test_records_a_halt_and_counts_triggers_apart_from_cuts(self) -> None:
+        result = run_backtest(
+            runner_spec(risk=KILL_LIMITS),
+            SyntheticData(crash_on=CRASH),
+            runner_calendars(),
+        )
+
+        rules = account_rules_record(result)
+        assert rules["daily_loss_limit_triggers"] == 1
+        halt = rules["halt"]
+        assert halt["at"].startswith(CRASH.isoformat())
+        assert halt["limit"] == "0.15"
+        assert Decimal(halt["drawdown"]) >= Decimal("0.15")
+        assert Decimal(halt["equity"]["amount"]) < Decimal(halt["peak"]["amount"])
+        assert not any(
+            key.startswith(("daily_loss_limit", "drawdown_kill"))
+            for key in adjustments_record(result)
+        )
 
     def test_names_the_benchmark_and_the_data_it_used(self, config: TycheConfig) -> None:
         record = json.loads((backtest(config).record_dir / "run.json").read_text())

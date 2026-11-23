@@ -113,6 +113,50 @@ def test_names_money_caps_and_the_purchases_they_cut_when_a_run_applied_them(
     assert "the money caps cut 2 purchases" in page
 
 
+def test_names_the_account_rules_and_what_triggered(folder: Path) -> None:
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "a daily loss limit of 3.00% and a drawdown kill at 15.00%" in page
+    assert "The daily loss limit triggered after 0 sessions" in page
+    assert "the drawdown kill never triggered" in page
+    assert "The drawdown kill halted trading" not in page
+
+
+def test_a_halt_is_said_and_marked_on_the_charts(folder: Path) -> None:
+    run = json.loads((folder / "run.json").read_text())
+    run["outcome"]["account_rules"] = {
+        "daily_loss_limit_triggers": 1,
+        "halt": {
+            "at": "2023-11-08T21:00:00+00:00",
+            "peak": {"amount": "10100", "currency": "USD"},
+            "equity": {"amount": "8500", "currency": "USD"},
+            "drawdown": "0.158416",
+            "limit": "0.15",
+        },
+    }
+    (folder / "run.json").write_text(json.dumps(run))
+
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "The drawdown kill halted trading on 2023-11-08" in page
+    assert "15.84% below its peak of 10,100.00 USD" in page
+    assert "trading would resume only when you restart" in page
+    assert "triggered after 1 session, and the drawdown kill halted trading on" in page
+    assert page.count(">halted<") == 2  # one mark on each chart over time
+
+
+def test_a_record_from_before_the_account_rules_says_nothing_of_them(folder: Path) -> None:
+    run = json.loads((folder / "run.json").read_text())
+    del run["outcome"]["account_rules"]
+    run["risk"]["applied"] = ["risk_per_trade", "max_open_positions", "max_position_size"]
+    (folder / "run.json").write_text(json.dumps(run))
+
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "daily loss" not in page
+    assert "drawdown kill" not in page
+
+
 def test_a_record_from_before_the_risk_gate_says_so(folder: Path) -> None:
     run = json.loads((folder / "run.json").read_text())
     del run["risk"]

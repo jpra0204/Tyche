@@ -136,8 +136,11 @@ Portfolio construction (`tyche.core.pipeline.portfolio`) turns each cycle's sign
 
 ### The risk gate
 
-`RiskGate` (`tyche.core.risk`) applies the active risk profile, and each strategy's own `[risk]` table, to every proposed portfolio ([ADR-0033](../adr/0033-risk-gate-position-rules.md)). It only lowers or removes contributions, in this order:
+`RiskGate` (`tyche.core.risk`) applies the active risk profile, and each strategy's own `[risk]` table, to every proposed portfolio ([ADR-0033](../adr/0033-risk-gate-position-rules.md), [ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)).
 
+At every `AccountEvent` it measures the account's equity (`AccountRules`) and publishes a `RiskEvent` for each account rule that triggers. Once the **drawdown kill** has triggered (equity at least `drawdown_kill` below the highest close so far), every decision is approved with no targets and the halt attached, and execution keeps everything and sends no order. Nothing in a run lifts it; a halted backtest runs on to its last day. Otherwise the gate only lowers or removes contributions, in this order:
+
+0. **The daily loss limit**, if equity fell at least `daily_loss_limit` since the previous close: every contribution above what its sleeve holds comes down to the holding.
 1. **Each contribution on its own:** a strategy's own position cap; then **risk per trade**, on entries and additions with a stop, at most `risk_per_trade × close / (close − stop)` of equity, never below what the sleeve already holds.
 2. **Open positions,** per sleeve (a strategy's own count), then for the account: what stays held keeps its place, new entries fill what is free, largest weight first, ties by symbol. A holding sold to zero frees its place.
 3. **Position size for the account:** each instrument across every sleeve, counting what sleeves keep without deciding; above the cap, every contribution shrinks by the same proportion.

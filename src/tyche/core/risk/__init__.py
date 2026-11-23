@@ -10,11 +10,14 @@ Available now:
 * ``RiskGate``, which applies the position rules to every proposed portfolio: risk per
   trade, max position size and max open positions (ADR-0033). Its rules are the pure
   function ``review``, and it reads holdings through the ``Holdings`` protocol.
+* The account rules (ADR-0015, ADR-0035): ``AccountRules`` measures equity at every
+  close; the daily loss limit blocks entries and additions at that close, and the
+  drawdown kill halts trading for the rest of the run.
 
-Planned (Phase 2): the account rules (the daily loss limit and the drawdown kill
-switch) and halts.
+Planned (Phase 2): lifting a halt by a manual restart, with the kill switch (PR 8).
 """
 
+from tyche.core.risk.account import AccountRules
 from tyche.core.risk.gate import (
     WEIGHT_PLACES,
     Holdings,
@@ -37,6 +40,7 @@ from tyche.core.risk.limits import (
 __all__ = [
     "DEFAULT_RISK_PROFILE",
     "WEIGHT_PLACES",
+    "AccountRules",
     "Guardrails",
     "Holdings",
     "LimitBreach",

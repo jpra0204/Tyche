@@ -1,6 +1,6 @@
 # System overview
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Phase 1 (version 0.1.0) implements the trading path for backtests: data, universe, screening, signals, portfolio, a pass-through risk gate, execution, the simulated broker and an in-memory journal. Phase 2 adds the risk gate's position rules (ADR-0033); account risk rules, reconciliation, paper and live trading, stored state, notifications and agents come in later phases; the [event catalog](event-catalog.md) marks what each event's status is, and [`STATUS.md`](../../STATUS.md) what works today.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Phase 1 (version 0.1.0) implements the trading path for backtests: data, universe, screening, signals, portfolio, a pass-through risk gate, execution, the simulated broker and an in-memory journal. Phase 2 adds the risk gate's position rules (ADR-0033), the order-level guardrails (ADR-0034) and the account rules (ADR-0035); reconciliation, paper and live trading, stored state, notifications and agents come in later phases; the [event catalog](event-catalog.md) marks what each event's status is, and [`STATUS.md`](../../STATUS.md) what works today.*
 
 This is the one document to read to understand how Tyche is put together. Each section links to the ADR that records the decision behind it.
 
@@ -175,8 +175,8 @@ Other safety mechanisms:
 |---|---|---|
 | Position sizing | With a stop: sized so a stop-out loses at most the profile's risk per trade. Always: capped by max position size and max open positions. | 2 |
 | Protective stops | A target may carry a stop price. The stop rests at the broker, so it works while Tyche is not running. | 1 (sim), 2 (IBKR) |
-| Daily loss limit | Measured close to close, including stop-outs and fees. When hit, the decision at that close opens no new positions ([ADR-0015](../adr/0015-daily-loss-limit.md)). | 2 |
-| Drawdown kill switch | Checked every time Tyche runs. Halts everything; only a manual restart resumes. | 2 |
+| Daily loss limit | Measured close to close, including stop-outs and fees. When hit, the decision at that close opens no new positions and adds to none ([ADR-0015](../adr/0015-daily-loss-limit.md), [ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
+| Drawdown kill switch | Checked at every close. A latch: once hit, the gate approves nothing and execution sends no order; resting stops stay. Only a manual restart resumes (PR 8). A backtest runs on to its last day without trading ([ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
 | Manual kill switch | `KILL` flag file plus a CLI command. No new orders; optional flatten. | 2 |
 | Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
 | Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
