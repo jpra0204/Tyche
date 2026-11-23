@@ -74,6 +74,8 @@ start = store.latest()  # None before the first run
 store.save(checkpoint)  # after the run's journal is stored
 ```
 
+**A manual restart is a run too.** `tyche resume` ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)) stores a run named `resume-<time>` with one envelope, a `ResumeEvent` (source `cli`). If the latest checkpoint carries a drawdown halt, the same run saves a checkpoint with the same account, sleeves and orders, and the rules from `AccountRulesState.resumed()`: no halt and no peak. So the chain of checkpoints stays the one record of state, and the journal says who lifted the halt and why. Its `saved_at` is the wall clock, and must be later than the latest checkpoint's: `tyche resume` checks that before it writes anything.
+
 ## Adding a migration
 
 1. Add `src/tyche/adapters/storage/migrations/NNNN_what_it_does.sql`, numbered one past the last file.

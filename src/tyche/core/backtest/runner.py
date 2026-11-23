@@ -49,7 +49,7 @@ from tyche.core.pipeline.portfolio import PortfolioStage
 from tyche.core.pipeline.screening import DollarVolumeScreen, ScreeningStage
 from tyche.core.pipeline.signals import SignalsStage, Strategy
 from tyche.core.pipeline.universe import UniverseStage
-from tyche.core.ports import Calendar, DataProvider, OutOfCalendarRangeError
+from tyche.core.ports import Calendar, DataProvider, KillSwitch, OutOfCalendarRangeError
 from tyche.core.risk import RiskGate, RiskLimits
 from tyche.core.sim import (
     FreeRidingViolation,
@@ -182,8 +182,13 @@ def run_backtest(
     calendars: Mapping[str, Calendar],
     *,
     resume: Resume | None = None,
+    kill_switch: KillSwitch | None = None,
 ) -> BacktestResult:
     """Run one backtest, from the starting cash or carrying on from ``resume``.
+
+    ``kill_switch`` is read by the risk gate at every decision, as in paper and live
+    (ADR-0039). Backtest commands give none: the workspace's ``KILL`` file stops
+    trading, not research. Tests give one to prove what an engaged switch does.
 
     Raises:
         HoldoutError: ``spec.last`` reaches the holdout.
@@ -240,6 +245,7 @@ def run_backtest(
         book,
         spec.money_limits,
         rules=resume.checkpoint.rules if resume else None,
+        kill_switch=kill_switch,
     )
     execution = ExecutionStage(
         bus,

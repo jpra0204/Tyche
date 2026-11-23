@@ -1,5 +1,5 @@
 """The `tyche` command, run as a user would: version, init, config, data, backtest,
-walk-forward and report."""
+walk-forward, report, kill and resume."""
 
 import json
 import re
@@ -17,12 +17,16 @@ from typer.testing import CliRunner
 
 import tyche
 from tests.adapters.data.test_yfinance_source import row
+from tests.runtime.test_kill_switch import save
+from tests.support import checkpoints
 from tests.support.market import JANUARY_2024
 from tests.support.workspace import BACKTEST, keep_candidates
 from tyche import cli
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
+from tyche.adapters.kill_switch import FlagFileKillSwitch
 from tyche.cli import app
+from tyche.config.workspace import Workspace
 from tyche.runtime import data as runtime_data
 from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
 from tyche.runtime.report import ReportError
@@ -847,3 +851,98 @@ class TestCapital:
         assert result.exit_code == 1
         assert message in plain(result.stderr)
         assert not (home / "tyche-workspace" / "reports" / "capital").exists()
+
+
+class TestKillAndResume:
+    """`tyche kill` and `tyche resume` (ADR-0039)."""
+
+    def workspace(self) -> Workspace:
+        runner.invoke(app, ["init"])
+        return Workspace(Path.home() / "tyche-workspace")
+
+    def test_kill_engages_the_switch_and_says_what_it_does(self, home: Path) -> None:
+        workspace = self.workspace()
+
+        result = runner.invoke(app, ["kill", "--reason", "looks wrong"])
+
+        assert result.exit_code == 0, result.output
+        assert "Kill switch engaged" in result.stdout
+        assert "Reason: looks wrong" in result.stdout
+        assert "holdings are kept; stops already resting stay" in result.stdout
+        assert "No paper or live run has saved state yet" in result.stdout
+        assert FlagFileKillSwitch(workspace.kill_file).read() is not None
+
+    def test_a_flatten_asks_first(self, home: Path) -> None:
+        workspace = self.workspace()
+
+        refused = runner.invoke(app, ["kill", "--flatten"], input="n\n")
+        assert refused.exit_code == 1
+        assert not workspace.kill_file.exists()
+
+        result = runner.invoke(app, ["kill", "--flatten"], input="y\n")
+        assert result.exit_code == 0, result.output
+        assert "every holding is sold at the next decision" in result.stdout
+        kill = FlagFileKillSwitch(workspace.kill_file).read()
+        assert kill is not None
+        assert kill.flatten
+
+    def test_kill_lists_the_orders_left_working_and_the_halt(self, home: Path) -> None:
+        workspace = self.workspace()
+        save(workspace, checkpoints.checkpoint())
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert "halted by the drawdown kill since 2024-01-03" in result.stdout
+        assert "20240103T210000Z-SPY.ARCX-buy: buy 3 SPY.ARCX market, day" in result.stdout
+        assert "sim-000001-stop-alpha: sell 6 SPY.ARCX stop at 440" in result.stdout
+        assert "They are not cancelled" in result.stdout
+
+    def test_kill_twice_without_flatten_keeps_a_flatten(self, home: Path) -> None:
+        self.workspace()
+        runner.invoke(app, ["kill", "--flatten", "--yes"])
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert "was already engaged" in result.stdout
+        assert "only `tyche resume` releases it" in result.stdout
+
+    def test_kill_refuses_a_folder_that_is_not_a_workspace(self, home: Path) -> None:
+        result = runner.invoke(app, ["kill", "--home", str(home / "nowhere")])
+
+        assert result.exit_code == 1
+        assert "no workspace at" in result.stderr
+        assert not (home / "nowhere" / "KILL").exists()
+
+    def test_resume_shows_what_it_lifts_and_asks(self, home: Path) -> None:
+        workspace = self.workspace()
+        save(workspace, checkpoints.checkpoint())
+        runner.invoke(app, ["kill", "--reason", "stop"])
+
+        refused = runner.invoke(app, ["resume", "--reason", "ok"], input="n\n")
+        assert refused.exit_code == 1
+        assert workspace.kill_file.exists()
+
+        result = runner.invoke(app, ["resume", "--reason", "ok"], input="y\n")
+        assert result.exit_code == 0, result.output
+        assert "Drawdown halt since 2024-01-03" in result.stdout
+        assert "the next close becomes the new peak" in result.stdout
+        assert "Lifted the kill switch and the drawdown halt." in result.stdout
+        assert "Recorded as run resume-" in result.stdout
+        assert not workspace.kill_file.exists()
+
+    def test_resume_with_nothing_to_lift(self, home: Path) -> None:
+        self.workspace()
+
+        result = runner.invoke(app, ["resume", "--reason", "ok"])
+
+        assert result.exit_code == 0, result.output
+        assert "Nothing to resume" in result.stdout
+
+    def test_resume_needs_a_reason(self, home: Path) -> None:
+        self.workspace()
+
+        result = runner.invoke(app, ["resume"])
+
+        assert result.exit_code == 2

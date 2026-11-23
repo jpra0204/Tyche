@@ -11,6 +11,7 @@ from tyche.core.domain import (
     DataIssue,
     DataIssueKind,
     DistributionKind,
+    Kill,
     OrderAdjustment,
     RiskAction,
     RiskRule,
@@ -22,6 +23,7 @@ from tyche.core.events import (
     DataQualityEvent,
     DistributionEvent,
     Event,
+    ResumeEvent,
     RiskEvent,
 )
 
@@ -34,6 +36,10 @@ DRAWDOWN = AccountTrigger(
     equity=usd("8400"),
     limit=Decimal("0.15"),
     reason="equity 16% below its peak",
+)
+
+FLATTEN = Kill(
+    "stopping everything", flatten=True, engaged_at=datetime(2024, 3, 18, 21, 4, tzinfo=UTC)
 )
 
 
@@ -69,4 +75,13 @@ def rare_events() -> tuple[Event, ...]:
             profile="stage-1",
             halt=DRAWDOWN,
         ),
+        ApprovedPortfolioEvent(
+            as_of=CLOSE,
+            sleeves=(Sleeve("rotation", Decimal(1), SleeveStatus.FAILED, error="no data"),),
+            targets=(),
+            profile="stage-1",
+            halt=DRAWDOWN,
+            kill=FLATTEN,
+        ),
+        ResumeEvent("looked at it, carrying on", kill=FLATTEN, halt=DRAWDOWN, after_run="paper-1"),
     )

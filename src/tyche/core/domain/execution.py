@@ -83,6 +83,14 @@ class PlanNote(StrEnum):
     """The drawdown kill has halted trading: what the sleeve holds is kept, and no
     order is sent (ADR-0035)."""
 
+    KILLED = "killed"
+    """The kill switch is engaged: what the sleeve holds is kept, and no order is sent
+    (ADR-0039)."""
+
+    FLATTENED = "flattened"
+    """The kill switch is engaged with flatten: the sleeve's holding is sold, its stop
+    cancelled first (ADR-0039)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PlanLine:

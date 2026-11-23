@@ -4,7 +4,9 @@ A runbook is a checklist for a specific situation, written to be followed when y
 
 ## Available now
 
-None. There is nothing running to operate until Phase 2.
+| Runbook | Situation |
+|---|---|
+| [`kill-switch.md`](kill-switch.md) | You want everything to stop now; and how to resume afterwards, after the kill switch or the drawdown halt |
 
 ## Planned
 
@@ -14,7 +16,6 @@ None. There is nothing running to operate until Phase 2.
 | `crash-recovery.md` | Tyche or the machine stopped unexpectedly | Phase 2 |
 | `maintenance.md` | Routine upkeep. Includes updating `exchange_calendars` regularly: the calendar knows only scheduled holidays, and an unscheduled closure (a storm, a day of mourning) appears only after a library update | Phase 2 |
 | `gateway-reauth.md` | Discord says the IBKR gateway needs a login or 2FA | Phase 2 |
-| `kill-switch.md` | You want everything to stop now; and how to resume afterwards | Phase 2 |
 | `reconciliation-mismatch.md` | Tyche halted because its records differ from the broker's | Phase 2 |
 | `paper-to-live-promotion.md` | Going live with a strategy that met the promotion criteria. Only Pablo performs this ([ADR-0013](../adr/0013-live-trading-gate.md)) | Phase 3 |
 

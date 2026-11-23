@@ -29,6 +29,11 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - The `CheckpointStore` port and `SqliteCheckpointStore`: migration `0002_checkpoint.sql`, one append-only row per run, tied to the run's stored journal, read back through `latest()` or `read(run_id)`. `codec.dumps_checkpoint` and `codec.loads_checkpoint`.
 - `run_backtest(..., resume=Resume(checkpoint, broker_state))` carries a backtest on from a checkpoint; `BacktestResult.checkpoint` and `.broker_state` give the state a completed run ended in. `SimBroker.state()`, `SimBroker.resume()` and `SimBrokerState`.
 - Learning note: checkpoints.
+- The kill switch (Phase 2, PR 8, ADR-0039): the `KILL` file at the workspace root (`Workspace.kill_file`). The `KillSwitch` port and `FlagFileKillSwitch`, which the risk gate reads at every decision (`RiskGate(..., kill_switch=)`); an empty or unreadable file engages it without flatten. While it is engaged the gate approves nothing and `ApprovedPortfolioEvent` carries it (`kill`, a `Kill` with `reason`, `flatten`, `engaged_at`). Without flatten, execution keeps everything and sends nothing (plan note `killed`); with flatten, it cancels every resting stop, then sells every holding of every sleeve (plan note `flattened`).
+- `tyche kill [--reason] [--flatten] [--yes]` writes the flag, never weakens one already engaged, and lists the orders the latest checkpoint left working at the broker (they are not cancelled) and any drawdown halt. It refuses a folder that is not a workspace.
+- `tyche resume --reason [--yes]`: the manual restart. It shows what it lifts and asks. It journals a `ResumeEvent` as a run of its own (`resume-<time>`). Under a drawdown halt, it also saves a checkpoint with the halt lifted and the peak forgotten (`AccountRulesState.resumed()`). It removes the flag last.
+- `run_backtest(..., kill_switch=)`, for tests; backtest commands read no switch.
+- Runbook: the kill switch. The circuit-breakers learning note covers a breaker a person trips.
 
 ### Changed
 

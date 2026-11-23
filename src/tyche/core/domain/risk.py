@@ -14,6 +14,10 @@ An ``AccountTrigger`` records one of the two account rules reaching its limit at
 session close: the daily loss limit (no entries or additions at that close) or the
 drawdown kill (a halt that lasts until a manual restart). It is published as a
 ``RiskEvent``, and the halt is carried on every ``ApprovedPortfolioEvent`` after it.
+
+A ``Kill`` is the kill switch, engaged by hand (ADR-0039): no new orders from the next
+decision on, and with ``flatten``, every holding sold. It is carried on every
+``ApprovedPortfolioEvent`` while it stays engaged.
 """
 
 from dataclasses import dataclass
@@ -273,3 +277,35 @@ class AccountTrigger:
             )
         if not self.reason.strip():
             raise ValueError(f"{label}: needs a reason")
+
+
+@dataclass(frozen=True, slots=True)
+class Kill:
+    """The kill switch, engaged by hand (ADR-0039).
+
+    While it is engaged, the risk gate approves nothing at every decision. Without
+    ``flatten``, execution keeps every holding and sends no order, as under the drawdown
+    halt; protective stops already resting stay. With ``flatten``, every holding of every
+    sleeve is approved at zero: execution cancels each resting stop, then sells.
+
+    It never reaches the broker by any other path: an order already working when it is
+    engaged is left to fill or expire.
+
+    Attributes:
+        reason: Why it was engaged, as given; for a flag file with nothing readable in
+            it, what was found.
+        flatten: Sell every holding at the next decision, rather than keep them.
+        engaged_at: When it was engaged, or ``None`` when the flag does not say.
+    """
+
+    reason: str
+    flatten: bool = False
+    engaged_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError("kill switch: needs a reason")
+        if not isinstance(self.flatten, bool):
+            raise ValueError(f"kill switch: flatten must be true or false, got {self.flatten!r}")
+        if self.engaged_at is not None:
+            require_utc(self.engaged_at, "kill switch engaged_at")
