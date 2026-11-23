@@ -48,7 +48,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0035](0035-account-rules-and-the-drawdown-halt.md) | The account rules: the daily loss limit in the gate, and a drawdown halt that a backtest runs through | Accepted (Pablo, 2026-11-23) |
 | [0036](0036-risk-profiles-side-by-side.md) | Risk profiles side by side, with no trials added and no pick, and one small-account profile per live stage | Accepted (Pablo, 2026-11-23) |
 | [0037](0037-state-database-migrations-and-stored-journal.md) | The state database, numbered SQL migrations, and a journal stored as tagged JSON | Accepted (Pablo, 2026-11-23) |
-| [0038](0038-checkpoints-across-restarts.md) | State across restarts: a checkpoint at the end of every run | Proposed |
+| [0038](0038-checkpoints-across-restarts.md) | State across restarts: a checkpoint at the end of every run | Accepted (Pablo, 2026-11-23) |
 
 ## Template
 

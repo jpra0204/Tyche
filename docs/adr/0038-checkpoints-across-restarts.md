@@ -1,6 +1,6 @@
 # ADR-0038: State across restarts: a checkpoint at the end of every run
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
