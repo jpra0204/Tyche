@@ -55,6 +55,7 @@ The interesting part is deciding what counts as "already have". A day the source
 
 - Days up to the last bar the source returned are covered, including any gap in the middle. Asking again would get the same answer.
 - Days after the last bar returned are not covered. The source may simply not have published them yet, and they must be asked for again.
+- An empty answer covers nothing, except for days that all fall before the earliest bar already cached. There the source has nothing because the instrument did not exist yet (GLD before November 2004), and that will not change. Those days are covered, and the audit keeps reporting them as missing sessions.
 
 If you have used a data-fetching library on the front end such as React Query or SWR, this is the same idea as a cache key with a stale-time, except that here "fresh" is decided per trading session by the calendar.
 

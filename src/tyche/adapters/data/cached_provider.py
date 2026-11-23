@@ -88,6 +88,12 @@ class CachedDataProvider:
     source may simply not have published them yet. A gap in the middle stays a gap:
     asking again would not change the answer.
 
+    An empty answer covers nothing, with one exception: when the request ends before
+    the earliest bar already cached, the source has nothing for those sessions because
+    the instrument did not exist yet (GLD before November 2004), and asking again will
+    not change that. The request is then covered, and the audit keeps reporting its
+    sessions as missing.
+
     Args:
         source: Where missing bars come from.
         cache: Where bars are kept between runs. Its source name must match.
@@ -191,6 +197,18 @@ class CachedDataProvider:
             max_move=self._max_move,
         )
         issues = data.issues + audited.issues
+        if not data.bars and self._ends_before_first_cached_bar(entry, window):
+            # Nothing exists this early. Record that it was asked, so it is not asked again.
+            updated = entry.merged(
+                (),
+                fetched_at=self._clock.now(),
+                covered=DateRange(first, last),
+                adjustment=self._source.adjustment,
+                distributions=data.distributions,
+                splits=data.splits,
+            )
+            self._cache.store(updated)
+            return updated, issues
         if not audited.bars:
             # Nothing usable came back: cover nothing, store nothing, ask again next time.
             return entry, issues
@@ -207,6 +225,13 @@ class CachedDataProvider:
         )
         self._cache.store(updated)
         return updated, issues
+
+    @staticmethod
+    def _ends_before_first_cached_bar(entry: CacheEntry, window: Sequence[Session]) -> bool:
+        """True if every session in ``window`` closed before the earliest cached bar."""
+        if not entry.rows or not window:
+            return False
+        return window[-1].closes_at < entry.rows[0].bar.timestamp
 
     @staticmethod
     def _invalidated_by_new_split(
