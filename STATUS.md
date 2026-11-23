@@ -115,9 +115,9 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 |---|---|---|---|
 | 1 | Guardrails and named risk profiles (**merged**) | `config/guardrails.toml`, `config/risk/<name>.toml` and per-strategy overrides, checked at startup in [ADR-0010](docs/adr/0010-config-toml-pydantic.md)'s order, each violation naming the file, key, value and limit. `tyche init` ships the `default` profile of brief §7.1; `tyche config check --risk-profile` prints the active profile | Decided 2026-11-23 ([ADR-0032](docs/adr/0032-risk-limits-in-three-layers.md), accepted 2026-11-23): a guardrail ceiling for every profile limit; money caps per cash currency, no exchange rate; a strategy's `[risk]` table may tighten risk per trade, position size and its own position count only. Every profile checked, only the active one hashed. `--risk-profile` on the backtest commands moved to PR 2 |
 | 2 | Risk gate: position rules (**merged**) | `--risk-profile` on every backtest command, recorded in the run record (moved from PR 1). `RiskGate` replaces `PassThroughGate`: risk-per-trade sizing for targets with a stop ([ADR-0006](docs/adr/0006-target-positions-with-optional-stops.md)), max position size, max open positions. `RiskEvent`, and `adjustments` on `ApprovedPortfolioEvent`. Property-based tests: no input yields an approved portfolio that breaks the profile or the guardrails | Decided 2026-11-23, before any code: (1) above max open positions, held positions keep their place and new entries fill the free places, largest target weight first, ties by symbol; every blocked entry recorded. (2) An instrument above max position size: every sleeve's contribution shrinks by the same proportion, each stop still sized to its own sleeve's shares. (3) Max position size applies at every cycle, to what is held too (the rebalance band prevents churn); risk per trade only on entries and additions, because with a fixed stop it would trim every winner. (4) A backtest without `--risk-profile` uses `default`; buy-and-hold then holds 20% SPY and the rotation at most 60%, and the PR documents it and reruns the examples under it. Also in the PR: risk per trade sized at the decision's close; a `RiskEvent` for every cut or block; the golden-file and reference tests run under a test profile that leaves their trades unchanged. An ADR records it |
-| 3 | Order-level guardrails | A last check in execution that every order is within the guardrails (long only, no leverage, max order value, capital cap), because orders are only sized in shares after the gate | Decide: refuse the order or shrink it; either way it is recorded, never silent |
+| 3 | Order-level guardrails | A last check in execution that every order is within the guardrails (long only, no leverage, max order value, capital cap), because orders are only sized in shares after the gate | Decide: refuse the order or shrink it; either way it is recorded, never silent. Agreed with Pablo on 2026-11-23: the money caps describe the real account, so they bind in paper and live; research backtests keep their `starting_cash` and apply only the percentage limits, and `tyche capital` checks a strategy at the account sizes Pablo plans to trade |
 | 4 | Daily loss limit and drawdown kill switch | [ADR-0015](docs/adr/0015-daily-loss-limit.md)'s close-to-close limit (no new entries or additions after a losing session); peak equity tracked by the risk layer; a drawdown halt that only a manual restart lifts; a `RiskEvent` for every trigger | Decide: what a halted backtest does for the rest of its days, and how the report shows it |
-| 5 | Risk profiles side by side | The same strategies under several profiles over the same days, reported side by side in one report: the brief's risk-profile sweeps | Decide: whether a profile comparison counts towards the plugin's trial count ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)); and the small-account profile from [ADR-0031](docs/adr/0031-minimum-viable-capital.md)'s proposed defaults, which is yours to decide |
+| 5 | Risk profiles side by side | The same strategies under several profiles over the same days, reported side by side in one report: the brief's risk-profile sweeps | Decide: whether a profile comparison counts towards the plugin's trial count ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)); and the small-account profile from [ADR-0031](docs/adr/0031-minimum-viable-capital.md)'s proposed defaults, which is yours to decide. It must be able to trade within your workspace's guardrails at the first live stage, where `default` (five positions of 20%) cannot |
 
 **B. Running state and operations (no broker yet)**
 
@@ -247,11 +247,10 @@ Two things in the brief's Phase 1 that this plan moves:
 
 | Decision | Needed by |
 |---|---|
-| Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
+| Branch protection for `main`: a PR is required and force-pushes are blocked (done 2026-11-23); still to do: require the CI check to pass. A GitHub setting only you can change | Now, recommended |
 | Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
 | PR 22's proposed defaults for a small account: Tiered for the real account; one or two positions below about USD 5,000, which needs a small-account risk profile with a single-position limit above 20%; low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)) | Phase 2, PR 5 |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
-| Opening an IBKR account and its paper account, if not done yet; approval can take days | Phase 2, PR 10 |
 | Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
 | SQLite migration approach | Phase 2, PR 6 |
 
@@ -280,11 +279,12 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 **Phase 2, PR 3 (order-level guardrails)**, when Pablo says to start it. Its one decision: refuse an order above the guardrails' money caps, or shrink it.
 
-Your workspace has the new risk files and passes `tyche config check` (checked 2026-11-23). Its guardrails are still the example values (USD 700 of capital, USD 350 per order); change them if you mean others. **PR 3 is where they start to bind**: from then on, a backtest's orders are checked against them too.
+Your workspace's guardrails are your own values now, and it passes `tyche config check` (checked 2026-11-23). Your IBKR account and its paper account are open and approved, so PR 10 is not waiting on anything.
 
-1. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
-2. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
-3. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
+Also decided on 2026-11-23: **no capital rule in the Phase 3 gate.** Promotion stays a manual decision for now, so whether a strategy is viable at your account size is evidence you read in `tyche capital`, not an automatic block.
+
+1. **Decisions still open from Phase 1**, in the table above: requiring the CI check on `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
+2. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
    git tag -a v0.1.0 979937f -m "Phase 1: core and backtesting" && git push origin v0.1.0
