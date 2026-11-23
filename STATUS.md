@@ -4,7 +4,13 @@
 
 ## Current phase
 
-**Phase 1: core and backtesting (`US`, end of day). All 23 PRs done; stopped for the Phase 1 review.** Pablo agreed the PR list below on 2026-11-16. Version 0.1.0.
+**Phase 2: risk and paper trading (`US`, end of day). Pablo agreed the PR list below on 2026-11-23; PR 1 starts when he says so.**
+
+**Phase 1 is done.** All 23 PRs are merged (the last, #28, on 2026-11-23), every ADR up to 0031 is accepted, and the version is 0.1.0. Its PR list and decisions are kept below for reference.
+
+<details>
+<summary>Phase 1, PR by PR</summary>
+
 
 - Phase 0 is merged.
 - PR 1 (domain types) is merged.
@@ -30,9 +36,12 @@
 - PR 21 (parameter sweeps) is merged; ADR-0030 accepted: every distinct trial ever recorded for a plugin is counted, the pick is the highest Sharpe ratio, it is reported with a deflated Sharpe ratio, and a sweep keeps one table of trials plus the pick's full record. One PR, not split.
 - Fix: the data cache now covers sessions before an instrument's first bar when the source has nothing for them, so the fetch hint for GLD and VNQ no longer loops. Merged (#25); no workspace change needed, and no need to delete cache files.
 - PR 22 (minimum viable capital) is merged; ADR-0031 accepted on 2026-11-23 (its proposed small-account defaults stay open, below). Decided with Pablo on 2026-11-22 and 23: the size penalty against a large reference account (within half a point a year, either way), a latest-close check of today's share prices (the one read of a holdout bar), capital varied but not positions, and a USD 100,000 reference after USD 1,000,000 proved too large for the rotation.
-- PR 23 (Phase 1 wrap-up) is in review: version 0.1.0; every user-guide command re-run in a fresh workspace; new pages for pipeline contracts and troubleshooting. **Phase 1 stops here for review.**
-- Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
+- PR 23 (Phase 1 wrap-up) is merged (#28): version 0.1.0; every user-guide command re-run in a fresh workspace; new pages for pipeline contracts and troubleshooting.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
+
+</details>
+
+Recommended, still: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 
 ## What works today
 
@@ -85,9 +94,68 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 | Settlement | Verify the cash-account rule and model it in `SimBroker` (PRs 9 and 10) |
 | Licence | All rights reserved for now |
 
+## Phase 2 plan: risk and paper trading (`US`, end of day)
+
+*Agreed by Pablo on 2026-11-23, with the three moves listed after the tables.* Twenty small PRs in five groups. Each PR includes its tests and docs, and a learning note when it introduces a pattern. A dependency is added in the PR that first uses it. The brief's Phase 2: the risk layer with named profiles and guardrails, profile comparison in backtests, the IBKR paper adapter, execution, reconciliation, the scheduler, the catch-up rule, the journal, the Discord webhook, the kill switch, Docker, and a user guide for running in paper.
+
+**Order.** Groups A and B need no broker account: the risk layer is pure core code, tested in backtests, and the running state and operations come next. That leaves time for the IBKR account and its paper account to be approved before group C needs them (PR 10).
+
+**Cost.** Nothing in this plan is meant to cost money. Three things are checked before they are added, and flagged in their PR if they are not free: the IBKR paper account (PR 10), the IB Gateway image and Docker on your Mac (PR 18), and market data. Paper decisions use the same free Yahoo daily bars as backtests; IBKR market data stays off, because it may need paid subscriptions (brief §4.5).
+
+**A. Risk layer (backtests only)**
+
+| # | PR | Delivers | Verify or decide in this PR |
+|---|---|---|---|
+| 1 | Guardrails and named risk profiles | `config/guardrails.toml`, `config/risk/<name>.toml` and per-strategy overrides, checked at startup in [ADR-0010](docs/adr/0010-config-toml-pydantic.md)'s order, each violation naming the file, key, value and limit. `tyche init` ships the `default` profile of brief §7.1; `tyche config check` prints the active profile; `--risk-profile` on every backtest command, recorded in the run record | An ADR for the real schema (ADR-0010's was illustrative). Decide: how a capital cap in CAD applies to a USD-only profile before currency conversion exists (Phase 4); which limits only the guardrails hold |
+| 2 | Risk gate: position rules | `RiskGate` replaces `PassThroughGate`: risk-per-trade sizing for targets with a stop ([ADR-0006](docs/adr/0006-target-positions-with-optional-stops.md)), max position size, max open positions. `RiskEvent`, and `adjustments` on `ApprovedPortfolioEvent`. Property-based tests: no input yields an approved portfolio that breaks the profile or the guardrails | Decide: which targets give way above max open positions (holdings first, budget order or signal rank); whether a cap shrinks each sleeve's contribution or the instrument's total |
+| 3 | Order-level guardrails | A last check in execution that every order is within the guardrails (long only, no leverage, max order value, capital cap), because orders are only sized in shares after the gate | Decide: refuse the order or shrink it; either way it is recorded, never silent |
+| 4 | Daily loss limit and drawdown kill switch | [ADR-0015](docs/adr/0015-daily-loss-limit.md)'s close-to-close limit (no new entries or additions after a losing session); peak equity tracked by the risk layer; a drawdown halt that only a manual restart lifts; a `RiskEvent` for every trigger | Decide: what a halted backtest does for the rest of its days, and how the report shows it |
+| 5 | Risk profiles side by side | The same strategies under several profiles over the same days, reported side by side in one report: the brief's risk-profile sweeps | Decide: whether a profile comparison counts towards the plugin's trial count ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)); and the small-account profile from [ADR-0031](docs/adr/0031-minimum-viable-capital.md)'s proposed defaults, which is yours to decide |
+
+**B. Running state and operations (no broker yet)**
+
+| # | PR | Delivers | Verify or decide in this PR |
+|---|---|---|---|
+| 6 | SQLite state store and a durable journal | A storage port and a SQLite adapter (standard-library `sqlite3`); the append-only journal of every event with its cause ([ADR-0009](docs/adr/0009-storage-sqlite-parquet.md)) | Open decision: the migration approach. My recommendation: numbered SQL files and SQLite's `user_version`, with no new dependency |
+| 7 | State across restarts | Orders, fills, the sleeve book, Tyche's account view, peak equity and the halt state saved and reloaded, so a restart carries on where the last run stopped; signals windows rebuilt from the cache through `SignalsStage.warm_up` ([ADR-0021](docs/adr/0021-strategies-see-a-window-handed-in.md)) | Carried from [ADR-0023](docs/adr/0023-execution-sleeves-stops-and-cash.md): the sleeve book stored, or rebuilt from fills |
+| 8 | Kill switch | The `KILL` flag file plus `tyche kill` and `tyche resume`; checked at startup and at every cycle; no new orders, optional flatten; the drawdown halt shares its state. `kill-switch` runbook | Decide: whether a flatten cancels resting stops first, and what it does with an order already working |
+| 9 | Logs, secrets and the Discord notifier | Structured logs in daily files, with secrets redacted; `.env` and `.env.example`; the `Notifier` port and a Discord webhook adapter; the alerts of brief §9 that exist by then (risk limit, kill switch, data failure, run failed) | Verify Discord's current webhook limits (message size, rate limits). Decide: `pydantic-settings` or the standard library for `.env` |
+
+**C. IBKR paper (needs the paper account)**
+
+| # | PR | Delivers | Verify or decide in this PR |
+|---|---|---|---|
+| 10 | IBKR facts, written and dated | A developer-guide page like Phase 1's [costs and settlement](docs/developer-guide/ibkr-canada-costs-and-settlement.md), and an ADR; no code. `ib_async` version and licence; IB Gateway ports; paper and live account-id formats; how an order sent after the close reaches the next open (market-on-open or a day market order); stops that rest across sessions; order references for idempotency; pacing limits; whether a cash account can spend unsettled proceeds; the FINRA Trading Activity Fee after 2026-12-31 | Everything here from current documentation, then confirmed on the paper account where the documents disagree |
+| 11 | `IBKRBroker` (paper) | Adds `ib_async`. Connects, refuses any account but the configured paper one ([ADR-0013](docs/adr/0013-live-trading-gate.md)), places and cancels orders with idempotent references, reads positions, cash, open orders and executions. Tested against a fake; opt-in integration tests on the paper account only | Decide: how a resend after a lost connection is recognised as a duplicate |
+| 12 | Daily feed and the catch-up rule | The wall clock in the engine; after the close, the session's bars fetched through the cached provider, audited and published as the replay does; a freshness window: missed sessions are fetched, a signal older than the window is skipped and reported, never traded. Fetches exactly the candidate list ([ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md)), and `tyche data fetch` gains a whole-list option | Decide: the buffer after the close, and the freshness window |
+| 13 | Reconciliation | Pipeline stage 7: at startup and after every run, Tyche's positions, cash and open orders compared with the broker's; any difference halts trading and alerts. `reconciliation-mismatch` runbook | Decide: tolerances, if any (commissions are only known after a fill) |
+| 14 | Paper run | `tyche paper run`: one decision cycle on the paper account, end to end. Start, reconcile, warm up, read new fills, place the stops of filled entries (ADR-0023), decide, send orders for the next open, save state, report. **Milestone: the first paper cycle** | An ADR for the paper cycle. Carried: a day order still open at the next decision halts the run today; decide what paper does instead. May split into reading the broker (14a) and deciding (14b) if large |
+
+**D. Running unattended**
+
+| # | PR | Delivers | Verify or decide in this PR |
+|---|---|---|---|
+| 15 | Scheduler | The paper cycle after each session's close plus the buffer; a run that did not happen is reported at the next start; `RunEvent` for skipped runs | Open decision: APScheduler or cron in the container |
+| 16 | Daily summary | The Discord summary after every run: trades, positions, P&L against the benchmark, risk status, anything skipped | Layout agreed with you on a real paper day |
+| 17 | Gateway supervision | Automated gateway restarts through IBC; a needed login or 2FA detected and alerted. `gateway-reauth` runbook | Verify IBC's licence, current version and how it reports a 2FA wait |
+| 18 | Docker | A `Dockerfile` (Python 3.14 through `uv`) and `docker compose` with the gateway; the workspace mounted; `start-stop` and `crash-recovery` runbooks | Verify Linux wheels for every dependency on Python 3.14; Docker Desktop's licence terms for personal use; the gateway image: a third-party image is code that runs with your account's credentials, so we build our own or pin one we have read |
+
+**E. Evidence and wrap-up**
+
+| # | PR | Delivers | Verify or decide in this PR |
+|---|---|---|---|
+| 19 | Paper against backtest | A command that replays a paper period in the simulator with the same config and data, and compares fills, slippage, costs and equity with what paper did; a proposed ADR for revised promotion criteria: the edge shown by out-of-sample backtests, paper judged by a tracking threshold (carried from the Phase 0 review) | The ADR is yours to accept |
+| 20 | Phase 2 wrap-up | User guide: the IBKR paper account, the gateway, Discord and `.env`; choosing and comparing risk profiles; the daily routine; reading Discord reports; the kill switch; what protects a position within a session (ADR-0015). `maintenance` runbook (updating `exchange_calendars`). Version 0.2.0 | Stop for the Phase 2 review |
+
+What this plan moves (agreed 2026-11-23):
+
+- **The live gate moves to Phase 3.** `tyche live arm` and the Claude Code rule that denies it to agents go with the strategy lifecycle, because only strategies in the `live` state may run live ([ADR-0013](docs/adr/0013-live-trading-gate.md)) and that state arrives in Phase 3. Phase 2 keeps the account-identity check (PR 11), so paper cannot reach a live account, and nothing in Phase 2 can trade live.
+- **Withholding tax on US dividends moves to Phase 4**, with currency conversion and the tax export.
+- **Interest on cash and a real risk-free rate** stay out of Phase 2: they change every metric at once and are not needed to run in paper.
+
 ## Phase 1 plan: core and backtesting (`US`, end of day)
 
-Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a learning note when it introduces a pattern. A dependency is added in the PR that first uses it. Nothing here costs money.
+*Done.* Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a learning note when it introduces a pattern. A dependency is added in the PR that first uses it. Nothing here costs money.
 
 **A. Foundations**
 
@@ -152,20 +220,20 @@ Two things in the brief's Phase 1 that this plan moves:
 
 | Commitment | Phase |
 |---|---|
-| Risk-profile sweeps and side-by-side profile comparison | 2 |
-| Paper and live rebuild the signals windows from the cache at every start and after a split refetch, through `SignalsStage.warm_up` (ADR-0021) | 2 |
-| Revised promotion criteria with a paper-versus-backtest tracking threshold, as an ADR for approval | 2 |
-| User guide page on what protects a position within a session ([ADR-0015](docs/adr/0015-daily-loss-limit.md)) | 2 |
-| Maintenance runbook: update `exchange_calendars` regularly, because unscheduled market closures only appear after a library update | 2 |
+| Risk-profile sweeps and side-by-side profile comparison | 2 (PR 5) |
+| Paper and live rebuild the signals windows from the cache at every start and after a split refetch, through `SignalsStage.warm_up` (ADR-0021) | 2 (PRs 7, 14) |
+| Revised promotion criteria with a paper-versus-backtest tracking threshold, as an ADR for approval | 2 (PR 19) |
+| User guide page on what protects a position within a session ([ADR-0015](docs/adr/0015-daily-loss-limit.md)) | 2 (PR 20) |
+| Maintenance runbook: update `exchange_calendars` regularly, because unscheduled market closures only appear after a library update | 2 (PR 20) |
 | ~~Simulated broker credits distributions as cash at the ex-date, and documents that rule (ADR-0019)~~ Done in PR 10: [backtesting internals](docs/developer-guide/backtesting-internals.md) | 1 (PR 10) |
-| Withholding tax on US dividends paid to a Canadian resident: verify the rate and IBKR's handling, then model it | 2 or 4 |
+| Withholding tax on US dividends paid to a Canadian resident: verify the rate and IBKR's handling, then model it | 4 (moved by the Phase 2 plan) |
 | Trial registry, holdout and deflated results inside the automated gate | 3 |
-| Paper and live keep the sleeve book across restarts (stored, or rebuilt from fills) and reconcile it with the broker's positions; execution places a stop only after the broker reports the entry's fill (ADR-0023) | 2 |
-| A day order still open at the next decision (possible live, impossible in the simulator) currently halts the run; decide how live execution handles it | 2 |
-| Paper and live fetch exactly the candidate list in the market profile (ADR-0024); `tyche data fetch` could fetch the whole list in one command | 2 |
+| Paper and live keep the sleeve book across restarts (stored, or rebuilt from fills) and reconcile it with the broker's positions; execution places a stop only after the broker reports the entry's fill (ADR-0023) | 2 (PRs 7, 13, 14) |
+| A day order still open at the next decision (possible live, impossible in the simulator) currently halts the run; decide how live execution handles it | 2 (PR 14) |
+| Paper and live fetch exactly the candidate list in the market profile (ADR-0024); `tyche data fetch` could fetch the whole list in one command | 2 (PR 12) |
 | `starting_cash` is in the profile's first cash currency; `CA+US` needs cash per currency | 4 |
 | The Phase 3 promotion check is the one code path allowed to read the holdout, and records that it did (ADR-0024) | 3 |
-| Interest on cash in the simulator, and a real risk-free rate (such as T-bills) for Sharpe and Sortino, in one change (ADR-0025) | 2 or later |
+| Interest on cash in the simulator, and a real risk-free rate (such as T-bills) for Sharpe and Sortino, in one change (ADR-0025) | After Phase 2 |
 | ~~A command to measure an existing record from its `equity.csv` and `fills.csv`, if the report needs it~~ Not needed: the report reads `metrics.json` (ADR-0028) | 1 (PR 19) |
 
 ## Open decisions
@@ -174,11 +242,11 @@ Two things in the brief's Phase 1 that this plan moves:
 |---|---|
 | Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
 | Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
-| PR 22's proposed defaults for a small account: Tiered for the real account; one or two positions below about USD 5,000, which needs a small-account risk profile with a single-position limit above 20%; low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)) | Phase 2, risk profiles |
+| PR 22's proposed defaults for a small account: Tiered for the real account; one or two positions below about USD 5,000, which needs a small-account risk profile with a single-position limit above 20%; low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)) | Phase 2, PR 5 |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
-| Opening an IBKR account and its paper account, if not done yet; approval can take days | Before Phase 2 |
-| Scheduler: APScheduler or cron in the container | Phase 2 |
-| SQLite migration approach | Phase 2 |
+| Opening an IBKR account and its paper account, if not done yet; approval can take days | Phase 2, PR 10 |
+| Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
+| SQLite migration approach | Phase 2, PR 6 |
 
 Decisions that belong to a Phase 1 PR are listed in the plan above.
 
@@ -188,13 +256,13 @@ Decisions that belong to a Phase 1 PR are listed in the plan above.
 |---|---|
 | ~~IBKR Canada commissions, minimums and fractional-share rules~~ Done 2026-11-17: Fixed USD 0.005 a share, min USD 1.00, max 1%; no fractional orders through the API | Phase 1, PR 9 |
 | ~~Settlement rules for an IBKR Canada cash account~~ Done 2026-11-17: T+1, settled cash only, free-riding rule | Phase 1, PR 9 |
-| Whether an IBKR Canada cash account can spend unsettled proceeds (IBKR's pages disagree), and when on the settlement date proceeds count as settled | Phase 2, paper account |
+| Whether an IBKR Canada cash account can spend unsettled proceeds (IBKR's pages disagree), and when on the settlement date proceeds count as settled | Phase 2, PR 10 |
 | Whether GST or PST applies to stock commissions for a Canadian resident | Phase 2, first statement |
-| FINRA Trading Activity Fee rate after its holiday ends on 2026-12-31 | Before Phase 2 |
+| FINRA Trading Activity Fee rate after its holiday ends on 2026-12-31 | Phase 2, PR 10 |
 | ~~yfinance limits, terms and adjusted-price behaviour~~ Done 2026-11-17: personal use only, no documented rate limit, "unadjusted" prices are split-adjusted (ADR-0019) | Phase 1, PR 6 |
 | ~~Licences of the candidate reference backtesters~~ Done 2026-11-19: backtesting.py 0.6.6 AGPL-3.0; vectorbt 1.2.1 Apache-2.0 with the Commons Clause | Phase 1, PR 17 |
-| Linux wheels for all dependencies on Python 3.14 (Docker) | Phase 2 |
-| IB Gateway ports, account-id formats, IBC behaviour, 2FA flow | Phase 2 |
+| Linux wheels for all dependencies on Python 3.14 (Docker) | Phase 2, PR 18 |
+| IB Gateway ports, account-id formats, IBC behaviour, 2FA flow | Phase 2, PRs 10 and 17 |
 | `claude -p` flags, output format and plan limits | Phase 3 |
 
 ## Known issues and risks
@@ -203,16 +271,14 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Phase 1 review.** Nothing in Phase 2 starts until Pablo has reviewed Phase 1 and agreed a Phase 2 PR list.
+**Phase 2, PR 1 (guardrails and named risk profiles)**, when Pablo says to start it.
 
-1. **Review PR 23** (wrap-up: version 0.1.0, pipeline contracts, troubleshooting, the guides checked end to end).
-2. **Decisions open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; the proposed small-account defaults; whether the Phase 3 gate deflates against zero or against the benchmark.
-3. **After merging PR 23**, if you want a release marker: tag the merge commit `v0.1.0` and push the tag. Tagging publishes to the public repository, so it is yours to do:
+1. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
+2. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
+3. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
-   git tag -a v0.1.0 -m "Phase 1: core and backtesting" && git push origin v0.1.0
+   git tag -a v0.1.0 979937f -m "Phase 1: core and backtesting" && git push origin v0.1.0
    ```
-
-4. **Before Phase 2**: the IBKR account and its paper account, if not opened yet; and Phase 2's PR list, which Claude drafts in this file for your agreement before any of its code.
 
 **Your workspace**, if created by an older Tyche: [troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche) has one table of everything to copy from a new workspace, by PR. For PR 22, the `[tiered]` table in `config/costs/US.toml`, if you want `tyche capital` to compare Tiered.
