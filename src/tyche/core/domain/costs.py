@@ -85,6 +85,88 @@ class CommissionSchedule:
 
 
 @dataclass(frozen=True, slots=True)
+class TieredSchedule:
+    """IBKR Pro Tiered, first volume tier, with the third-party fees it passes on.
+
+    Under Tiered the broker's own commission is lower than Fixed, but the order also
+    pays what Fixed includes: clearing, pass-through and exchange fees. Per order:
+
+    * **commission** ``min(max(per_share * shares, minimum), maximum_rate * value)``,
+      the same shape as Fixed, rounded to the cent as Fixed is;
+    * **pass-through fees**, NYSE's and FINRA's, each a fraction of that commission;
+    * **clearing** ``min(clearing_per_share * shares, clearing_maximum_rate * value)``;
+    * **exchange fee** ``exchange_fee_per_share * shares``.
+
+    The fees are rounded up to the cent together, by the rule "when unsure, overstate
+    the cost". Only the first volume tier is modelled: a small account trades far fewer
+    than its 300,000 shares a month.
+
+    The exchange fee is an **assumption, not a published fee**: it depends on where an
+    order executes and whether it adds or removes liquidity, which is known only after
+    the fact (ADR-0020). Whether the 1% maximum also caps the third-party fees is not
+    published; they are added on top of it, which overstates the cost if it does.
+
+    Attributes:
+        per_share: The commission for each share, e.g. USD 0.0035.
+        minimum: The least the commission is, e.g. USD 0.35.
+        maximum_rate: The most the commission is, as a fraction of the order's value.
+        clearing_per_share: NSCC and DTC clearing fees, per share.
+        clearing_maximum_rate: The most the clearing fees are, as a fraction of value.
+        nyse_pass_through_rate: NYSE pass-through fee, a fraction of the commission.
+        finra_pass_through_rate: FINRA pass-through fee, a fraction of the commission.
+        exchange_fee_per_share: The exchange fee assumed for each share.
+    """
+
+    per_share: Money
+    minimum: Money
+    maximum_rate: Decimal
+    clearing_per_share: Money
+    clearing_maximum_rate: Decimal
+    nyse_pass_through_rate: Decimal
+    finra_pass_through_rate: Decimal
+    exchange_fee_per_share: Money
+
+    def __post_init__(self) -> None:
+        currency = self.per_share.currency
+        for money, what in (
+            (self.minimum, "minimum"),
+            (self.clearing_per_share, "clearing_per_share"),
+            (self.exchange_fee_per_share, "exchange_fee_per_share"),
+        ):
+            if money.currency is not currency:
+                raise ValueError(f"tiered: per_share and {what} must be in the same currency")
+            _require_rate(money.amount, f"tiered {what}")
+        _require_rate(self.per_share.amount, "tiered per_share")
+        for rate, what in (
+            (self.maximum_rate, "maximum_rate"),
+            (self.clearing_maximum_rate, "clearing_maximum_rate"),
+            (self.nyse_pass_through_rate, "nyse_pass_through_rate"),
+            (self.finra_pass_through_rate, "finra_pass_through_rate"),
+        ):
+            _require_rate(rate, f"tiered {what}", at_most=Decimal(1))
+
+    @property
+    def currency(self) -> Currency:
+        return self.per_share.currency
+
+    def commission(self, quantity: Decimal, price: Money) -> Money:
+        """The commission and third-party fees on one order, to the cent."""
+        _require_trade(quantity, price, self.currency)
+        value = price * quantity
+        by_shares = max(self.per_share * quantity, self.minimum)
+        commission = min(by_shares, value * self.maximum_rate).round_to(CENT_PLACES)
+        pass_through = commission * (self.nyse_pass_through_rate + self.finra_pass_through_rate)
+        clearing = min(self.clearing_per_share * quantity, value * self.clearing_maximum_rate)
+        exchange = self.exchange_fee_per_share * quantity
+        fees = pass_through + clearing + exchange
+        return commission + Money(fees.amount.quantize(_CENT, ROUND_CEILING), fees.currency)
+
+
+Commission = CommissionSchedule | TieredSchedule
+"""A pricing plan: what the broker charges for one order, before regulatory fees."""
+
+
+@dataclass(frozen=True, slots=True)
 class RegulatoryFees:
     """Fees the regulators charge and the broker passes on, under every pricing plan.
 
@@ -142,7 +224,8 @@ class TradingCosts:
     """What it costs to trade in one currency, in money and in time.
 
     Attributes:
-        commission: The broker's commission schedule.
+        commission: The broker's pricing plan: Fixed (``CommissionSchedule``) or
+            Tiered (``TieredSchedule``).
         regulatory_fees: Fees passed on from regulators.
         slippage_bps: How far a simulated fill moves against the order, in basis points
             of the reference price. A modelling assumption, not a broker fact; every
@@ -153,7 +236,7 @@ class TradingCosts:
             schedule.
     """
 
-    commission: CommissionSchedule
+    commission: Commission
     regulatory_fees: RegulatoryFees
     slippage_bps: Decimal
     settlement_days: int

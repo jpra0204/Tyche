@@ -12,9 +12,18 @@ report (ADR-0028), ``cost_drag``, the run measured before and after its costs, a
 and, for parameter sweeps (ADR-0030), ``combinations`` of a ``Grid``, ``pick``, which
 chooses the trial with the highest Sharpe ratio, ``deflated_sharpe``, which discounts
 it for the trials behind it, ``trial_key``, which fingerprints a trial so it is counted
-once, and ``overfitting_warnings``.
+once, and ``overfitting_warnings``; and, for minimum viable capital (ADR-0031),
+``size_penalty``, ``minimum_viable`` and ``round_trip_cost``.
 """
 
+from tyche.core.backtest.capital import (
+    CapitalError,
+    SizedResult,
+    is_viable,
+    minimum_viable,
+    round_trip_cost,
+    size_penalty,
+)
 from tyche.core.backtest.cost_drag import CostDrag, FillCost, cost_drag, fill_cost
 from tyche.core.backtest.metrics import (
     BacktestMetrics,
@@ -76,6 +85,7 @@ __all__ = [
     "BacktestResult",
     "BacktestSettings",
     "BacktestSpec",
+    "CapitalError",
     "ClosedTrade",
     "Combination",
     "Comparison",
@@ -92,6 +102,7 @@ __all__ = [
     "MetricsError",
     "ReturnMoments",
     "SeriesMetrics",
+    "SizedResult",
     "SweepError",
     "TradeStats",
     "Trial",
@@ -107,17 +118,21 @@ __all__ = [
     "deflated_sharpe",
     "expected_max_sharpe",
     "fill_cost",
+    "is_viable",
     "measure",
     "measure_backtest",
     "measure_walk_forward",
+    "minimum_viable",
     "overfitting_warnings",
     "pick",
     "plan_folds",
     "probabilistic_sharpe",
     "return_moments",
+    "round_trip_cost",
     "run_backtest",
     "series_metrics",
     "session_sharpe",
+    "size_penalty",
     "trial_key",
     "yearly_returns",
 ]

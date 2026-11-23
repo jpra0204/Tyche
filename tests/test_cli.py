@@ -445,7 +445,9 @@ class TestBacktest:
         result = runner.invoke(app, ["report", run_id])
 
         assert result.exit_code == 1
-        assert f"no backtest, walk-forward or sweep record named {run_id!r}" in plain(result.stderr)
+        assert f"no backtest, walk-forward, sweep or capital record named {run_id!r}" in plain(
+            result.stderr
+        )
 
     def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
         result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])
@@ -684,3 +686,60 @@ class TestSweep:
             result.stdout,
             re.MULTILINE,
         )
+
+
+class TestCapital:
+    def test_runs_records_and_summarises(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        workspace = fetch_spy_and_qqq(home, monkeypatch)
+
+        result = runner.invoke(
+            app,
+            ["capital", "--from", "2022-06-01", "--amounts", "300,5000", "--reference", "100000"],
+        )
+
+        assert result.exit_code == 0, result.output
+        out = result.stdout
+        assert re.search(
+            r"^  buy_and_hold +IBKR Pro Fixed +100,000  CAGR +\S+%  costs +\S+% a year  "
+            r"\(reference\)$",
+            out,
+            re.MULTILINE,
+        )
+        assert re.search(r"^  buy_and_hold +IBKR Pro Tiered +300  .* penalty +[+-]", out, re.M)
+        assert re.search(r"^Capital \d{8}T\d{6}Z-[0-9a-f]{8}: minimum viable capital", out, re.M)
+        assert re.search(
+            r"^  buy_and_hold +IBKR Pro Fixed +(none of the amounts tested|[\d,]+ USD); "
+            r"reference Sharpe \S+, benchmark \S+$",
+            out,
+            re.M,
+        )
+        report = re.search(r"Report:\s+(\S+)", out)
+        assert report is not None
+        assert Path(report.group(1)).is_relative_to(workspace / "reports" / "capital")
+
+        found = re.search(r"^Capital (\d\S+):", out, re.MULTILINE)
+        assert found is not None
+        page = Path(report.group(1))
+        page.unlink()
+        rebuilt = runner.invoke(app, ["report", found.group(1)])
+        assert rebuilt.exit_code == 0, rebuilt.output
+        assert rebuilt.stdout == f"Report: {page}\n"
+
+    @pytest.mark.parametrize(
+        ("arguments", "message"),
+        [
+            (["--amounts", "500,abc"], "--amounts: not a number: 'abc'"),
+            (["--amounts", "5000,500"], "give the amounts smallest first"),
+            (["--tolerance", "-1"], "the tolerance must be at least 0"),
+        ],
+    )
+    def test_a_bad_request_is_refused_before_anything_runs(
+        self, home: Path, arguments: list[str], message: str
+    ) -> None:
+        assert runner.invoke(app, ["init"]).exit_code == 0
+
+        result = runner.invoke(app, ["capital", "--from", "2022-06-01", *arguments])
+
+        assert result.exit_code == 1
+        assert message in plain(result.stderr)
+        assert not (home / "tyche-workspace" / "reports" / "capital").exists()

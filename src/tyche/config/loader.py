@@ -38,6 +38,7 @@ from tyche.config.workspace import Workspace
 from tyche.core.backtest.settings import BacktestSettings
 from tyche.core.domain import (
     AssetClass,
+    Commission,
     CommissionSchedule,
     Currency,
     ExecutionRules,
@@ -45,6 +46,7 @@ from tyche.core.domain import (
     MarketProfile,
     Money,
     RegulatoryFees,
+    TieredSchedule,
     TradingCosts,
     UniverseRules,
     require_budgets,
@@ -223,6 +225,23 @@ class CommissionFile(_ConfigFile):
     maximum_rate: ExactDecimal
 
 
+class TieredFile(_ConfigFile):
+    """The optional ``[tiered]`` table of a costs file: IBKR Pro Tiered, for comparison.
+
+    Backtests always use ``[commission]``. ``tyche capital`` runs each amount under
+    both plans when this table is present (ADR-0031).
+    """
+
+    per_share: ExactDecimal
+    minimum: ExactDecimal
+    maximum_rate: ExactDecimal
+    clearing_per_share: ExactDecimal
+    clearing_maximum_rate: ExactDecimal
+    nyse_pass_through_rate: ExactDecimal
+    finra_pass_through_rate: ExactDecimal
+    exchange_fee_per_share: ExactDecimal
+
+
 class RegulatoryFeesFile(_ConfigFile):
     """The ``[regulatory_fees]`` table of a costs file."""
 
@@ -240,17 +259,43 @@ class CostsFile(_ConfigFile):
     slippage_bps: ExactDecimal
     commission: CommissionFile
     regulatory_fees: RegulatoryFeesFile
+    tiered: TieredFile | None = None
+
+    def _money(self, amount: Decimal) -> Money:
+        return Money(amount, self.currency)
 
     def to_domain(self) -> TradingCosts:
-        def money(amount: Decimal) -> Money:
-            return Money(amount, self.currency)
-
-        return TradingCosts(
-            commission=CommissionSchedule(
-                per_share=money(self.commission.per_share),
-                minimum=money(self.commission.minimum),
+        """The costs backtests use: the ``[commission]`` plan."""
+        return self._costs(
+            CommissionSchedule(
+                per_share=self._money(self.commission.per_share),
+                minimum=self._money(self.commission.minimum),
                 maximum_rate=self.commission.maximum_rate,
-            ),
+            )
+        )
+
+    def tiered_domain(self) -> TradingCosts | None:
+        """The same costs under the ``[tiered]`` plan, or ``None`` without that table."""
+        tiered = self.tiered
+        if tiered is None:
+            return None
+        return self._costs(
+            TieredSchedule(
+                per_share=self._money(tiered.per_share),
+                minimum=self._money(tiered.minimum),
+                maximum_rate=tiered.maximum_rate,
+                clearing_per_share=self._money(tiered.clearing_per_share),
+                clearing_maximum_rate=tiered.clearing_maximum_rate,
+                nyse_pass_through_rate=tiered.nyse_pass_through_rate,
+                finra_pass_through_rate=tiered.finra_pass_through_rate,
+                exchange_fee_per_share=self._money(tiered.exchange_fee_per_share),
+            )
+        )
+
+    def _costs(self, commission: Commission) -> TradingCosts:
+        money = self._money
+        return TradingCosts(
+            commission=commission,
             regulatory_fees=RegulatoryFees(
                 sec_fee_rate=self.regulatory_fees.sec_fee_rate,
                 taf_per_share_sold=money(self.regulatory_fees.taf_per_share_sold),
@@ -292,6 +337,9 @@ class TycheConfig:
         workspace: Where the configuration was loaded from.
         market_profile: The active market profile.
         costs: What trading costs under that profile, and when trades settle.
+        tiered_costs: The same under IBKR Pro Tiered, from the costs file's optional
+            ``[tiered]`` table, for ``tyche capital`` to compare; ``None`` without it.
+            Backtests never use it.
         strategies: The configured strategy instances, ordered by id.
         backtest: The starting cash and the reserved holdout (ADR-0024).
         config_hash: Fingerprint of every loaded setting. Two runs with the same hash
@@ -308,6 +356,7 @@ class TycheConfig:
     backtest: BacktestSettings
     config_hash: str
     snapshot: Mapping[str, Any]
+    tiered_costs: TradingCosts | None = None
 
     @property
     def budgets(self) -> dict[str, Decimal]:
@@ -360,6 +409,7 @@ def load_config(workspace: Workspace) -> TycheConfig:
     costs_file = _read(workspace, costs_path, CostsFile)
     try:
         costs = costs_file.to_domain()
+        tiered_costs = costs_file.tiered_domain()
     except ValueError as error:
         raise ConfigError(f"{costs_name}: {error}") from None
     if costs.currency not in profile.cash_currencies:
@@ -392,6 +442,7 @@ def load_config(workspace: Workspace) -> TycheConfig:
         backtest=backtest,
         config_hash=config_hash(files),
         snapshot=config_snapshot(files),
+        tiered_costs=tiered_costs,
     )
 
 
@@ -496,8 +547,13 @@ def load_sweep(config: TycheConfig, name: str) -> SweepSpec:
 
 
 def config_snapshot(files: Mapping[str, BaseModel]) -> dict[str, Any]:
-    """Validated config files as plain JSON values, keyed by their path in the workspace."""
-    return {path: model.model_dump(mode="json") for path, model in files.items()}
+    """Validated config files as plain JSON values, keyed by their path in the workspace.
+
+    An optional table that is absent (``None``) is left out, so that adding one to the
+    schema does not change the hash of a workspace that does not use it. TOML has no
+    null, so no value read from a file is ``None``.
+    """
+    return {path: model.model_dump(mode="json", exclude_none=True) for path, model in files.items()}
 
 
 def config_hash(files: Mapping[str, BaseModel]) -> str:

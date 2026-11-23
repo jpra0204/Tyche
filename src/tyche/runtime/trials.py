@@ -12,6 +12,8 @@ Where trials are found, anywhere under ``reports/``:
   parameters; their config snapshot holds the strategy file they were built from.
 * every ``trials.json``: a sweep, alone or on a walk-forward's training window. Each
   combination in it is a trial, whether or not it was the pick.
+* every ``capital.json``: a capital analysis (ADR-0031). Each strategy in it ran with
+  its configured parameters, at several account sizes: one trial each.
 
 A record Tyche cannot read stops the count with an error rather than being skipped: a
 count that quietly drops trials would make every deflated result look better.
@@ -26,6 +28,9 @@ from tyche.core.backtest import trial_key
 TRIALS_FILE = "trials.json"
 """Every combination of one sweep, with its parameters and results."""
 
+CAPITAL_FILE = "capital.json"
+"""A capital analysis: every strategy it ran, at every account size (ADR-0031)."""
+
 
 class TrialCountError(ValueError):
     """A record under ``reports/`` cannot be read, so trials cannot be counted."""
@@ -35,7 +40,8 @@ def recorded_trial_keys(reports_dir: Path, plugin: str) -> frozenset[str]:
     """Every trial of ``plugin`` recorded under ``reports_dir``, as ``trial_key``s.
 
     Raises:
-        TrialCountError: A ``run.json`` or ``trials.json`` cannot be read.
+        TrialCountError: A ``run.json``, ``trials.json`` or ``capital.json`` cannot be
+            read.
     """
     keys: set[str] = set()
     if not reports_dir.is_dir():
@@ -52,6 +58,12 @@ def recorded_trial_keys(reports_dir: Path, plugin: str) -> frozenset[str]:
         try:
             keys.update(str(trial["key"]) for trial in record["trials"])
         except (KeyError, TypeError) as error:
+            raise TrialCountError(f"{path}: cannot count its trials: {error!r}") from None
+    for path in sorted(reports_dir.rglob(CAPITAL_FILE)):
+        record = _read(path)
+        try:
+            keys.update(str(s["key"]) for s in record["strategies"] if s.get("plugin") == plugin)
+        except (KeyError, TypeError, AttributeError) as error:
             raise TrialCountError(f"{path}: cannot count its trials: {error!r}") from None
     return frozenset(keys)
 

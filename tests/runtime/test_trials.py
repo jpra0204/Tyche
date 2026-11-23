@@ -97,3 +97,20 @@ class TestCountingTrials:
 
         with pytest.raises(TrialCountError, match="cannot count"):
             recorded_trial_keys(tmp_path, "trend_rotation")
+
+    def test_each_strategy_of_a_capital_analysis_counts_once(self, tmp_path: Path) -> None:
+        capital = {
+            "strategies": [
+                {"plugin": "trend_rotation", "key": "k1"},
+                {"plugin": "buy_and_hold", "key": "k2"},
+            ]
+        }
+        write(tmp_path / "capital/c/capital.json", capital)
+
+        assert recorded_trial_keys(tmp_path, "trend_rotation") == {"k1"}
+
+    def test_a_malformed_capital_file_stops_the_count(self, tmp_path: Path) -> None:
+        write(tmp_path / "capital/c/capital.json", {"strategies": [{"plugin": "trend_rotation"}]})
+
+        with pytest.raises(TrialCountError, match="cannot count"):
+            recorded_trial_keys(tmp_path, "trend_rotation")

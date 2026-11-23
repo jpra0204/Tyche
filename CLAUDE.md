@@ -58,13 +58,14 @@ uv run tyche backtest --from 2005-01-03    # cache only; refuses the holdout; wr
 uv run tyche walk-forward --from 2005-01-03  # folds of backtests; writes reports/walk_forward/<id>/
 uv run tyche sweep trend_rotation --from 2005-01-03  # every combination of config/sweeps/<name>.toml; writes reports/sweeps/<id>/
 uv run tyche walk-forward --from 2005-01-03 --sweep trend_rotation  # picks parameters on each training window
-uv run tyche report <run id>               # rebuilds report.html from a backtest's, walk-forward's or sweep's record
+uv run tyche capital --from 2005-01-03     # each strategy alone at several account sizes, Fixed and Tiered; writes reports/capital/<id>/
+uv run tyche report <run id>               # rebuilds report.html from any record: backtest, walk-forward, sweep or capital
 uv run pytest -m network                   # opt-in tests against real services
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.
 
-Run `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche report` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there, and a report rewrites a file in it. Paper and agent commands do not exist yet. They are added to this section in the phase that implements them.
+Run `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital` and `tyche report` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there, and a report rewrites a file in it. Paper and agent commands do not exist yet. They are added to this section in the phase that implements them.
 
 ## Repo map
 
@@ -78,7 +79,7 @@ src/tyche/
 │   ├── risk/         profiles, guardrails, the risk gate
 │   ├── engine/       the run loop, identical in backtest, paper and live
 │   ├── sim/          SimClock, SimBroker, replay feed, cost models
-│   ├── backtest/     runner, holdout, metrics, walk-forward; later sweeps
+│   ├── backtest/     runner, holdout, metrics, walk-forward, sweeps, minimum viable capital
 │   ├── improvement/  proposals, automated gate, approvals, strategy lifecycle (no LLM)
 │   └── agents/       offline LLM-agent workflows
 ├── strategies/   built-in strategy plugins
