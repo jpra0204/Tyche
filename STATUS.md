@@ -286,7 +286,7 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Review PR 5** (risk profiles side by side) and, if you agree with it, accept [ADR-0036](docs/adr/0036-risk-profiles-side-by-side.md). Then create the three stage profiles in your own workspace ([profiles for a small account](docs/user-guide/08-risk-profiles.md#profiles-for-a-small-account)) and set its guardrails for stage 1. Then **Phase 2, PR 6 (SQLite state store and a durable journal)**, when you say to start it. Its decision: the migration approach. Its decisions: whether a profile comparison counts towards a plugin's trial count, and the small-account profile, which is yours to set.
+**Review PR 5** (risk profiles side by side) and, if you agree with it, accept [ADR-0036](docs/adr/0036-risk-profiles-side-by-side.md). Then create the three stage profiles in your own workspace ([profiles for a small account](docs/user-guide/08-risk-profiles.md#profiles-for-a-small-account)) and set its guardrails for stage 1. Then **Phase 2, PR 6 (SQLite state store and a durable journal)**, when you say to start it. Its decision: the migration approach.
 
 Your workspace's guardrails are your own values now, and it passes `tyche config check` (checked 2026-11-23). Your IBKR account and its paper account are open and approved, so PR 10 is not waiting on anything.
 
