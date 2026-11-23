@@ -4,6 +4,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-23
+
+Phase 1: core and backtesting, for the `US` profile at end of day. Tyche fetches daily data from Yahoo Finance into a private workspace, and backtests strategies on it through the whole trading path (universe, screening, signals, portfolio, a pass-through risk gate, execution, a simulated broker with IBKR's costs and T+1 settlement), against SPY's total return. It reserves a holdout, records every run, checks its own engine against backtesting.py, reports in HTML, tests out of sample with walk-forward, counts every trial behind a parameter sweep and deflates its Sharpe ratio, and measures the account size each strategy needs. No paper or live trading yet.
+
 ### Added
 
 - Domain types in `tyche.core.domain`: `Currency`, `Money`, `Timeframe`, `Instrument`, `AssetClass` and `Bar` (Phase 1, PR 1).
@@ -120,6 +124,8 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Each analysis writes `reports/capital/<id>/`: `capital.json` and `report.html`. Each strategy in it counts as one trial.
 - `size_penalty`, `is_viable`, `minimum_viable` and `round_trip_cost` in `tyche.core.backtest`.
 - ADR-0031. User guide: minimum viable capital. Learning note: what account size costs. Developer guide: backtesting internals, section 11; IBKR facts re-checked on 2026-11-22, with exchange fees and the CAD/USD rate used.
+
+- Phase 1 wrap-up (PR 23): version 0.1.0. Developer guide: pipeline contracts, what each stage takes in, promises, keeps and does on failure. User guide: troubleshooting, with one table for upgrading a workspace created by an older Tyche. Every user-guide command re-run in a fresh workspace, and stale notes removed.
 
 ### Changed
 

@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 1: core and backtesting (`US`, end of day). In progress.** Pablo agreed the PR list below on 2026-11-16.
+**Phase 1: core and backtesting (`US`, end of day). All 23 PRs done; stopped for the Phase 1 review.** Pablo agreed the PR list below on 2026-11-16. Version 0.1.0.
 
 - Phase 0 is merged.
 - PR 1 (domain types) is merged.
@@ -29,7 +29,8 @@
 - PR 20 (walk-forward) is merged; ADR-0029 accepted.
 - PR 21 (parameter sweeps) is merged; ADR-0030 accepted: every distinct trial ever recorded for a plugin is counted, the pick is the highest Sharpe ratio, it is reported with a deflated Sharpe ratio, and a sweep keeps one table of trials plus the pick's full record. One PR, not split.
 - Fix: the data cache now covers sessions before an instrument's first bar when the source has nothing for them, so the fetch hint for GLD and VNQ no longer loops. Merged (#25); no workspace change needed, and no need to delete cache files.
-- PR 22 (minimum viable capital) is in review; ADR-0031 proposed. Decided with Pablo on 2026-11-22 and 23: the size penalty against a large reference account (within half a point a year, either way), a latest-close check of today's share prices (the one read of a holdout bar), capital varied but not positions, and a USD 100,000 reference after USD 1,000,000 proved too large for the rotation.
+- PR 22 (minimum viable capital) is merged; ADR-0031 still proposed. Decided with Pablo on 2026-11-22 and 23: the size penalty against a large reference account (within half a point a year, either way), a latest-close check of today's share prices (the one read of a holdout bar), capital varied but not positions, and a USD 100,000 reference after USD 1,000,000 proved too large for the rotation.
+- PR 23 (Phase 1 wrap-up) is in review: version 0.1.0; every user-guide command re-run in a fresh workspace; new pages for pipeline contracts and troubleshooting. **Phase 1 stops here for review.**
 - Recommended: turn on *Automatically delete head branches* in the GitHub repository settings, so GitHub retargets stacked PRs by itself.
 - Adjusted prices decided 2026-11-17: split-adjusted prices with dividends as cash events ([ADR-0019](docs/adr/0019-split-adjusted-prices-and-cash-dividends.md)).
 
@@ -68,7 +69,7 @@
 
 - Parameter sweeps (PR 21): `tyche sweep <name> --from <date>` runs every combination of `config/sweeps/<name>.toml` as a backtest over the same days, picks the highest Sharpe ratio, and reports it with a deflated Sharpe ratio and overfitting warnings ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)). The trial count is every distinct trial of the plugin ever recorded in the workspace. `tyche walk-forward --sweep <name>` picks on each training window. A sweep keeps `trials.json` and the pick's full record (968 KB for the example's 27 trials). Checked on real data, 2005 to 2023: the example sweep's pick (4 holdings, 252-session momentum) has a Sharpe ratio of 0.71 against SPY's 0.57 and a CAGR of 8.28% against 9.59%, with a deflated Sharpe ratio of 98.2% after 27 trials and two parameters at the edge of the grid. SPY itself scores 99.3% on the same test, so the deflated Sharpe ratio filters out luck but is no verdict against the benchmark. The walk-forward with the same sweep settles it: out of sample, 2010 to 2023, the yearly picks earned 4.29% a year with a Sharpe ratio of 0.42, no better than the configured parameters (4.57%, 0.42) and against SPY's 12.58% and 0.77, although 13 of the 14 training picks were significant at 95%. The picks changed between seven combinations across the folds. The run took about 2 hours 20 minutes.
 
-- Minimum viable capital (PR 22, in review): `tyche capital --from <date>` runs each configured strategy alone at several account sizes and on a USD 100,000 reference account, under IBKR Pro Fixed and Tiered (new optional `[tiered]` table in the costs file), and reports the smallest amount from which every larger one is within half a point a year of the reference, beside whether the strategy beats SPY ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). Also the cost of one round trip per position, and the whole shares one of five positions buys at each candidate's latest close. On real data, 2005 to 2023: buy-and-hold viable from USD 700, the mean reversion from USD 10,000 (Fixed) or 5,000 (Tiered) with no edge at any size, the rotation from USD 25,000 under both plans. **Five positions under CAD 1,000 does not work**: about USD 140 a position, 2.12% a round trip under Fixed (0.84% Tiered), and SPY, QQQ, GLD and IWM cost more than one position today. Tiered cut small-account costs by a half to two thirds. Proposed defaults, for Pablo: Tiered, one or two positions below about USD 5,000, low turnover below USD 10,000.
+- Minimum viable capital (PR 22): `tyche capital --from <date>` runs each configured strategy alone at several account sizes and on a USD 100,000 reference account, under IBKR Pro Fixed and Tiered (new optional `[tiered]` table in the costs file), and reports the smallest amount from which every larger one is within half a point a year of the reference, beside whether the strategy beats SPY ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). Also the cost of one round trip per position, and the whole shares one of five positions buys at each candidate's latest close. On real data, 2005 to 2023: buy-and-hold viable from USD 700, the mean reversion from USD 10,000 (Fixed) or 5,000 (Tiered) with no edge at any size, the rotation from USD 25,000 under both plans. **Five positions under CAD 1,000 does not work**: about USD 140 a position, 2.12% a round trip under Fixed (0.84% Tiered), and SPY, QQQ, GLD and IWM cost more than one position today. Tiered cut small-account costs by a half to two thirds. Proposed defaults, for Pablo: Tiered, one or two positions below about USD 5,000, low turnover below USD 10,000.
 
 Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
 
@@ -139,8 +140,8 @@ Twenty-three small PRs in six groups. Each PR includes its tests and docs, and a
 |---|---|---|---|
 | 20 | Train/test and walk-forward (**merged**) | In-sample and out-of-sample results reported separately | Decided 2026-11-20 ([ADR-0029](docs/adr/0029-walk-forward-folds-and-a-train-step.md)): the walk-forward machinery now, with a train step that keeps the configured parameters until PR 21 plugs in a choice; anchored folds of calendar years by default (5-year first training window, 1-year tests), rolling optional |
 | 21 | Parameter sweeps (**merged**) | Sweeps with a trial count, a deflated Sharpe ratio and overfitting warnings | Decided 2026-11-19 ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)): one PR, not split; `N` is every distinct trial of the plugin ever recorded in the workspace; the pick is the highest Sharpe ratio; one `trials.json` per sweep plus the pick's full record; the grid in `config/sweeps/<name>.toml`. A walk-forward with `--sweep` picks on each training window; each combination counts once however many folds run it; the out-of-sample result is not deflated. Deflated Sharpe formula checked against the paper's worked example |
-| 22 | Minimum viable capital (**in review**) | For each strategy, the account size at which its edge survives costs; proposed defaults if under $1,000 CAD with five positions does not work | Decided 2026-11-22 and 23 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md), proposed): the size penalty against a large reference account, within half a point a year either way; each strategy alone with its configured parameters, only the capital varied; Fixed against Tiered with an assumed exchange fee of USD 0.0030 a share (rates re-checked 2026-11-22); today's share prices from the latest cached close, the one read of a holdout bar; a USD 100,000 reference, flagged if the volume cap binds |
-| 23 | Phase 1 wrap-up | User guide (installation, running a backtest), developer guide pages, version 0.1.0 | Stop for Phase 1 review |
+| 22 | Minimum viable capital (**merged**) | For each strategy, the account size at which its edge survives costs; proposed defaults if under $1,000 CAD with five positions does not work | Decided 2026-11-22 and 23 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md), proposed): the size penalty against a large reference account, within half a point a year either way; each strategy alone with its configured parameters, only the capital varied; Fixed against Tiered with an assumed exchange fee of USD 0.0030 a share (rates re-checked 2026-11-22); today's share prices from the latest cached close, the one read of a holdout bar; a USD 100,000 reference, flagged if the volume cap binds |
+| 23 | Phase 1 wrap-up (**in review**) | User guide (installation, running a backtest), developer guide pages, version 0.1.0 | Every user-guide command re-run in a fresh workspace on 2026-11-23; new pages: pipeline contracts (developer guide) and troubleshooting (user guide). Stop for Phase 1 review |
 
 Two things in the brief's Phase 1 that this plan moves:
 
@@ -202,8 +203,17 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-1. **Review PR 22** (minimum viable capital), and ADR-0031, which is proposed. Worth a look in it: "Implementation choices made in PR 22" (viable either way, the reference-too-large check, Tiered's fees above the 1% cap) and the proposed defaults under "Checked on real data".
-2. **Your workspace needs one addition for PR 22**: copy the `[tiered]` table from a new workspace's `config/costs/US.toml` (`tyche init --home <scratch-folder>`) if you want `tyche capital` to compare Tiered. Without it, it runs Fixed only. Adding it changes your config hash; nothing else changes.
-3. Phase 1, PR 23 (Phase 1 wrap-up), when Pablo says to start it.
+**Phase 1 review.** Nothing in Phase 2 starts until Pablo has reviewed Phase 1 and agreed a Phase 2 PR list.
 
-Older workspaces: copy `config/sweeps/trend_rotation.toml` from a new workspace for the example sweep (PR 21). Earlier notes still apply (`[benchmark]` before PR 16, `[backtest]` and `instruments` before PR 15, `[execution]` before PR 14, `[strategies]` before PR 13, `[universe]` before PR 11, `config/costs/US.toml` before PR 9).
+1. **Review PR 23** (wrap-up: version 0.1.0, pipeline contracts, troubleshooting, the guides checked end to end).
+2. **ADR-0031 is still proposed.** Accept it as written, or say what to change. Its "Implementation choices made in PR 22" and proposed small-account defaults are the parts worth a look.
+3. **Decisions open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; the proposed small-account defaults; whether the Phase 3 gate deflates against zero or against the benchmark.
+4. **After merging PR 23**, if you want a release marker: tag the merge commit `v0.1.0` and push the tag. Tagging publishes to the public repository, so it is yours to do:
+
+   ```bash
+   git tag -a v0.1.0 -m "Phase 1: core and backtesting" && git push origin v0.1.0
+   ```
+
+5. **Before Phase 2**: the IBKR account and its paper account, if not opened yet; and Phase 2's PR list, which Claude drafts in this file for your agreement before any of its code.
+
+**Your workspace**, if created by an older Tyche: [troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche) has one table of everything to copy from a new workspace, by PR. For PR 22, the `[tiered]` table in `config/costs/US.toml`, if you want `tyche capital` to compare Tiered.

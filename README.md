@@ -4,7 +4,7 @@
 
 Tyche is an event-driven trading framework for one person running their own strategies on their own machine. The trading path is plain, tested Python. LLM agents help with research and review, and can only produce proposals that pass an automated backtest gate and a human approval before anything changes.
 
-> **Status: Phase 0 (plan and scaffolding).** There is no trading functionality yet. See [`STATUS.md`](STATUS.md).
+> **Status: Phase 1 complete (version 0.1.0): backtesting.** Tyche fetches daily data and backtests strategies through the whole trading path, against the benchmark's total return, with walk-forward testing, parameter sweeps counted and deflated, and a minimum viable capital analysis. There is no paper or live trading yet; that is Phase 2. See [`STATUS.md`](STATUS.md).
 
 ## Principles
 
@@ -26,7 +26,7 @@ make check
 uv run tyche --version
 ```
 
-To create your private workspace, follow the [installation guide](docs/user-guide/01-installation.md).
+To create your private workspace and run a first backtest, follow the [user guide](docs/user-guide/README.md), starting with [installation](docs/user-guide/01-installation.md).
 
 ## Documentation
 

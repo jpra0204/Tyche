@@ -1,6 +1,6 @@
 # System overview
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Nothing described here is implemented yet except the package skeleton and the CI checks.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Phase 1 (version 0.1.0) implements the trading path for backtests: data, universe, screening, signals, portfolio, a pass-through risk gate, execution, the simulated broker and an in-memory journal. Risk rules, reconciliation, paper and live trading, stored state, notifications and agents come in later phases; the [event catalog](event-catalog.md) marks what each event's status is, and [`STATUS.md`](../../STATUS.md) what works today.*
 
 This is the one document to read to understand how Tyche is put together. Each section links to the ADR that records the decision behind it.
 
@@ -240,4 +240,4 @@ You asked for plain statements where something is a likely way to lose money or 
 
 ## 10. Open decisions
 
-Tracked in [`STATUS.md`](../../STATUS.md). Every ADR written so far is accepted.
+Tracked in [`STATUS.md`](../../STATUS.md). The [ADR index](../adr/README.md) shows which decisions are accepted and which are still proposed.
