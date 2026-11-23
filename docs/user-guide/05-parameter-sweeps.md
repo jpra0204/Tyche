@@ -128,7 +128,16 @@ A pick that changes from fold to fold is a sign that the differences between com
 
 Each combination counts as one trial, however many folds run it. The out-of-sample result is not deflated, because nothing was chosen on it. But running several walk-forwards with different grids or folds and keeping the best one is choosing again: the trial count is what shows it.
 
-It is slow: every combination runs on every training window. With the defaults and the example grid, that is 27 times the training windows of a plain walk-forward.
+It is slow: every combination runs on every training window. With the defaults and the example grid, that is 27 times the training windows of a plain walk-forward: about two and a half hours on this profile.
+
+What the example gave, testing 2010 to 2023:
+
+| Out of sample | Sweep picks on each training window | Configured parameters, no sweep | SPY total return |
+|---|---|---|---|
+| CAGR | 4.29% | 4.57% | 12.58% |
+| Sharpe (rf 0) | 0.42 | 0.42 | 0.77 |
+
+The training windows picked seven different combinations over the 14 folds. Thirteen of the picks had a deflated Sharpe ratio above 95%. None of that carried into the test years: choosing the parameters each year did no better than fixing them in advance. That is what a passing deflated Sharpe ratio on a training window can look like. Judge a strategy by the walk-forward's out-of-sample result, not by the sweep's pick.
 
 ## Troubleshooting
 
