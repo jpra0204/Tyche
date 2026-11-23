@@ -37,7 +37,7 @@ from tyche.core.backtest import (
     WalkForwardError,
     WalkForwardMetrics,
 )
-from tyche.core.domain import ORDER_RULES, AssetClass, Money, RiskRule
+from tyche.core.domain import ORDER_RULES, AssetClass, Kill, Money, RiskRule, WorkingOrder
 from tyche.core.ports import DataError
 from tyche.core.risk import DEFAULT_RISK_PROFILE
 from tyche.runtime.backtest import (
@@ -63,6 +63,13 @@ from tyche.runtime.data import (
     FetchRequestError,
     fetch_daily_histories,
     instrument_for,
+)
+from tyche.runtime.kill_switch import (
+    KillSwitchError,
+    TradingStatus,
+    engage_kill,
+    resume,
+    status,
 )
 from tyche.runtime.profiles import (
     PROFILES_FILE,
@@ -802,6 +809,161 @@ def report(
     except ReportError as error:
         _fail(str(error))
     typer.echo(f"Report: {path}")
+
+
+@app.command()
+def kill(
+    reason: Annotated[
+        str | None,
+        typer.Option(
+            "--reason",
+            help="Why, for the journal and for you later. Adding --flatten without it "
+            "keeps the reason already given.",
+            show_default=False,
+        ),
+    ] = None,
+    flatten: Annotated[
+        bool,
+        typer.Option(
+            "--flatten",
+            help="Also sell every holding at the next decision, after cancelling its stop.",
+        ),
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="Do not ask before a flatten.")] = False,
+    home: HomeOption = None,
+) -> None:
+    """Engage the kill switch: no new orders from the next decision on.
+
+    Writes the KILL file in the workspace; the risk gate reads it at every decision.
+    Holdings are kept and stops already resting stay, unless --flatten. Orders already
+    working at the broker are listed, not cancelled. Only `tyche resume` releases it.
+    """
+    workspace = _existing_workspace(home)
+    if flatten and not yes:
+        typer.confirm(
+            "Sell every holding at the next decision, cancelling each stop first?", abort=True
+        )
+    outcome = engage_kill(workspace, reason, flatten=flatten)
+    current = outcome.status
+    if current.kill is None:  # cannot happen: the flag was just written or was there
+        _fail(f"the kill switch at {workspace.kill_file} does not read as engaged")
+    verb = "engaged" if outcome.changed else "was already engaged"
+    typer.echo(f"Kill switch {verb}: {workspace.kill_file}")
+    for line in _describe_kill(current.kill):
+        typer.echo(f"  {line}")
+    if not outcome.changed and flatten is False and current.kill.flatten:
+        typer.echo("  It already flattens; only `tyche resume` releases it.")
+    for line in _describe_status(current, workspace.relative(workspace.state_database)):
+        typer.echo(line)
+
+
+@app.command("resume")
+def resume_trading(
+    reason: Annotated[
+        str,
+        typer.Option("--reason", help="Why trading may start again, for the journal."),
+    ],
+    yes: Annotated[bool, typer.Option("--yes", help="Do not ask before lifting.")] = False,
+    home: HomeOption = None,
+) -> None:
+    """Lift the kill switch and the drawdown halt: the manual restart.
+
+    Shows what it would lift and asks first. A drawdown halt is lifted in the state
+    database, with a new peak from the next close; the KILL file is removed last.
+    """
+    workspace = _existing_workspace(home)
+    current = status(workspace)
+    if current.kill is not None:
+        typer.echo(f"Kill switch engaged: {workspace.kill_file}")
+        for line in _describe_kill(current.kill):
+            typer.echo(f"  {line}")
+    if current.halt is not None:
+        typer.echo(f"Drawdown halt since {current.halt.at:%Y-%m-%d}: {current.halt.reason}")
+        typer.echo("  Resuming forgets the peak: the next close becomes the new peak.")
+    if current.unreadable is not None:
+        _fail(
+            f"the state database cannot be read, so a drawdown halt cannot be ruled out: "
+            f"{current.unreadable}"
+        )
+    if current.kill is None and current.halt is None:
+        typer.echo("Nothing to resume: the kill switch is off and trading is not halted.")
+        return
+    if not yes:
+        typer.confirm("Lift it and let the next decision trade again?", abort=True)
+    try:
+        outcome = resume(
+            workspace,
+            reason,
+            code_version=__version__,
+            expected=current,
+        )
+    except KillSwitchError as error:
+        _fail(str(error))
+    lifted = [
+        "the kill switch" if outcome.released else "",
+        "the drawdown halt" if outcome.lifted else "",
+    ]
+    typer.echo(f"Lifted {' and '.join(x for x in lifted if x)}.")
+    if outcome.run_id is not None:
+        typer.echo(f"Recorded as run {outcome.run_id} in the state database.")
+    typer.echo("The next decision trades normally.")
+
+
+def _existing_workspace(home: Path | None) -> Workspace:
+    """The workspace, refused unless it exists: a KILL file elsewhere protects nothing."""
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+    except WorkspaceError as error:
+        _fail(str(error))
+    if not workspace.tyche_config.is_file():
+        _fail(
+            f"no workspace at {workspace.root} (no {workspace.relative(workspace.tyche_config)}); "
+            "give --home or set TYCHE_HOME"
+        )
+    return workspace
+
+
+def _describe_kill(kill: Kill) -> list[str]:
+    when = f"{kill.engaged_at:%Y-%m-%d %H:%M} UTC" if kill.engaged_at else "not recorded"
+    effect = (
+        "every holding is sold at the next decision, each stop cancelled first"
+        if kill.flatten
+        else "holdings are kept; stops already resting stay"
+    )
+    return [f"Engaged at: {when}", f"Reason: {kill.reason}", f"Flatten: {effect}"]
+
+
+def _describe_status(current: TradingStatus, database: str) -> list[str]:
+    if current.unreadable is not None:
+        return [f"Could not read {database}, so working orders are unknown: {current.unreadable}"]
+    if current.checkpoint is None:
+        return ["No paper or live run has saved state yet, so no order is known to be working."]
+    lines = []
+    if current.halt is not None:
+        lines.append(
+            f"Trading is also halted by the drawdown kill since {current.halt.at:%Y-%m-%d}."
+        )
+    working = current.working
+    if not working:
+        lines.append(f"Run {current.checkpoint.run_id} left no order working at the broker.")
+        return lines
+    lines.append(f"Orders run {current.checkpoint.run_id} left working at the broker:")
+    lines.extend(f"  {_describe_working(order)}" for order in working)
+    lines.append(
+        "  They are not cancelled. Market orders fill or expire at the next session; "
+        "to cancel one, use IBKR's own app (docs/runbooks/kill-switch.md)."
+    )
+    return lines
+
+
+def _describe_working(working: WorkingOrder) -> str:
+    order = working.state.order
+    price = f" at {order.stop_price}" if order.stop_price is not None else ""
+    return (
+        f"{order.client_order_id}: {order.side} {working.state.remaining} "
+        f"{order.instrument.symbol}.{order.instrument.exchange} {order.order_type}{price}, "
+        f"{order.time_in_force}"
+    )
 
 
 def _describe_backtest(outcome: BacktestOutcome, starting: Money, risk_profile: str) -> list[str]:

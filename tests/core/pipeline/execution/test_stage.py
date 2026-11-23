@@ -13,6 +13,7 @@ from decimal import Decimal
 import pytest
 
 from tests.support.costs import NO_FEES, US_COSTS, usd
+from tests.support.kill import kill
 from tests.support.ledger import fill
 from tests.support.market import QQQ, SPY, close_of, session
 from tests.support.recording import Recorder, TickingClock
@@ -26,6 +27,7 @@ from tyche.core.domain import (
     ExecutionRules,
     Instrument,
     InstrumentTarget,
+    Kill,
     MoneyLimits,
     OrderStatus,
     OrderType,
@@ -148,11 +150,12 @@ class Desk:
         sleeves: tuple[Sleeve, ...],
         *targets: InstrumentTarget,
         halt: AccountTrigger | None = None,
+        kill: Kill | None = None,
     ) -> list[Event]:
         """Publish the approved portfolio for ``day``'s close; return what it caused."""
         before = len(self.recorder)
         approved = ApprovedPortfolioEvent(
-            close_of(day), sleeves, targets, "pass-through", halt=halt
+            close_of(day), sleeves, targets, "pass-through", halt=halt, kill=kill
         )
         self.bus.publish(approved, source="risk", cycle_id=f"XNYS:{day.isoformat()}:1d")
         self.bus.drain()
@@ -554,6 +557,80 @@ class TestHalted:
 
         assert [f.fill.side for f in desk.fills()] == [Side.BUY, Side.SELL]
         assert desk.book.positions_of("a") == ()
+
+
+class TestKilled:
+    """The kill switch: keep everything, or cancel every stop and sell (ADR-0039)."""
+
+    def two_sleeves_one_with_a_stop(self) -> Desk:
+        desk = Desk()
+        desk.trade(TUE, ohlc(TUE, "100"), ohlc(TUE, "50", instrument=QQQ))
+        desk.decide(
+            TUE,
+            (decided("a", "0.5", SPY), decided("b", "0.5", QQQ)),
+            wants(QQQ, ("b", "0.2", None)),
+            wants(SPY, ("a", "0.3", "95")),
+        )
+        desk.trade(WED, ohlc(WED, "100"), ohlc(WED, "50", instrument=QQQ))
+        assert (desk.book.held("a", SPY), desk.book.held("b", QQQ)) == (D(30), D(40))
+        assert len(desk.book.stops) == 1
+        return desk
+
+    def test_without_flatten_keeps_every_holding_and_sends_no_order(self) -> None:
+        desk = self.two_sleeves_one_with_a_stop()
+
+        # Sleeve a wants out of SPY; the switch keeps it and leaves its stop resting.
+        caused = desk.decide(WED, (decided("a", "0.5", SPY), decided("b", "0.5", QQQ)), kill=kill())
+
+        assert desk.submitted(caused) == []
+        assert not any(isinstance(e, CancelRequestEvent) for e in caused)
+        assert desk.plan(caused) == (
+            PlanLine("a", SPY, D(30), D(30), note=PlanNote.KILLED),
+            PlanLine("b", QQQ, D(40), D(40), note=PlanNote.KILLED),
+        )
+        assert len(desk.book.stops) == 1
+
+    def test_a_flatten_cancels_each_stop_then_sells_every_holding(self) -> None:
+        desk = self.two_sleeves_one_with_a_stop()
+
+        # Neither sleeve decided anything this cycle (b failed): the flatten sells both.
+        caused = desk.decide(
+            WED, (decided("a", "0.5"), failed("b", "0.5")), kill=kill(flatten=True)
+        )
+
+        kinds = [type(e).__name__ for e in caused]
+        assert kinds.index("CancelRequestEvent") < kinds.index("OrderEvent")
+        assert [o[1:] for o in desk.submitted(caused)] == [
+            (Side.SELL, D(40), OrderType.MARKET),
+            (Side.SELL, D(30), OrderType.MARKET),
+        ]
+        assert desk.plan(caused) == (
+            PlanLine("a", SPY, D(30), D(0), ordered=D(-30), note=PlanNote.FLATTENED),
+            PlanLine("b", QQQ, D(40), D(0), ordered=D(-40), note=PlanNote.FLATTENED),
+        )
+        assert desk.book.stops == ()
+
+        desk.trade(THU, ohlc(THU, "90", low="80"), ohlc(THU, "50", instrument=QQQ))
+        assert desk.book.instruments == ()
+        assert desk.state.account.positions == ()
+        sold = [f.fill for f in desk.fills() if f.fill.side is Side.SELL]
+        assert sorted(f.quantity for f in sold) == [D(30), D(40)]  # the stop never fired
+
+    def test_a_flatten_sells_a_sleeve_no_longer_listed(self) -> None:
+        desk = self.two_sleeves_one_with_a_stop()
+
+        caused = desk.decide(WED, (decided("a", "1"),), kill=kill(flatten=True))
+
+        assert sorted(o[2] for o in desk.submitted(caused)) == [D(30), D(40)]
+
+    def test_a_flatten_with_nothing_held_sends_nothing(self) -> None:
+        desk = Desk()
+        desk.trade(TUE, ohlc(TUE, "100"))
+
+        caused = desk.decide(TUE, (decided("a", "1", SPY),), kill=kill(flatten=True))
+
+        assert desk.submitted(caused) == []
+        assert desk.plan(caused) == ()
 
 
 class TestSettlementAtTheEndOfTheCalendar:

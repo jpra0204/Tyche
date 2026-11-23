@@ -8,7 +8,7 @@ Both are measured on the account's equity at every session close, from the
   Exits and reductions still go through, and the next close starts fresh.
 * **Drawdown kill.** If equity is at least ``drawdown_kill`` below the highest close
   so far, trading halts. The halt is a latch: once set, nothing in a run clears it.
-  Only a manual restart does, which arrives with the kill switch (Phase 2, PR 8).
+  Only a manual restart does: ``tyche resume``, which also forgets the peak (ADR-0039).
 
 Equity is the whole account's: cash, settled or not, plus positions at their latest
 close, after every fee. Each cash currency is measured on its own until currency

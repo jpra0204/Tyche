@@ -18,7 +18,7 @@ add up is refused, never loaded.
 """
 
 from collections.abc import Hashable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -232,7 +232,8 @@ class AccountRulesState:
         previous: Equity at that close, one per currency.
         peak: The highest close of equity so far, one per currency.
         halt: The drawdown kill that halted trading, if it triggered. Only a manual
-            restart lifts it (Phase 2, PR 8); a restart from a checkpoint does not.
+            restart lifts it (``resumed``, ADR-0039); a restart from a checkpoint does
+            not.
     """
 
     last_close: datetime | None = None
@@ -253,6 +254,16 @@ class AccountRulesState:
                 raise ValueError(f"only the drawdown kill halts trading, not {self.halt.rule}")
             if self.halt.at > self.last_close:
                 raise ValueError("the halt cannot come after the last close measured")
+
+    def resumed(self) -> AccountRulesState:
+        """The memory after a manual restart (``tyche resume``, ADR-0039).
+
+        The halt is lifted and the peak forgotten, so the first close after the restart
+        is the new peak and the drawdown kill counts from there: a peak kept would halt
+        again at the next close. The previous close stays, so the daily loss limit still
+        compares the next close with it.
+        """
+        return replace(self, peak=(), halt=None)
 
 
 @dataclass(frozen=True, slots=True)

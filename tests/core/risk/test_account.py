@@ -125,3 +125,30 @@ class TestCarriedFromACheckpoint:
 
         with pytest.raises(ValueError, match="is not after the previous one"):
             restarted.close(at(1), cash("10100"))
+
+
+LIMITS = profile(daily_loss="0.03", drawdown="0.15")
+
+
+class TestResumedByHand:
+    """``tyche resume`` lifts the halt and forgets the peak (ADR-0039)."""
+
+    def test_the_first_close_after_the_restart_is_the_new_peak(self) -> None:
+        halted = closes("10000", "8000")
+        assert halted.halt is not None
+
+        restarted = AccountRules(LIMITS, halted.state().resumed())
+
+        assert restarted.halt is None
+        assert restarted.peak(Currency.USD) is None
+        assert restarted.close(at(2), cash("8000")) == ()  # 20% below the old peak
+        assert restarted.peak(Currency.USD) == usd("8000")
+        [kill] = [t for t in restarted.close(at(3), cash("6800")) if t.rule.name == "DRAWDOWN_KILL"]
+        assert kill.reference == usd("8000")
+
+    def test_the_daily_loss_limit_still_compares_with_the_last_close(self) -> None:
+        restarted = AccountRules(LIMITS, closes("10000", "8000").state().resumed())
+
+        triggers = restarted.close(at(2), cash("7700"))
+
+        assert [t.rule for t in triggers] == [RiskRule.DAILY_LOSS_LIMIT]

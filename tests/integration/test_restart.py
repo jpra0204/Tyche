@@ -44,6 +44,7 @@ from tyche.core.events import (
     OrderEvent,
     RiskEvent,
 )
+from tyche.core.ports import KillSwitch
 from tyche.core.risk import RiskLimits
 from tyche.strategies import MeanReversion, TrendRotation
 
@@ -59,6 +60,7 @@ def run(
     risk: RiskLimits = UNBOUND,
     resume: Resume | None = None,
     run_id: str = "whole",
+    kill_switch: KillSwitch | None = None,
 ) -> BacktestResult:
     spec = BacktestSpec(
         run_id=run_id,
@@ -81,7 +83,7 @@ def run(
         first=first,
         last=last,
     )
-    result = run_backtest(spec, Walks(), {"XNYS": NYSE}, resume=resume)
+    result = run_backtest(spec, Walks(), {"XNYS": NYSE}, resume=resume, kill_switch=kill_switch)
     assert result.run.completed, result.run.failure
     assert result.account == result.broker_account
     return result

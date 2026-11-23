@@ -39,7 +39,7 @@ src/tyche/
 │   │   ├── execution/        stage 6: account state, sleeve book, sizing, netting, orders, stops
 │   │   ├── reconciliation/   stage 7
 │   │   └── journal/          stage 8
-│   ├── risk/               stage 5: risk limits in three layers (ADR-0032), the gate's position rules (ADR-0033), the account rules and the drawdown halt (ADR-0035)
+│   ├── risk/               stage 5: risk limits in three layers (ADR-0032), the gate's position rules (ADR-0033), the account rules and the drawdown halt (ADR-0035), the kill switch (ADR-0039)
 │   ├── engine/             the run loop shared by all three modes
 │   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
 │   ├── backtest/           runner, holdout, metrics, cost drag, walk-forward, sweeps, capital
@@ -54,6 +54,7 @@ src/tyche/
 │   ├── notifiers/          Discord webhook
 │   ├── llm/                claude-code (later ollama, anthropic-api)
 │   ├── storage/            the state database: migrations, codec, journal and checkpoint stores
+│   ├── kill_switch/        the KILL flag file (ADR-0039)
 │   └── reports/            report rendering
 ├── config/               the workspace, config file schemas, loading, config hash
 │   └── templates/          files `tyche init` copies into a new workspace

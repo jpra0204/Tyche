@@ -4,8 +4,10 @@ It acts on ``ApprovedPortfolioEvent`` only (ADR-0006). At each decision it:
 
 1. **Reads each sleeve and instrument** the way ADR-0022 says: a contribution's weight,
    zero for an instrument decided on and not targeted, or keep what is held. When the
-   approval carries the drawdown kill's halt, everything is kept and no order is sent
-   (ADR-0035); stops already resting stay at the broker.
+   approval carries the drawdown kill's halt, or the kill switch without flatten,
+   everything is kept and no order is sent (ADR-0035, ADR-0039); stops already resting
+   stay at the broker. When the kill switch flattens, every holding of every sleeve has
+   a target of zero: each resting stop is cancelled, then every holding is sold.
 2. **Sizes** each weight in whole shares of the account's equity at the last close,
    rounding down. A holding within the rebalance band of its target is kept as it is;
    entries and exits always trade.
@@ -375,11 +377,21 @@ class ExecutionStage:
         )
         self._bus.publish(ExecutionPlanEvent(approved.as_of, _lines(plans), sized_on))
 
-        if approved.halt is not None:
+        if approved.keeps_everything:
             # Everything was kept, so there is nothing to send; resting stops stay as
-            # they are, not even placed again (ADR-0035).
+            # they are, not even placed again (ADR-0035, ADR-0039).
             if sales or owed_on_purchase:
-                raise ExecutionError("a halted decision planned an order")
+                raise ExecutionError("a halted or killed decision planned an order")
+            return
+        if approved.flattens:
+            # Every stop is cancelled before any sale goes out, so a stop and a sale can
+            # never both sell the same shares at a gapped open (ADR-0039).
+            if owed_on_purchase:
+                raise ExecutionError("a flattening decision planned a purchase")
+            self._update_stops(sales, stamp, at)
+            for instrument, owed in sorted(sales.items(), key=lambda item: _key(item[0])):
+                self._send_market(instrument, Side.SELL, owed, stamp, at)
+            self._require_long_only(account, sales)
             return
         for instrument, owed in sorted(sales.items(), key=lambda item: _key(item[0])):
             self._send_market(instrument, Side.SELL, owed, stamp, at)
@@ -401,11 +413,11 @@ class ExecutionStage:
         plans: dict[str, _Plan] = {}
         for strategy_id in sorted(sleeve_ids | set(self._book.holders(instrument))):
             held = self._book.held(strategy_id, instrument)
-            wanted = approved.wanted(strategy_id, instrument) if strategy_id in sleeve_ids else KEEP
+            listed = strategy_id in sleeve_ids or approved.flattens
+            wanted = approved.wanted(strategy_id, instrument) if listed else KEEP
             if wanted is KEEP:
                 if held:
-                    kept = PlanNote.HALTED if approved.halt is not None else PlanNote.KEEP
-                    plans[strategy_id] = _Plan(held, held, kept)
+                    plans[strategy_id] = _Plan(held, held, _kept(approved))
                 continue
 
             weight = wanted.weight if wanted is not None else Decimal(0)
@@ -424,6 +436,8 @@ class ExecutionStage:
                 self._wanted_stops.pop((strategy_id, instrument), None)
             else:
                 self._wanted_stops[(strategy_id, instrument)] = stop
+            if approved.flattens and held:
+                note = PlanNote.FLATTENED
             if held or target or note:
                 plans[strategy_id] = _Plan(held, target, note)
         return plans
@@ -692,6 +706,15 @@ class ExecutionStage:
             return self._calendars[calendar].next_session(today).day
         except OutOfCalendarRangeError:
             return today
+
+
+def _kept(approved: ApprovedPortfolioEvent) -> PlanNote:
+    """Why a holding is kept: the kill switch, the halt, or the sleeve did not decide."""
+    if approved.kill is not None:
+        return PlanNote.KILLED
+    if approved.halt is not None:
+        return PlanNote.HALTED
+    return PlanNote.KEEP
 
 
 def _lines(plans: Mapping[tuple[str, Instrument], _Plan]) -> tuple[PlanLine, ...]:

@@ -12,6 +12,11 @@ At every session close it measures the account (``AccountRules``) and publishes 
 triggered, every decision is approved with nothing in it and the halt attached:
 execution keeps every holding and sends no order, for the rest of the run.
 
+At every decision it also reads the **kill switch** (ADR-0039). While it is engaged,
+every decision is approved with nothing in it and the switch attached: execution keeps
+every holding, or with ``flatten`` sells every holding, and buys nothing. The halt and
+the switch can both be on; a flatten then still sells, because Pablo asked for it.
+
 Otherwise the rules, in the order they apply (``review``):
 
 0. **The daily loss limit**, if it triggered at this close: every contribution above
@@ -47,6 +52,7 @@ from tyche.core.domain import (
     Currency,
     Instrument,
     InstrumentTarget,
+    Kill,
     Money,
     MoneyLimits,
     RiskAction,
@@ -64,6 +70,7 @@ from tyche.core.events import (
     RiskEvent,
     TargetPortfolioEvent,
 )
+from tyche.core.ports import KillSwitch
 from tyche.core.risk.account import AccountRules
 from tyche.core.risk.limits import RiskLimits
 
@@ -399,6 +406,8 @@ class RiskGate:
             sizes on: the account's, or the capital cap if lower (ADR-0034).
         rules: The account rules' memory from a previous run's checkpoint (ADR-0038):
             the last close, the peak and any halt. ``None`` to start fresh.
+        kill_switch: Read at every decision (ADR-0039). ``None`` for a run nobody can
+            stop by hand, such as a backtest.
     """
 
     def __init__(
@@ -408,8 +417,10 @@ class RiskGate:
         holdings: Holdings,
         money: Mapping[Currency, MoneyLimits] | None = None,
         rules: AccountRulesState | None = None,
+        kill_switch: KillSwitch | None = None,
     ) -> None:
         self._bus = bus
+        self._kill_switch = kill_switch
         self._limits = limits
         self._holdings = holdings
         self._money = dict(money) if money is not None else {}
@@ -445,9 +456,12 @@ class RiskGate:
         account = self._snapshot(proposed)
         name = self._limits.profile.name
         halt = self._rules.halt
-        if halt is not None:
+        kill = self._kill()
+        if halt is not None or kill is not None:
             self._bus.publish(
-                ApprovedPortfolioEvent(proposed.as_of, proposed.sleeves, (), name, halt=halt)
+                ApprovedPortfolioEvent(
+                    proposed.as_of, proposed.sleeves, (), name, halt=halt, kill=kill
+                )
             )
             return
         held = self._held(account)
@@ -464,6 +478,9 @@ class RiskGate:
                 adjustments=result.adjustments,
             )
         )
+
+    def _kill(self) -> Kill | None:
+        return self._kill_switch.read() if self._kill_switch is not None else None
 
     def _snapshot(self, proposed: TargetPortfolioEvent) -> Account:
         if self._account is None or self._account.as_of != proposed.as_of:

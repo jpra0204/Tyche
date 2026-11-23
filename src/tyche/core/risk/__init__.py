@@ -12,9 +12,10 @@ Available now:
   function ``review``, and it reads holdings through the ``Holdings`` protocol.
 * The account rules (ADR-0015, ADR-0035): ``AccountRules`` measures equity at every
   close; the daily loss limit blocks entries and additions at that close, and the
-  drawdown kill halts trading for the rest of the run.
-
-Planned (Phase 2): lifting a halt by a manual restart, with the kill switch (PR 8).
+  drawdown kill halts trading for the rest of the run. ``tyche resume`` lifts a halt
+  (``AccountRulesState.resumed``, ADR-0039).
+* The kill switch (ADR-0039): the gate reads a ``KillSwitch`` at every decision and,
+  while it is engaged, approves nothing, carrying it on the approval.
 """
 
 from tyche.core.risk.account import AccountRules

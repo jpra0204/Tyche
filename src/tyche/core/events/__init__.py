@@ -3,7 +3,7 @@
 Available now: the ``Event`` base class, the ``Envelope`` the bus wraps around every
 event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
 (``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``),
-``RunEvent``, the trading events (``ExecutionPlanEvent``, ``OrderEvent``,
+``RunEvent`` and ``ResumeEvent``, the trading events (``ExecutionPlanEvent``, ``OrderEvent``,
 ``CancelRequestEvent``, ``FillEvent``, ``AccountEvent``, ``DistributionEvent``), and
 the decision-cycle events (``UniverseEvent``, ``ScreeningEvent``, ``SignalEvent``,
 ``SignalsReadyEvent``, ``TargetPortfolioEvent``, ``RiskEvent``,
@@ -40,7 +40,7 @@ from tyche.core.events.market import (
     SessionEvent,
     SessionPhase,
 )
-from tyche.core.events.system import RunEvent, RunMode, RunStage
+from tyche.core.events.system import ResumeEvent, RunEvent, RunMode, RunStage
 from tyche.core.events.trading import (
     AccountEvent,
     CancelRequestEvent,
@@ -70,6 +70,7 @@ __all__ = [
     "HandlerError",
     "Keep",
     "OrderEvent",
+    "ResumeEvent",
     "RiskEvent",
     "RunEvent",
     "RunMode",

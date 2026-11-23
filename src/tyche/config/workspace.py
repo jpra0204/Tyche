@@ -103,6 +103,15 @@ class Workspace:
         return self.state_dir / "tyche.db"
 
     @property
+    def kill_file(self) -> Path:
+        """The kill switch: while this file exists, Tyche sends no new orders (ADR-0039).
+
+        At the root, where it is easy to find in a hurry. Gitignored: it is state, not
+        config.
+        """
+        return self.root / "KILL"
+
+    @property
     def reports_dir(self) -> Path:
         """Backtest records and reports. Committed: each says which code and config made it."""
         return self.root / "reports"

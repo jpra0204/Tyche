@@ -14,6 +14,7 @@ from tyche.core.domain import (
     Exclusion,
     Instrument,
     InstrumentTarget,
+    Kill,
     OrderAdjustment,
     RiskAdjustment,
     RiskRule,
@@ -326,6 +327,12 @@ class ApprovedPortfolioEvent(Event):
     no targets and no adjustments, and ``wanted`` keeps everything: execution sends no
     order until a manual restart (ADR-0035).
 
+    While the kill switch is engaged, every approval carries it as ``kill``, with no
+    targets and no adjustments (ADR-0039). Without ``flatten``, ``wanted`` keeps
+    everything, as under the halt. With ``flatten``, ``wanted`` is zero for every sleeve
+    and every instrument, whatever the sleeve decided and even under the halt: execution
+    sells every holding.
+
     Attributes:
         as_of: The decision time.
         sleeves: One per strategy with a budget, ordered by strategy id.
@@ -335,6 +342,7 @@ class ApprovedPortfolioEvent(Event):
         adjustments: Every change the gate made to the proposal, in order. Empty when
             it approved the proposal as it was.
         halt: The drawdown kill that halted trading, or ``None``.
+        kill: The kill switch, if it was engaged at this decision, or ``None``.
     """
 
     as_of: datetime
@@ -343,6 +351,7 @@ class ApprovedPortfolioEvent(Event):
     profile: str
     adjustments: tuple[RiskAdjustment, ...] = ()
     halt: AccountTrigger | None = None
+    kill: Kill | None = None
 
     def __post_init__(self) -> None:
         _require_portfolio("ApprovedPortfolioEvent", self.as_of, self.sleeves, self.targets)
@@ -356,8 +365,18 @@ class ApprovedPortfolioEvent(Event):
                 )
             if self.halt.at > self.as_of:
                 raise ValueError("ApprovedPortfolioEvent: halted by a trigger after it")
-            if self.targets or self.adjustments:
-                raise ValueError("ApprovedPortfolioEvent: a halted approval approves nothing")
+        if (self.halt is not None or self.kill is not None) and (self.targets or self.adjustments):
+            raise ValueError("ApprovedPortfolioEvent: a halted or killed approval approves nothing")
+
+    @property
+    def flattens(self) -> bool:
+        """True when the kill switch asks for every holding to be sold (ADR-0039)."""
+        return self.kill is not None and self.kill.flatten
+
+    @property
+    def keeps_everything(self) -> bool:
+        """True when nothing may be traded: halted or killed, and not flattening."""
+        return (self.halt is not None or self.kill is not None) and not self.flattens
 
     def sleeve(self, strategy_id: str) -> Sleeve:
         return _sleeve(self.sleeves, strategy_id)
@@ -365,12 +384,16 @@ class ApprovedPortfolioEvent(Event):
     def wanted(self, strategy_id: str, instrument: Instrument) -> Contribution | Keep | None:
         """How execution reads one sleeve and one instrument (ADR-0022, decision 4).
 
-        Returns the sleeve's contribution if it has one; ``None`` if it decided on the
-        instrument and did not target it (a target of zero); ``KEEP`` otherwise (not
-        offered this cycle, the sleeve failed, or trading is halted): keep what it holds.
+        Returns ``None`` (a target of zero) for every sleeve, listed or not, and every
+        instrument when the kill switch flattens. Otherwise the sleeve's contribution if
+        it has one; ``None`` if it decided on the instrument and did not target it;
+        ``KEEP`` otherwise (not offered this cycle, the sleeve failed, trading is halted
+        or killed): keep what it holds.
         """
+        if self.flattens:
+            return None
         sleeve = self.sleeve(strategy_id)
-        if self.halt is not None:
+        if self.keeps_everything:
             return KEEP
         if sleeve.status is not SleeveStatus.DECIDED or instrument not in sleeve.decided_on:
             return KEEP
