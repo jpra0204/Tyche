@@ -1,6 +1,6 @@
 [project]
 name = "tyche"
-version = "0.0.1"
+version = "0.1.0"
 description = "Tyche: an event-driven, agent-assisted trading framework."
 readme = "README.md"
 authors = [{ name = "jpra0204" }]

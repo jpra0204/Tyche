@@ -41,7 +41,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0028](0028-backtest-report-html-and-cost-drag.md) | The backtest report is one HTML file with matplotlib charts, built from the record | Accepted (Pablo, 2026-11-20) |
 | [0029](0029-walk-forward-folds-and-a-train-step.md) | Walk-forward: anchored folds of calendar years, and a train step that keeps the configured parameters until sweeps exist | Accepted (Pablo, 2026-11-20) |
 | [0030](0030-parameter-sweeps-trial-count-and-deflated-sharpe.md) | Parameter sweeps: every recorded trial counted, the pick by Sharpe ratio, and a deflated Sharpe ratio | Accepted (Pablo, 2026-11-19) |
-| [0031](0031-minimum-viable-capital.md) | Minimum viable capital: a size penalty against a large reference account, Fixed against Tiered | Proposed |
+| [0031](0031-minimum-viable-capital.md) | Minimum viable capital: a size penalty against a large reference account, Fixed against Tiered | Accepted (Pablo, 2026-11-23) |
 
 ## Template
 

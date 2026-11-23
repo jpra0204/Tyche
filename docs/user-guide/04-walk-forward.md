@@ -118,4 +118,4 @@ The rotation's fold table is the instructive part. On its first training window 
 | `… leaves no test window after a 5-year training window` | The range is too short for one training window and one test year. Start earlier, or give a smaller `--train-years`. |
 | `Error: the walk-forward stopped: …` | A window halted or could not be measured. The windows before it are recorded, and `walk_forward.json` says which one stopped and why. |
 | `… are not in the cache yet. Fetch it first:` | Run the command printed, then the walk-forward again. The windows already run stay recorded under the stopped walk-forward. |
-| `Error: no backtest, walk-forward or sweep record named …` | `tyche report` takes the id exactly as it was printed: a folder's name under `reports/backtests/`, `reports/walk_forward/` or `reports/sweeps/`. |
+| `Error: no backtest, walk-forward, sweep or capital record named …` | `tyche report` takes the id exactly as it was printed: a folder's name under `reports/backtests/`, `reports/walk_forward/`, `reports/sweeps/` or `reports/capital/`. |

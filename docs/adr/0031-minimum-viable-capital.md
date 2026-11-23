@@ -1,6 +1,6 @@
 # ADR-0031: Minimum viable capital: a size penalty against a large reference account, Fixed against Tiered
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-22
 
 ## Context
@@ -62,7 +62,7 @@ At USD 700, roughly CAD 1,000:
 - **The mean reversion has no edge at any size**, so its minimum is academic. It trades often, so its costs fall steadily with size: from 6.38% a year at USD 500 to 1.01% at USD 25,000 under Fixed. Even on the reference account they take 0.96% a year, mostly slippage.
 - **Buy-and-hold is viable from USD 700 on 2005 prices**, when SPY cost about USD 120. Today a share costs USD 690: USD 700 holds one share and USD 500 none.
 
-**Proposed defaults**, for Pablo to decide; nothing in the code or the configuration changes with them:
+**Proposed defaults**, for Pablo to decide; nothing in the code or the configuration changes with them. Accepting this ADR accepted the analysis, not these defaults: they remain open, for the Phase 2 risk profiles (`STATUS.md`).
 
 1. **Use Tiered for the real account.** At these sizes it cut costs by a half to two thirds. The live risk profile and the costs file are Pablo's to change (`CLAUDE.md`, rule 3).
 2. **Under about USD 5,000 (CAD 7,000), hold one or two positions, not five.** With one position, a round trip costs 0.44% of USD 700 under Fixed and 0.23% under Tiered, against 2.12% and 0.84% split five ways. The brief's default risk profile (at most five positions, at most 20% of equity each) cannot be fully invested with fewer than five positions; a small-account profile would need a larger single-position limit. That is a Phase 2 risk-profile decision.

@@ -4,8 +4,6 @@ A backtest replays history through exactly the code that will later trade on pap
 
 You need a workspace with fetched data: see [Installation and your workspace](01-installation.md) and [Fetching market data](02-fetching-market-data.md).
 
-*The report with charts comes in PR 19. For now a backtest prints its metrics beside the benchmark's and writes them, the equity curve and the fills to files.*
-
 ## The holdout: history you cannot backtest
 
 History from **2024-01-01** on is the **holdout**. No backtest may reach it. It is kept untouched for one purpose: the final check before a strategy is promoted (Phase 3). If you tune a strategy on the same history you then judge it on, it will look better than it is; a holdout that no experiment has seen is the honest test ([ADR-0024](../adr/0024-backtest-runner-holdout-and-run-record.md), learning note: [the holdout and the run record](../learning/holdout-and-run-records.md)).
@@ -110,7 +108,7 @@ Backtest 20261119T172646Z-75505646: completed
 - **Fills** counts every trade. **Free-riding violations** should always be 0 ([costs and settlement](../developer-guide/ibkr-canada-costs-and-settlement.md)).
 - **Code** is Tyche's version and the git commit it ran from. If the code had uncommitted changes, it ends in `.dirty` and a warning says the commit alone cannot reproduce the run.
 
-A run of 19 years with two instruments takes a few seconds.
+A run of 19 years over the nine candidates takes about 20 seconds.
 
 ## The metrics
 
@@ -219,7 +217,7 @@ Neither beats holding SPY. The rotation's worst fall was 29.7% (2018 to 2020) ag
 | `… gives strategy 'trend_rotation' a budget, but config/strategies/trend_rotation.toml does not exist` (or `mean_reversion`) | Your workspace was created before PR 18. Copy the file from a new workspace (`uv run tyche init --home <scratch-folder>`) into your `config/strategies/`. |
 | `no bar of the benchmark SPY@ARCX on or before …` | Fetch the benchmark's history from before your first day, as for a candidate. |
 | `Metrics:       not measured: …` | The run could not be measured, for example because it halted before its first close. The record is written without `metrics.json` and without a report; the message says why. |
-| `Error: no backtest, walk-forward or sweep record named …` | `tyche report` takes the run id exactly as `tyche backtest` printed it: the record folder's name under `reports/backtests/`. |
+| `Error: no backtest, walk-forward, sweep or capital record named …` | `tyche report` takes the run id exactly as `tyche backtest` printed it: the record folder's name under `reports/backtests/`. |
 | `… run.json is record format …` | The record was written by a different version of Tyche than the one reading it. |
 | `config/markets/US.toml: … universe.instruments: Field required` | Your workspace was created before PR 15. Copy the `instruments` list, with its comments, into the `[universe]` table of your `config/markets/US.toml`. |
 | `Error: the run halted: …` | A stage found something it cannot handle and stopped the run rather than guess (fail closed). The record is still written. The message names the problem; please share it, since it usually means a bug. |

@@ -45,8 +45,12 @@ This creates `~/tyche-workspace` with:
 |---|---|
 | `config/tyche.toml` | Workspace settings: the active market profile, the strategies and their budgets, and the backtest settings (the starting cash and the holdout) |
 | `config/markets/US.toml` | The `US` market profile: the instruments Tyche follows, and the universe rules that decide which of them may be traded (asset classes, a minimum price, a minimum average dollar volume, and how long data problems keep an instrument out) |
-| `config/costs/US.toml` | What trading costs under the `US` profile (IBKR Pro Fixed), slippage and settlement, with the date the rates were checked |
+| `config/costs/US.toml` | What trading costs under the `US` profile (IBKR Pro Fixed, and Tiered for comparison), slippage and settlement, with the date the rates were checked |
+| `config/strategies/` | One file per strategy: which built-in strategy it is and its parameters. `buy_and_hold` runs; the two example strategies are there without a budget |
+| `config/sweeps/` | Parameter sweeps; one example, `trend_rotation.toml` ([parameter sweeps](05-parameter-sweeps.md)) |
 | `.env` | Where secrets will go in Phase 2. Empty for now, and readable only by you |
+
+Commands add `data/` (market data, kept out of git) and `reports/` (every backtest, walk-forward, sweep and capital analysis) as you use them.
 | `.gitignore` | Keeps `.env`, market data, state and logs out of git |
 | `README.md` | A short description of the folder |
 
