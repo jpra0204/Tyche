@@ -248,7 +248,6 @@ Two things in the brief's Phase 1 that this plan moves:
 | Decision | Needed by |
 |---|---|
 | Branch protection for `main`: a PR is required and force-pushes are blocked (done 2026-11-23); still to do: require the CI check to pass. A GitHub setting only you can change | Now, recommended |
-| Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
 | PR 22's proposed defaults for a small account: Tiered for the real account; one or two positions below about USD 5,000, which needs a small-account risk profile with a single-position limit above 20%; low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)) | Phase 2, PR 5 |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
 | Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
@@ -281,9 +280,9 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 Your workspace's guardrails are your own values now, and it passes `tyche config check` (checked 2026-11-23). Your IBKR account and its paper account are open and approved, so PR 10 is not waiting on anything.
 
-Also decided on 2026-11-23: **no capital rule in the Phase 3 gate.** Promotion stays a manual decision for now, so whether a strategy is viable at your account size is evidence you read in `tyche capital`, not an automatic block.
+Also decided on 2026-11-23: **never move `holdout_starts` later** is now never-do rule 9 in `CLAUDE.md`; and **no capital rule in the Phase 3 gate.** Promotion stays a manual decision for now, so whether a strategy is viable at your account size is evidence you read in `tyche capital`, not an automatic block.
 
-1. **Decisions still open from Phase 1**, in the table above: requiring the CI check on `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
+1. **Decisions still open from Phase 1**, in the table above: requiring the CI check on `main`; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
 2. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
