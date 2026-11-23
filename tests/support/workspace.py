@@ -22,3 +22,37 @@ def keep_candidates(root: Path, *symbols: str) -> None:
         or any(line.lstrip().startswith(f'{{ symbol = "{symbol}"') for symbol in symbols)
     ]
     path.write_text("".join(kept), encoding="utf-8")
+
+
+UNBOUND_PROFILE = "unbound"
+"""A risk profile whose limits never bind for the example strategies (ADR-0033)."""
+
+
+def add_unbound_profile(root: Path) -> str:
+    """Give a new workspace guardrails wide enough for ``unbound``, and the profile itself.
+
+    Tests of mechanics other than risk (sleeves, stops, costs, sweeps) load the
+    workspace with this profile, so the risk gate approves their trades unchanged.
+    Returns the profile's name, for ``load_config``.
+    """
+    (root / "config" / "guardrails.toml").write_text(
+        "long_only = true\n"
+        "allow_leverage = false\n"
+        'max_risk_per_trade = "1"\n'
+        "max_open_positions = 1000\n"
+        'max_position_size = "1"\n'
+        'max_daily_loss_limit = "0.99"\n'
+        'max_drawdown_kill = "0.99"\n'
+        'max_total_capital = [{ amount = "1000000000", currency = "USD" }]\n'
+        'max_order_value = [{ amount = "1000000000", currency = "USD" }]\n',
+        encoding="utf-8",
+    )
+    (root / "config" / "risk" / f"{UNBOUND_PROFILE}.toml").write_text(
+        'risk_per_trade = "1"\n'
+        "max_open_positions = 1000\n"
+        'max_position_size = "1"\n'
+        'daily_loss_limit = "0.5"\n'
+        'drawdown_kill = "0.5"\n',
+        encoding="utf-8",
+    )
+    return UNBOUND_PROFILE

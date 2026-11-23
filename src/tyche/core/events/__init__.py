@@ -6,8 +6,8 @@ event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
 ``RunEvent``, the trading events (``ExecutionPlanEvent``, ``OrderEvent``,
 ``CancelRequestEvent``, ``FillEvent``, ``AccountEvent``, ``DistributionEvent``), and
 the decision-cycle events (``UniverseEvent``, ``ScreeningEvent``, ``SignalEvent``,
-``SignalsReadyEvent``, ``TargetPortfolioEvent``, ``ApprovedPortfolioEvent`` with its
-``KEEP`` marker).
+``SignalsReadyEvent``, ``TargetPortfolioEvent``, ``RiskEvent``,
+``ApprovedPortfolioEvent`` with its ``KEEP`` marker).
 
 Planned (Phase 1 onward): the other events listed in
 ``docs/architecture/event-catalog.md``, each added by the PR that first publishes it.
@@ -25,6 +25,7 @@ from tyche.core.events.decision import (
     KEEP,
     ApprovedPortfolioEvent,
     Keep,
+    RiskEvent,
     ScreeningEvent,
     SignalEvent,
     SignalsReadyEvent,
@@ -69,6 +70,7 @@ __all__ = [
     "HandlerError",
     "Keep",
     "OrderEvent",
+    "RiskEvent",
     "RunEvent",
     "RunMode",
     "RunStage",

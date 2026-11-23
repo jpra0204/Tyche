@@ -39,7 +39,7 @@ from tyche.core.pipeline.screening import DollarVolumeScreen, ScreeningStage
 from tyche.core.pipeline.signals import SignalsStage, Strategy
 from tyche.core.pipeline.universe import UniverseStage
 from tyche.core.ports import Calendar, DataProvider, OutOfCalendarRangeError
-from tyche.core.risk import PassThroughGate
+from tyche.core.risk import RiskGate, RiskLimits
 from tyche.core.sim import FreeRidingViolation, HistoricalReplay, SimBroker, SimClock
 
 
@@ -59,6 +59,8 @@ class BacktestSpec:
         costs: Commissions, fees, slippage and settlement.
         strategies: The strategies to run, in the order they are asked.
         budgets: Each strategy's fraction of equity, by id.
+        risk: The guardrails, the active risk profile and each strategy's own limits,
+            which the risk gate applies (ADR-0033).
         settings: The starting cash and the holdout.
         first: First session day to trade.
         last: Last session day to trade. Must be before the holdout.
@@ -71,6 +73,7 @@ class BacktestSpec:
     costs: TradingCosts
     strategies: Sequence[Strategy]
     budgets: Mapping[str, Decimal]
+    risk: RiskLimits
     settings: BacktestSettings
     first: date
     last: date
@@ -156,8 +159,8 @@ def run_backtest(
     ScreeningStage(bus, DollarVolumeScreen())
     signals = SignalsStage(bus, spec.strategies, positions=book)
     PortfolioStage(bus, spec.budgets)
-    PassThroughGate(bus)
     state = AccountState(bus, opening)
+    RiskGate(bus, spec.risk, book)
     ExecutionStage(bus, book, spec.costs, calendars, spec.profile.execution)
     broker = SimBroker(bus, opening, spec.costs, calendars)
     journal = InMemoryJournal(bus)

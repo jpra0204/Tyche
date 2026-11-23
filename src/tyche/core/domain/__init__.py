@@ -26,6 +26,9 @@ The portfolio types (ADR-0022): ``Sleeve`` with its ``SleeveStatus``,
 
 The execution types (ADR-0023): ``ExecutionRules`` and the ``PlanLine`` with its
 ``PlanNote``.
+
+The risk types (ADR-0033): ``RiskAdjustment`` with its ``RiskRule``, ``RiskScope`` and
+``RiskAction``.
 """
 
 from tyche.core.domain.account import Account, CashBalance, LedgerError, PendingCash, Position
@@ -70,6 +73,7 @@ from tyche.core.domain.portfolio import (
     SleeveStatus,
     require_budgets,
 )
+from tyche.core.domain.risk import RiskAction, RiskAdjustment, RiskRule, RiskScope
 from tyche.core.domain.session import Session
 from tyche.core.domain.signals import (
     StrategyFailure,
@@ -125,6 +129,10 @@ __all__ = [
     "Position",
     "PriceAdjustment",
     "RegulatoryFees",
+    "RiskAction",
+    "RiskAdjustment",
+    "RiskRule",
+    "RiskScope",
     "ScoredInstrument",
     "Session",
     "Side",

@@ -132,11 +132,21 @@ Portfolio construction (`tyche.core.pipeline.portfolio`) turns each cycle's sign
 - **Sleeves.** Each strategy has a sleeve: its budget, whether it decided or failed this cycle, and the instruments it decided on. Execution tracks holdings per sleeve and nets orders across sleeves (section 6).
 - **Shared instruments add up.** Buy-and-hold SPY with 0.4 and a trend strategy wanting half of its 0.6 budget in SPY give SPY a target of 0.7, as two contributions. Each keeps its own stop, so only the trend strategy's shares get a stop order.
 - **Keep, zero or weight.** For each sleeve and instrument: a contribution gives its weight; an instrument the sleeve decided on without a contribution gives zero; anything else the sleeve holds (not offered this cycle, or the strategy failed) is kept. The stage keeps nothing between cycles, so a restart cannot turn a keep into a sale.
-- **Sizing comes last.** Risk (a pass-through gate in Phase 1, rules in Phase 2) works in weights. Execution turns approved weights into whole shares from the account's equity, settled cash and costs, rounding down, so rounding can never push a position past a risk limit.
+- **Sizing comes last.** Risk works in weights (below). Execution turns approved weights into whole shares from the account's equity, settled cash and costs, rounding down, so rounding can never push a position past a risk limit at the close it was sized at.
+
+### The risk gate
+
+`RiskGate` (`tyche.core.risk`) applies the active risk profile, and each strategy's own `[risk]` table, to every proposed portfolio ([ADR-0033](../adr/0033-risk-gate-position-rules.md)). It only lowers or removes contributions, in this order:
+
+1. **Each contribution on its own:** a strategy's own position cap; then **risk per trade**, on entries and additions with a stop, at most `risk_per_trade × close / (close − stop)` of equity, never below what the sleeve already holds.
+2. **Open positions,** per sleeve (a strategy's own count), then for the account: what stays held keeps its place, new entries fill what is free, largest weight first, ties by symbol. A holding sold to zero frees its place.
+3. **Position size for the account:** each instrument across every sleeve, counting what sleeves keep without deciding; above the cap, every contribution shrinks by the same proportion.
+
+Each cut is a `RiskEvent`, and the `ApprovedPortfolioEvent` lists them all in `adjustments`. The rules are the pure function `review`; `RiskGate` only gathers its inputs (the closes, the account snapshot of the same close, the sleeve book's holdings as weights) and publishes. A backtest uses `--risk-profile`, `default` when not given, and records it.
 
 ## 6. From approved weights to orders
 
-The risk gate (`tyche.core.risk`) is the only publisher of `ApprovedPortfolioEvent`, and execution (`tyche.core.pipeline.execution`) acts on nothing else ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)). In Phase 1 the gate is `PassThroughGate`: it approves every proposed portfolio unchanged, with profile `pass-through`. The rules below are [ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md); the two parameters are in `[execution]` of `config/markets/<PROFILE>.toml`.
+The risk gate (`tyche.core.risk`) is the only publisher of `ApprovedPortfolioEvent`, and execution (`tyche.core.pipeline.execution`) acts on nothing else ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)). The gate's rules are in section 5. The rules below are [ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md); the two parameters are in `[execution]` of `config/markets/<PROFILE>.toml`.
 
 ```mermaid
 flowchart LR

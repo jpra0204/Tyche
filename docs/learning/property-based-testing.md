@@ -45,7 +45,9 @@ No example test would have caught it, and in dollars it does not matter. But a l
 
 - Ledger properties: `tests/core/domain/test_account_properties.py`.
 - Settings: `tests/conftest.py` runs hypothesis from a fixed seed, so every run tries the same examples. Tests stay repeatable, as the conventions require.
-- Next: the risk layer (Phase 2). Its property is the most important one in the project: no input of any kind may produce an order that breaks the active risk profile or the guardrails.
+- The risk gate: `tests/core/risk/test_gate_properties.py`. Its properties are the most important in the project: no proposal, holdings or limits of any kind may produce an approved portfolio that breaks the active risk profile (and so the guardrails above it). The gate's rules are a pure function, which is what makes this practical ([functional core](functional-core.md)).
+- **Check that a property can fail.** A property that passes no matter what proves nothing. For the gate, each rule was switched off in turn, and a property failed every time. Do the same when you add a property that guards something important.
+- Next: the order-level guardrails (Phase 2, PR 3): no order may exceed the money caps.
 
 ## What it costs
 

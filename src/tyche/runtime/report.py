@@ -434,6 +434,7 @@ def _what_ran(run: dict[str, Any]) -> Section:
             else f"none ({warm_up['sessions_needed']} needed)",
         ),
         ("Holdout", f"from {run['holdout_starts']}, never used by a backtest"),
+        ("Risk profile", _risk(run)),
         (
             "Execution",
             f"rebalance band {execution['rebalance_band']}, "
@@ -462,6 +463,23 @@ def _what_ran(run: dict[str, Any]) -> Section:
             Table(("Strategy", "Plugin", "Version", "Budget"), strategies, numeric_from=3),
         ),
     )
+
+
+def _risk(run: dict[str, Any]) -> str:
+    risk = run.get("risk")
+    if risk is None:
+        return "none: recorded before the risk gate, which approved every target unchanged"
+    text = (
+        f"{risk['profile']}: risk per trade {fmt_pct(risk['risk_per_trade'])}, at most "
+        f"{risk['max_open_positions']} positions of at most "
+        f"{fmt_pct(risk['max_position_size'])} each"
+    )
+    for strategy_id, own in risk["strategies"].items():
+        text += f"; {strategy_id}'s own " + ", ".join(f"{k} {v}" for k, v in own.items())
+    cut = run["outcome"].get("risk_adjustments", {})
+    shrunk = sum(n for key, n in cut.items() if key.endswith(".shrink"))
+    blocked = sum(n for key, n in cut.items() if key.endswith(".block"))
+    return text + f". The gate shrank {shrunk} contributions and blocked {blocked}"
 
 
 def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:

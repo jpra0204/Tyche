@@ -25,6 +25,7 @@ uv run tyche capital --from 2005-01-03
 | `--reference` | `100000` | The large account every amount is compared with. Too large, and the cap on a bar's volume distorts it: Tyche warns when that happens |
 | `--tolerance` | `0.5` | How far an amount's CAGR may be from the reference's, either way, in points a year |
 | `--positions` | `5` | The most positions the round-trip arithmetic and today's share check split an account into |
+| `--risk-profile` | `default` | The risk profile every run applies, a file in `config/risk/`. Under `default` a position is at most 20% of the account, so a small account may hold nothing | The figures on this page were recorded before the risk gate applied limits (Phase 2, PR 2); under `default` they are smaller ([risk profiles](08-risk-profiles.md#expect-smaller-numbers-under-default)). |
 
 **Every strategy with a budget** under `[strategies]` in `config/tyche.toml` is analysed, each **alone, with the whole account**, with the parameters in its strategy file. The budget's size does not matter here, only that there is one. To analyse the example strategies, give them a budget first.
 

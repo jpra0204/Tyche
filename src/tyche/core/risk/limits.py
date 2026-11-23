@@ -10,15 +10,16 @@ Each layer may only be stricter than the one above it:
 3. ``StrategyRiskLimits``: optional per-strategy position limits. Each value given
    must be at least as strict as the active profile's.
 
-This module only describes the limits and checks that the layers fit together. It
-applies nothing: the gate applies the position rules from Phase 2's PR 2, and the
-account rules from PR 4. A check returns every ``LimitBreach`` at once, as plain data,
-so that the config layer can name the file each one came from.
+This module describes the limits and checks that the layers fit together;
+``RiskLimits`` bundles the three for one run. It applies nothing: ``RiskGate`` applies
+the position rules (ADR-0033), and the account rules arrive in Phase 2's PR 4. A
+check returns every ``LimitBreach`` at once, as plain data, so that the config layer
+can name the file each one came from.
 """
 
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from tyche.core.domain import Currency, Money
@@ -247,4 +248,74 @@ class Guardrails:
             LimitBreach(key, str(value), limit_key, str(limit))
             for key, value, limit_key, limit in pairs
             if value > limit
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyLimits:
+    """The position limits that apply to one strategy's sleeve: its own, or the profile's.
+
+    Attributes:
+        risk_per_trade: The stricter of the strategy's and the profile's.
+        max_position_size: The strategy's own cap on its contribution to one
+            instrument, or ``None``: then only the profile's cap on the whole
+            instrument applies.
+        max_open_positions: The strategy's own cap on the instruments its sleeve holds,
+            or ``None``: then only the profile's count of the whole account applies.
+    """
+
+    risk_per_trade: Decimal
+    max_position_size: Decimal | None
+    max_open_positions: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class RiskLimits:
+    """Every limit one run applies: the three layers, checked against each other (ADR-0032).
+
+    The config layer checks the same fit when it loads the files, naming the file of
+    each breach; this check is the core's own, so that a run built without the config
+    layer (a test, a study) cannot hand the gate a profile looser than its guardrails.
+
+    Attributes:
+        guardrails: The absolute ceilings.
+        profile: The active risk profile.
+        strategies: Each strategy's own limits, by id. A strategy not listed uses the
+            profile's.
+
+    Raises:
+        ValueError: The profile exceeds the guardrails, or a strategy's limits are
+            looser than the profile's.
+    """
+
+    guardrails: Guardrails
+    profile: RiskProfile
+    strategies: Mapping[str, StrategyRiskLimits] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        breaches = self.guardrails.breaches(self.profile)
+        if breaches:
+            raise ValueError(
+                f"risk profile {self.profile.name!r} exceeds the guardrails: "
+                + "; ".join(f"{b.key} {b.value} above {b.limit_key} {b.limit}" for b in breaches)
+            )
+        for strategy_id, limits in sorted(self.strategies.items()):
+            breaches = limits.breaches(self.profile)
+            if breaches:
+                raise ValueError(
+                    f"{strategy_id}'s risk limits are looser than profile "
+                    f"{self.profile.name!r}: "
+                    + "; ".join(f"{b.key} {b.value} above {b.limit}" for b in breaches)
+                )
+
+    def of_strategy(self, strategy_id: str) -> StrategyLimits:
+        """The limits that apply to ``strategy_id``'s sleeve."""
+        own = self.strategies.get(strategy_id, StrategyRiskLimits())
+        risk_per_trade = self.profile.risk_per_trade
+        if own.risk_per_trade is not None:
+            risk_per_trade = min(own.risk_per_trade, risk_per_trade)
+        return StrategyLimits(
+            risk_per_trade=risk_per_trade,
+            max_position_size=own.max_position_size,
+            max_open_positions=own.max_open_positions,
         )

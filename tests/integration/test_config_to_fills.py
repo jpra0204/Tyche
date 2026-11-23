@@ -17,7 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from tests.support.market import QQQ, SPY, bar, close_of
-from tests.support.workspace import BACKTEST
+from tests.support.workspace import BACKTEST, UNBOUND_PROFILE, add_unbound_profile
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.config import TycheConfig, init_workspace, load_config
 from tyche.core.domain import (
@@ -29,6 +29,7 @@ from tyche.core.domain import (
     OrderStatus,
     OrderType,
     PriceAdjustment,
+    RiskRule,
     Side,
     Target,
     Timeframe,
@@ -41,6 +42,7 @@ from tyche.core.events import (
     EventBus,
     FillEvent,
     OrderEvent,
+    RiskEvent,
     RunMode,
     SignalEvent,
 )
@@ -50,7 +52,7 @@ from tyche.core.pipeline.portfolio import PortfolioStage
 from tyche.core.pipeline.screening import DollarVolumeScreen, ScreeningStage
 from tyche.core.pipeline.signals import SignalsStage, Strategy, StrategyContext
 from tyche.core.pipeline.universe import UniverseStage
-from tyche.core.risk import PassThroughGate
+from tyche.core.risk import RiskGate
 from tyche.core.sim import HistoricalReplay, SimBroker, SimClock
 from tyche.runtime.strategies import build_strategies
 
@@ -75,7 +77,10 @@ class Run:
     book: SleeveBook
 
 
-def configured(tmp_path: Path, strategies: str) -> TycheConfig:
+def configured(tmp_path: Path, strategies: str, risk_profile: str = UNBOUND_PROFILE) -> TycheConfig:
+    """A workspace with ``strategies``. Its risk profile defaults to ``unbound``, so the
+    sleeve and stop mechanics are tested on their own; ``TestTheDefaultProfile`` runs
+    the profile a new workspace ships with."""
     home = tmp_path / "home"
     home.mkdir()
     workspace = init_workspace(home / "ws", user_home=home)
@@ -83,7 +88,8 @@ def configured(tmp_path: Path, strategies: str) -> TycheConfig:
         f'schema_version = 1\nmarket_profile = "US"\n{BACKTEST}[strategies]\n{strategies}\n'
     )
     (workspace.strategies_dir / "hold_qqq.toml").write_text(HOLD_QQQ)
-    return load_config(workspace)
+    add_unbound_profile(workspace.root)
+    return load_config(workspace, risk_profile)
 
 
 def run(
@@ -106,8 +112,8 @@ def run(
     ScreeningStage(bus, DollarVolumeScreen())
     SignalsStage(bus, strategies, positions=book)
     PortfolioStage(bus, budgets)
-    PassThroughGate(bus)
     state = AccountState(bus, start)
+    RiskGate(bus, config.risk_limits, book)
     ExecutionStage(bus, book, config.costs, calendars, profile.execution)
     broker = SimBroker(bus, start, config.costs, calendars)
     journal = InMemoryJournal(bus)
@@ -198,6 +204,40 @@ class TestBuyAndHoldSleeves:
 
     def test_no_free_riding(self, tmp_path: Path) -> None:
         assert self.run(tmp_path).broker.free_riding == ()
+
+
+class TestTheDefaultProfile:
+    """The same two sleeves under the profile ``tyche init`` ships: 20% per position."""
+
+    def run(self, tmp_path: Path) -> Run:
+        config = configured(tmp_path, 'buy_and_hold = "0.6"\nhold_qqq = "0.4"', "default")
+        sessions = list(NYSE.sessions_between(FIRST, LAST))
+        spy = [bar(s.day, 470.0, instrument=SPY) for s in sessions]
+        qqq = [bar(s.day, 400.0, instrument=QQQ) for s in sessions]
+        built = build_strategies(config)
+        return run(config, histories_for({"SPY": spy, "QQQ": qqq}), built.strategies, built.budgets)
+
+    def test_each_position_is_capped_at_a_fifth_of_equity(self, tmp_path: Path) -> None:
+        result = self.run(tmp_path)
+
+        account = result.state.account
+        equity = account.equity(Currency.USD)
+        for instrument in (SPY, QQQ):
+            position = account.position(instrument)
+            assert position is not None
+            weight = account.mark_of(instrument) * position.quantity / equity  # type: ignore[operator]
+            assert Decimal("0.15") < weight <= Decimal("0.20")
+
+    def test_every_cut_is_published_and_listed_on_the_approval(self, tmp_path: Path) -> None:
+        result = self.run(tmp_path)
+
+        approvals = result.journal.of_type(ApprovedPortfolioEvent)
+        risk = result.journal.of_type(RiskEvent)
+        assert {a.event.profile for a in approvals} == {"default"}
+        assert [r.event.adjustment for r in risk] == [
+            adjustment for a in approvals for adjustment in a.event.adjustments
+        ]
+        assert {r.event.adjustment.rule for r in risk} == {RiskRule.MAX_POSITION_SIZE}
 
 
 @dataclass

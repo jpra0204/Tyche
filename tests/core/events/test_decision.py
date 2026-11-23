@@ -12,6 +12,10 @@ from tyche.core.domain import (
     ExclusionReason,
     Instrument,
     InstrumentTarget,
+    RiskAction,
+    RiskAdjustment,
+    RiskRule,
+    RiskScope,
     ScoredInstrument,
     Sleeve,
     SleeveStatus,
@@ -23,6 +27,7 @@ from tyche.core.domain import (
 from tyche.core.events import (
     KEEP,
     ApprovedPortfolioEvent,
+    RiskEvent,
     ScreeningEvent,
     SignalEvent,
     SignalsReadyEvent,
@@ -207,3 +212,30 @@ class TestApprovedPortfolioEvent:
     def test_an_unknown_sleeve_is_a_key_error(self) -> None:
         with pytest.raises(KeyError):
             self.approved().wanted("z", SPY)
+
+
+class TestRiskEvent:
+    def adjustment(self) -> RiskAdjustment:
+        return RiskAdjustment(
+            RiskRule.MAX_POSITION_SIZE,
+            RiskScope.ACCOUNT,
+            RiskAction.SHRINK,
+            "a",
+            SPY,
+            Decimal("0.5"),
+            Decimal("0.2"),
+            Decimal("0.2"),
+            "too big",
+        )
+
+    def test_carries_the_profile_and_the_adjustment(self) -> None:
+        event = RiskEvent(AS_OF, "default", self.adjustment())
+        assert (event.profile, event.adjustment.after) == ("default", Decimal("0.2"))
+
+    def test_needs_a_profile(self) -> None:
+        with pytest.raises(ValueError, match="needs the name of the risk profile"):
+            RiskEvent(AS_OF, " ", self.adjustment())
+
+    def test_needs_a_utc_time(self) -> None:
+        with pytest.raises(ValueError, match="as_of"):
+            RiskEvent(datetime(2024, 1, 5, 21, 0), "default", self.adjustment())  # noqa: DTZ001

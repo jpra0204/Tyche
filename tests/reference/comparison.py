@@ -50,6 +50,7 @@ from backtesting import Strategy as ReferenceStrategy
 
 from tests.support.costs import NO_FEES, US_COSTS
 from tests.support.profiles import US_PROFILE
+from tests.support.risk import UNBOUND
 from tyche.core.backtest import (
     BacktestMetrics,
     BacktestResult,
@@ -185,6 +186,7 @@ def run_both(
         costs=COSTS,
         strategies=(AboveItsAverage(instrument, sessions),),
         budgets={AboveItsAverage.strategy_id: Decimal(1)},
+        risk=UNBOUND,
         settings=BacktestSettings(
             holdout_starts=date(2024, 1, 1),
             starting_cash=Money(starting_cash, Currency.USD),

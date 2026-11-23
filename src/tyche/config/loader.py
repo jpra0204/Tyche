@@ -57,6 +57,7 @@ from tyche.core.risk import (
     DEFAULT_RISK_PROFILE,
     Guardrails,
     LimitBreach,
+    RiskLimits,
     RiskProfile,
     StrategyRiskLimits,
     require_risk_profile_name,
@@ -456,6 +457,15 @@ class TycheConfig:
     def budgets(self) -> dict[str, Decimal]:
         """Each strategy's budget, by id."""
         return {spec.strategy_id: spec.budget for spec in self.strategies}
+
+    @property
+    def risk_limits(self) -> RiskLimits:
+        """The guardrails, the active risk profile and each strategy's own limits."""
+        return RiskLimits(
+            self.guardrails,
+            self.risk_profile,
+            {spec.strategy_id: spec.risk for spec in self.strategies},
+        )
 
 
 def load_config(workspace: Workspace, risk_profile: str = DEFAULT_RISK_PROFILE) -> TycheConfig:

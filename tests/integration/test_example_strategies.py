@@ -17,6 +17,7 @@ import pytest
 from tests.support.costs import US_COSTS, usd
 from tests.support.market import QQQ, SPY
 from tests.support.profiles import US_PROFILE
+from tests.support.risk import UNBOUND
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.backtest import BacktestResult, BacktestSettings, BacktestSpec, run_backtest
 from tyche.core.domain import (
@@ -93,6 +94,7 @@ def run(strategy: Strategy, instruments: tuple[Instrument, ...]) -> BacktestResu
         costs=US_COSTS,
         strategies=(strategy,),
         budgets={strategy.strategy_id: Decimal(1)},
+        risk=UNBOUND,
         settings=BacktestSettings(holdout_starts=date(2024, 1, 1), starting_cash=usd("10000")),
         first=FIRST,
         last=LAST,

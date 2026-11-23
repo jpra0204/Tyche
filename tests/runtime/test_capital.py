@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
-from tests.support.workspace import keep_candidates
+from tests.support.workspace import add_unbound_profile, keep_candidates
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data import YFinanceSource
 from tyche.config import TycheConfig, Workspace, init_workspace, load_config
@@ -56,7 +56,7 @@ def workspace(root: Path) -> TycheConfig:
     home.mkdir()
     ws = init_workspace(home / "ws", user_home=home)
     keep_candidates(ws.root, "SPY")
-    config = load_config(Workspace(ws.root))
+    config = load_config(Workspace(ws.root), add_unbound_profile(ws.root))
     days = [s.day for s in NYSE.sessions_between(CACHED_FROM, CACHED_TO)]
     spy = [row(d, 300 + i * 0.05 + 25 * math.sin(i / 40)) for i, d in enumerate(days)]
     outcomes = fetch_daily_histories(

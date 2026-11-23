@@ -92,6 +92,24 @@ def test_an_unmeasured_run_has_no_report(folder: Path) -> None:
         write_report(folder)
 
 
+def test_names_the_risk_profile_and_what_the_gate_cut(folder: Path) -> None:
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "default: risk per trade 1.00%, at most 5 positions of at most 20.00% each" in page
+    assert "The gate shrank " in page
+
+
+def test_a_record_from_before_the_risk_gate_says_so(folder: Path) -> None:
+    run = json.loads((folder / "run.json").read_text())
+    del run["risk"]
+    del run["outcome"]["risk_adjustments"]
+    (folder / "run.json").write_text(json.dumps(run))
+
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "recorded before the risk gate" in page
+
+
 def test_a_record_of_another_format_is_refused(folder: Path) -> None:
     run = json.loads((folder / "run.json").read_text())
     run["record_format"] = 99
