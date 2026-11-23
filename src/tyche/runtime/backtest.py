@@ -50,7 +50,14 @@ from tyche.core.backtest import (
     run_backtest,
 )
 from tyche.core.backtest.metrics import DAYS_PER_YEAR, RISK_FREE_RATE, SESSIONS_PER_YEAR
-from tyche.core.domain import AssetClass, BarHistory, Currency, Money, PriceAdjustment
+from tyche.core.domain import (
+    AssetClass,
+    BarHistory,
+    Currency,
+    Money,
+    MoneyLimits,
+    PriceAdjustment,
+)
 from tyche.core.events import RiskEvent
 from tyche.core.ports import Calendar, Clock, DataProvider
 from tyche.core.risk import RiskLimits
@@ -448,7 +455,7 @@ def run_record(
             "price_buffer": str(spec.profile.execution.price_buffer),
         },
         "costs_checked_on": config.costs.checked_on.isoformat(),
-        "risk": risk_record(spec.risk),
+        "risk": risk_record(spec.risk, spec.money_limits),
         "strategies": [
             {
                 "id": strategy.strategy_id,
@@ -563,8 +570,11 @@ def write_run_record(
             )
 
 
-def risk_record(limits: RiskLimits) -> dict[str, Any]:
-    """The risk limits a run applied: the active profile and each strategy's own."""
+def risk_record(
+    limits: RiskLimits, money: Mapping[Currency, MoneyLimits] | None = None
+) -> dict[str, Any]:
+    """The risk limits a run applied: the active profile, each strategy's own, and the
+    guardrails' money caps if the run applied them (research backtests do not)."""
     profile = limits.profile
     own = {
         strategy_id: {
@@ -587,6 +597,17 @@ def risk_record(limits: RiskLimits) -> dict[str, Any]:
         "drawdown_kill": str(profile.drawdown_kill),
         "applied": ["risk_per_trade", "max_open_positions", "max_position_size"],
         "strategies": {k: v for k, v in own.items() if v},
+        "money_caps": (
+            {
+                str(currency): {
+                    "max_total_capital": str(caps.capital.amount),
+                    "max_order_value": str(caps.order.amount),
+                }
+                for currency, caps in sorted(money.items())
+            }
+            if money is not None
+            else None
+        ),
     }
 
 

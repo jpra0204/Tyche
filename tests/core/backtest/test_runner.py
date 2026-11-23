@@ -26,12 +26,14 @@ from tyche.core.backtest import (
 )
 from tyche.core.domain import (
     BarHistory,
+    Currency,
     Instrument,
+    MoneyLimits,
     PriceAdjustment,
     Side,
     audit_daily_bars,
 )
-from tyche.core.events import RunEvent, RunMode
+from tyche.core.events import ExecutionPlanEvent, RunEvent, RunMode
 from tyche.core.ports import Calendar
 from tyche.strategies.buy_and_hold import BuyAndHold
 
@@ -164,6 +166,15 @@ class TestTheRun:
         assert position is not None
         assert position.quantity > 0
         assert [f.side for f in result.fills] == [Side.BUY]
+
+    def test_money_limits_reach_the_gate_and_execution(self) -> None:
+        limits = {Currency.USD: MoneyLimits(usd("690"), usd("690"))}
+        result = run_backtest(spec(money_limits=limits), SyntheticData(), calendars())
+
+        plans = result.journal.of_type(ExecutionPlanEvent)
+        assert {p.event.sized_on for p in plans} == {(usd("690"),)}
+        [first] = result.fills
+        assert first.price * first.quantity <= usd("690")
 
     def test_announces_the_run_with_its_code_version_and_config_hash(self) -> None:
         result = run_backtest(spec(), SyntheticData(), calendars())

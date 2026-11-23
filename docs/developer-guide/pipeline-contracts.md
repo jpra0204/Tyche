@@ -94,10 +94,10 @@ There is no third kind. A stage never logs a problem and carries on with a guess
 | | |
 |---|---|
 | Subscribes to | `ApprovedPortfolioEvent`, `AccountEvent`, `OrderEvent`, `FillEvent`, and `SessionEvent` and `BarEvent` for the session day and the last close |
-| Publishes | Per decision: one `ExecutionPlanEvent`, then `CancelRequestEvent`s, then `OrderEvent`s (submitted): sales, then purchases, then stops to place again. After an entry fills: its protective stop |
-| Promises | Whole shares only, rounded down; a holding within the rebalance band is kept; sleeves cross before anything is netted; one market order per instrument; purchases fit the buying power at the next open with the price buffer, costs included ([ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md)). Order ids derive from the decision, so the same decision gives the same ids and is handled once |
+| Publishes | Per decision: a `RiskEvent` for each purchase cut to the money caps, one `ExecutionPlanEvent`, then `CancelRequestEvent`s, then `OrderEvent`s (submitted): sales, then purchases, then stops to place again. After an entry fills: its protective stop |
+| Promises | Whole shares only, rounded down; a holding within the rebalance band is kept; sleeves cross before anything is netted; one market order per instrument; purchases fit the buying power at the next open with the price buffer, costs included ([ADR-0023](../adr/0023-execution-sleeves-stops-and-cash.md)). With money caps (paper and live): weights sized on the lower of equity and the capital cap, and each purchase within the order cap and the capital cap, shrunk to the whole shares that fit; sales never cut ([ADR-0034](../adr/0034-order-level-guardrails.md)). Order ids derive from the decision, so the same decision gives the same ids and is handled once |
 | Keeps | The sleeve book (each strategy's shares, shared with signals), the orders it created until they finish, and the decisions already handled |
-| Halts on | No account snapshot for the decision's close; a market order still open at a decision (impossible in the simulator; live handling is a Phase 2 decision); a fill for an order it did not create; a sleeve book that no longer adds up to the account (`ExecutionError`) |
+| Halts on | No account snapshot for the decision's close; a market order still open at a decision (impossible in the simulator; live handling is a Phase 2 decision); a fill for an order it did not create; a sleeve book that no longer adds up to the account; sales and resting stops that would sell more than the account holds (long only); purchases costing more than the buying power (no leverage) (`ExecutionError`) |
 
 ### Account state (`tyche.core.pipeline.execution.AccountState`)
 

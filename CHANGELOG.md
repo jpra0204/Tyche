@@ -13,6 +13,8 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `--risk-profile <name>` on `tyche backtest`, `walk-forward`, `sweep` and `capital` (default `default`). The run record gains `risk` (the profile's values and each strategy's own limits) and `outcome.risk_adjustments`; the backtest summary and the report show both.
 - `RiskAdjustment`, `RiskRule`, `RiskScope` and `RiskAction` in `tyche.core.domain`; `RiskLimits` in `tyche.core.risk`.
 - Learning note: functional core, imperative shell.
+- Order-level guardrails (Phase 2, PR 3, ADR-0034, proposed). When a run is given the guardrails' money caps (paper and live; research backtests are not), execution sizes weights on the lower of equity and `max_total_capital`, and cuts each purchase to fit `max_order_value` and what is left under `max_total_capital`. A cut is a `RiskEvent` carrying an `OrderAdjustment`, and the plan note is `capped`. Sales are never cut. Long only and no leverage are checked on every decision of every run, and a breach halts it.
+- `MoneyLimits` and `OrderAdjustment` in `tyche.core.domain`; `Guardrails.money_limits()`; `BacktestSpec.money_limits`; `ExecutionPlanEvent.sized_on`; `risk.money_caps` in the run record.
 
 ### Changed
 

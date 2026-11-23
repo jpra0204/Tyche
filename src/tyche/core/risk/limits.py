@@ -22,7 +22,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from tyche.core.domain import Currency, Money
+from tyche.core.domain import Currency, Money, MoneyLimits
 
 _PROFILE_NAME = re.compile(r"[a-z][a-z0-9_-]*")
 
@@ -221,6 +221,15 @@ class Guardrails:
     def order_cap(self, currency: Currency) -> Money | None:
         """The order-value cap in ``currency``, or ``None`` if there is none."""
         return next((cap for cap in self.max_order_value if cap.currency == currency), None)
+
+    def money_limits(self) -> dict[Currency, MoneyLimits]:
+        """Both money caps of every currency that has them (ADR-0034)."""
+        limits: dict[Currency, MoneyLimits] = {}
+        for capital in self.max_total_capital:
+            order = self.order_cap(capital.currency)
+            if order is not None:
+                limits[capital.currency] = MoneyLimits(capital, order)
+        return limits
 
     def uncapped(self, currencies: Iterable[Currency]) -> tuple[Currency, ...]:
         """The currencies among ``currencies`` that lack a capital or an order cap."""

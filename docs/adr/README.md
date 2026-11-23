@@ -44,6 +44,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0031](0031-minimum-viable-capital.md) | Minimum viable capital: a size penalty against a large reference account, Fixed against Tiered | Accepted (Pablo, 2026-11-23) |
 | [0032](0032-risk-limits-in-three-layers.md) | Risk limits in three layers: guardrail ceilings, named profiles, stricter strategy limits | Accepted (Pablo, 2026-11-23) |
 | [0033](0033-risk-gate-position-rules.md) | The risk gate's position rules: what it cuts, in what order, and how it says so | Accepted (Pablo, 2026-11-23) |
+| [0034](0034-order-level-guardrails.md) | Order-level guardrails: size on the capital cap, shrink purchases to the money caps, halt on a short or on leverage | Proposed |
 
 ## Template
 

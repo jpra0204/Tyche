@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tyche.core.domain import Currency, Money
+from tyche.core.domain import Currency, Money, MoneyLimits
 from tyche.core.risk import (
     Guardrails,
     LimitBreach,
@@ -118,6 +118,9 @@ class TestGuardrails:
         assert rails.capital_cap(Currency.USD) == usd("700")
         assert rails.order_cap(Currency.USD) == usd("350")
         assert rails.capital_cap(Currency.CAD) is None
+
+    def test_gives_both_money_caps_of_each_currency_as_money_limits(self) -> None:
+        assert guardrails().money_limits() == {Currency.USD: MoneyLimits(usd("700"), usd("350"))}
 
     def test_lists_the_currencies_without_both_caps(self) -> None:
         rails = guardrails(

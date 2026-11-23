@@ -17,6 +17,7 @@ from tyche.core.domain import (
     Instrument,
     InstrumentTarget,
     Money,
+    MoneyLimits,
     RiskAction,
     RiskAdjustment,
     RiskRule,
@@ -369,9 +370,10 @@ class TestRiskGate:
         account_as_of: datetime = AS_OF,
         cash: str = "10000",
         closes: tuple[Instrument, ...] = (SPY,),
+        money: Mapping[Currency, MoneyLimits] | None = None,
     ) -> Recorder:
         bus = EventBus(TickingClock().now)
-        RiskGate(bus, DEFAULT, FakeHoldings({("a", SPY): "20"}))
+        RiskGate(bus, DEFAULT, FakeHoldings({("a", SPY): "20"}), money)
         recorder = Recorder(bus)
         for instrument in closes:
             bus.publish(
@@ -426,3 +428,16 @@ class TestRiskGate:
         with pytest.raises(HandlerError) as raised:
             self.run(proposal({SPY: {"a": "0.1"}}), cash="0")
         assert "equity in USD is 0" in str(raised.value.__cause__)
+
+    def test_with_money_caps_holdings_are_weighed_against_the_capital_cap(self) -> None:
+        # 20 SPY at 100 is 20% of 10,000 but 50% of a 4,000 cap. Asking for 50% with a
+        # stop is then no addition, so risk per trade does not apply; size does.
+        proposed = proposal({SPY: {"a": ("0.5", "95")}})
+        uncapped = self.run(proposed)
+        capped = self.run(proposed, money={Currency.USD: MoneyLimits(usd("4000"), usd("4000"))})
+
+        def rules(recorder: Recorder) -> list[RiskRule]:
+            return [e.event.adjustment.rule for e in recorder if isinstance(e.event, RiskEvent)]
+
+        assert rules(uncapped) == [RiskRule.RISK_PER_TRADE]
+        assert rules(capped) == [RiskRule.MAX_POSITION_SIZE]

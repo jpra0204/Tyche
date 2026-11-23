@@ -31,6 +31,12 @@ class TestExecutionPlanEvent:
         with pytest.raises(ValueError, match="UTC"):
             ExecutionPlanEvent(datetime(2024, 1, 5, 16, 0), ())  # noqa: DTZ001
 
+    def test_sized_on_is_one_amount_per_currency(self) -> None:
+        usd = Money.of("690", Currency.USD)
+        assert ExecutionPlanEvent(AS_OF, (), (usd,)).sized_on == (usd,)
+        with pytest.raises(ValueError, match="more than once"):
+            ExecutionPlanEvent(AS_OF, (), (usd, usd))
+
 
 class TestCancelRequestEvent:
     def test_needs_an_order_and_a_reason(self) -> None:

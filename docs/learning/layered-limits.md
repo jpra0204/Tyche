@@ -42,14 +42,18 @@ Layered limits are one case of a general security idea, **defence in depth**: se
 |---|---|
 | The guardrails file, edited only by Pablo | A profile or an agent's proposal that loosens a protection |
 | Startup checks of every layer | A breach becoming behaviour |
-| The risk gate (from Phase 2, PR 2) | A proposed portfolio that breaks the active limits |
-| An order-level check (PR 3) | An order that breaks a guardrail after sizing |
+| The risk gate ([ADR-0033](../adr/0033-risk-gate-position-rules.md)) | A proposed portfolio that breaks the active limits |
+| The order-level check in execution ([ADR-0034](../adr/0034-order-level-guardrails.md)) | A purchase above a money cap (cut to fit), a sale that would go short or a purchase on credit (the run halts) |
 | Never-do rule 3 in `CLAUDE.md` | The AI pair editing guardrails or a live profile |
 
 No single barrier is trusted to be perfect.
+
+Two kinds of last check sit at the end, and they answer differently. A purchase over a money cap is an **expected** situation (a price that moved, a position sized right at the cap), so it is shrunk to fit and recorded. A sale that would go short, or a purchase the cash cannot pay for, can only come from a bug, because execution is built so neither can happen; so the run **halts** instead of trimming and carrying on. Expected limits are handled; impossible states stop everything.
 
 ## Where it is in the code
 
 - `tyche.core.risk.limits`: `Guardrails`, `RiskProfile` and `StrategyRiskLimits`, each checking its own values, and `breaches()` comparing a layer with the one above. Pure code, no files.
 - `tyche.config.loader`: reads the three files, converts them, runs the checks and names the file in every message.
+- `tyche.core.risk.gate`: the gate applies the profile's position rules to weights.
+- `tyche.core.pipeline.execution`: the last check on orders, after they are sized in shares.
 - [ADR-0032](../adr/0032-risk-limits-in-three-layers.md): the decisions behind the schema.

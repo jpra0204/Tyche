@@ -37,7 +37,7 @@ from tyche.core.backtest import (
     WalkForwardError,
     WalkForwardMetrics,
 )
-from tyche.core.domain import AssetClass, Money
+from tyche.core.domain import ORDER_RULES, AssetClass, Money
 from tyche.core.ports import DataError
 from tyche.core.risk import DEFAULT_RISK_PROFILE
 from tyche.runtime.backtest import (
@@ -206,8 +206,9 @@ def config_check(
     )
     typer.echo(f"  Guardrails:     long only, no leverage; {caps}")
     typer.echo(
-        "                  (applied to trades: risk per trade, positions and position size; "
-        "the daily loss limit, the drawdown kill and the money caps come later in Phase 2)"
+        "                  (applied: risk per trade, positions and position size in every "
+        "run; long only and no leverage in every run; the money caps in paper and live; "
+        "the daily loss limit and the drawdown kill come later in Phase 2)"
     )
     typer.echo("  Strategies:")
     for spec in config.strategies:
@@ -749,14 +750,19 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money, risk_profile: 
 
 def _describe_adjustments(result: BacktestResult) -> str:
     counts = adjustments_record(result)
+    orders = {k: n for k, n in counts.items() if k.split(".")[0] in ORDER_RULES}
+    gate = {k: n for k, n in counts.items() if k not in orders}
     if not counts:
         return "nothing cut by the risk gate"
-    shrunk = sum(n for key, n in counts.items() if key.endswith(".shrink"))
-    blocked = sum(n for key, n in counts.items() if key.endswith(".block"))
-    return (
+    shrunk = sum(n for key, n in gate.items() if key.endswith(".shrink"))
+    blocked = sum(n for key, n in gate.items() if key.endswith(".block"))
+    text = (
         f"the risk gate shrank {_count(shrunk, 'contribution')} and blocked "
         f"{blocked:,} {'entry' if blocked == 1 else 'entries'}"
     )
+    if orders:
+        text += f"; the money caps cut {_count(sum(orders.values()), 'purchase')}"
+    return text
 
 
 def _describe_metrics(metrics: BacktestMetrics) -> list[str]:

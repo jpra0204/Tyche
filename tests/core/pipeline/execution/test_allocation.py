@@ -1,4 +1,4 @@
-"""The allocation rules: pro-rata splits in whole shares, and purchases fitted to cash."""
+"""The allocation rules: pro-rata splits in whole shares, and purchases fitted to cash or caps."""
 
 from dataclasses import replace
 from decimal import Decimal
@@ -9,7 +9,14 @@ from hypothesis import strategies as st
 
 from tests.support.costs import NO_FEES, US_COSTS, usd
 from tests.support.market import QQQ, SPY
-from tyche.core.pipeline.execution import fit_to_cash, purchase_cost, split_pro_rata
+from tyche.core.domain import Instrument
+from tyche.core.pipeline.execution.allocation import (
+    cap_order,
+    fit_to_cash,
+    fit_to_value,
+    purchase_cost,
+    split_pro_rata,
+)
 
 D = Decimal
 PLAIN = replace(US_COSTS, slippage_bps=D(0), regulatory_fees=NO_FEES)
@@ -93,3 +100,60 @@ class TestFitToCash:
     def test_slippage_and_fees_are_part_of_the_cost(self) -> None:
         # With 5 bp of slippage and the fees, 10 shares at 100 need a little over 1,001.
         assert fit_to_cash({SPY: D(10)}, {SPY: usd("100")}, US_COSTS, usd("1001")) == {SPY: D(9)}
+
+
+class TestCapOrder:
+    def test_keeps_a_purchase_within_the_cap(self) -> None:
+        assert cap_order(D(3), usd("100"), usd("350")) == D(3)
+
+    def test_cuts_a_purchase_to_the_whole_shares_within_the_cap(self) -> None:
+        assert cap_order(D(10), usd("100"), usd("350")) == D(3)
+
+    def test_a_share_dearer_than_the_cap_buys_nothing(self) -> None:
+        assert cap_order(D(1), usd("704"), usd("690")) == D(0)
+
+    def test_needs_whole_shares_and_a_price(self) -> None:
+        with pytest.raises(ValueError, match="whole number"):
+            cap_order(D("1.5"), usd("100"), usd("350"))
+        with pytest.raises(ValueError, match="positive reference"):
+            cap_order(D(1), usd("0"), usd("350"))
+
+
+REFS = {SPY: usd("100"), QQQ: usd("50")}
+
+
+class TestFitToValue:
+    def test_purchases_within_the_room_are_unchanged(self) -> None:
+        assert fit_to_value({SPY: D(2), QQQ: D(2)}, REFS, usd("300")) == {
+            SPY: D(2),
+            QQQ: D(2),
+        }
+
+    def test_purchases_shrink_in_proportion_to_the_room(self) -> None:
+        # Worth 1,000; room for 500: half of each.
+        assert fit_to_value({SPY: D(6), QQQ: D(8)}, REFS, usd("500")) == {
+            SPY: D(3),
+            QQQ: D(4),
+        }
+
+    def test_no_room_buys_nothing(self) -> None:
+        assert fit_to_value({SPY: D(2)}, REFS, usd("-50")) == {SPY: D(0)}
+
+    @given(
+        spy=st.integers(0, 50),
+        qqq=st.integers(0, 50),
+        room=st.decimals(D(-100), D(10000), places=2),
+    )
+    def test_never_exceeds_the_room_nor_buys_more_than_wanted(
+        self, spy: int, qqq: int, room: Decimal
+    ) -> None:
+        wanted = {SPY: D(spy), QQQ: D(qqq)}
+        fitted = fit_to_value(wanted, REFS, usd(str(room)))
+
+        def value(plan: dict[Instrument, Decimal]) -> Decimal:
+            return sum((REFS[i].amount * q for i, q in plan.items()), start=D(0))
+
+        assert value(fitted) <= max(room, D(0))
+        assert all(0 <= fitted[i] <= wanted[i] for i in wanted)
+        if value(wanted) <= room:
+            assert fitted == wanted

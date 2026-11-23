@@ -25,8 +25,10 @@ from tyche.core.backtest.settings import BacktestSettings
 from tyche.core.domain import (
     Account,
     BarHistory,
+    Currency,
     Fill,
     MarketProfile,
+    MoneyLimits,
     Session,
     TradingCosts,
 )
@@ -61,6 +63,9 @@ class BacktestSpec:
         budgets: Each strategy's fraction of equity, by id.
         risk: The guardrails, the active risk profile and each strategy's own limits,
             which the risk gate applies (ADR-0033).
+        money_limits: The guardrails' money caps to apply, by currency, or ``None``.
+            Research backtests pass ``None``: they keep their own starting cash, and
+            only paper and live trade the real account the caps describe (ADR-0034).
         settings: The starting cash and the holdout.
         first: First session day to trade.
         last: Last session day to trade. Must be before the holdout.
@@ -77,6 +82,7 @@ class BacktestSpec:
     settings: BacktestSettings
     first: date
     last: date
+    money_limits: Mapping[Currency, MoneyLimits] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,8 +166,8 @@ def run_backtest(
     signals = SignalsStage(bus, spec.strategies, positions=book)
     PortfolioStage(bus, spec.budgets)
     state = AccountState(bus, opening)
-    RiskGate(bus, spec.risk, book)
-    ExecutionStage(bus, book, spec.costs, calendars, spec.profile.execution)
+    RiskGate(bus, spec.risk, book, spec.money_limits)
+    ExecutionStage(bus, book, spec.costs, calendars, spec.profile.execution, spec.money_limits)
     broker = SimBroker(bus, opening, spec.costs, calendars)
     journal = InMemoryJournal(bus)
 

@@ -6,7 +6,7 @@ See ``docs/architecture/event-catalog.md`` for who publishes and who consumes ea
 from dataclasses import dataclass
 from datetime import datetime
 
-from tyche.core.domain import Account, CashDistribution, Fill, OrderState, PlanLine
+from tyche.core.domain import Account, CashDistribution, Fill, Money, OrderState, PlanLine
 from tyche.core.domain.validation import require_utc
 from tyche.core.events.event import Event
 
@@ -23,13 +23,19 @@ class ExecutionPlanEvent(Event):
         as_of: The decision time, copied from the ``ApprovedPortfolioEvent``.
         lines: One per sleeve and instrument the sleeve holds or targets, ordered by
             strategy id, then symbol and exchange.
+        sized_on: The equity weights were sized on, one per currency traded: the
+            account's, or the guardrails' capital cap when that is lower (ADR-0034).
     """
 
     as_of: datetime
     lines: tuple[PlanLine, ...]
+    sized_on: tuple[Money, ...] = ()
 
     def __post_init__(self) -> None:
         require_utc(self.as_of, "ExecutionPlanEvent as_of")
+        currencies = [m.currency for m in self.sized_on]
+        if len(set(currencies)) != len(currencies):
+            raise ValueError("ExecutionPlanEvent: sized_on lists a currency more than once")
         keys = [(p.strategy_id, p.instrument.symbol, p.instrument.exchange) for p in self.lines]
         if keys != sorted(set(keys)):
             raise ValueError(
