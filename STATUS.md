@@ -4,7 +4,9 @@
 
 ## Current phase
 
-**Phase 2: risk and paper trading (`US`, end of day). Pablo agreed the PR list below on 2026-11-23; PR 1 starts when he says so.**
+**Phase 2: risk and paper trading (`US`, end of day). Pablo agreed the PR list below on 2026-11-23.**
+
+- PR 1 (guardrails and named risk profiles) is in review; [ADR-0032](docs/adr/0032-risk-limits-in-three-layers.md) proposed. Decided with Pablo on 2026-11-23: a guardrail ceiling for every profile limit; money caps per cash currency until Phase 4; strategies may tighten position rules only. `--risk-profile` on the backtest commands moves to PR 2, where it first changes a result.
 
 **Phase 1 is done.** All 23 PRs are merged (the last, #28, on 2026-11-23), every ADR up to 0031 is accepted, and the version is 0.1.0. Its PR list and decisions are kept below for reference.
 
@@ -80,6 +82,8 @@ Recommended, still: turn on *Automatically delete head branches* in the GitHub r
 
 - Minimum viable capital (PR 22): `tyche capital --from <date>` runs each configured strategy alone at several account sizes and on a USD 100,000 reference account, under IBKR Pro Fixed and Tiered (new optional `[tiered]` table in the costs file), and reports the smallest amount from which every larger one is within half a point a year of the reference, beside whether the strategy beats SPY ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). Also the cost of one round trip per position, and the whole shares one of five positions buys at each candidate's latest close. On real data, 2005 to 2023: buy-and-hold viable from USD 700, the mean reversion from USD 10,000 (Fixed) or 5,000 (Tiered) with no edge at any size, the rotation from USD 25,000 under both plans. **Five positions under CAD 1,000 does not work**: about USD 140 a position, 2.12% a round trip under Fixed (0.84% Tiered), and SPY, QQQ, GLD and IWM cost more than one position today. Tiered cut small-account costs by a half to two thirds. Proposed defaults, for Pablo: Tiered, one or two positions below about USD 5,000, low turnover below USD 10,000.
 
+- Risk limits (Phase 2, PR 1): `config/guardrails.toml` (long only, no leverage, a ceiling for every profile limit, capital and order caps per cash currency), named risk profiles in `config/risk/` (`default` ships with the brief's values) and an optional `[risk]` table per strategy, each layer checked against the one above when Tyche starts, every breach named with its file, key, value and limit ([ADR-0032](docs/adr/0032-risk-limits-in-three-layers.md)). `tyche config check --risk-profile <name>` checks against a chosen profile. **Not applied to trades yet**: the gate is still pass-through until PR 2.
+
 Packages still holding only a docstring: `core.improvement`, `core.agents`, `core.pipeline.reconciliation`, and the broker, notifier, LLM and storage adapters.
 
 ## Decisions from the Phase 0 review (2026-11-16)
@@ -106,8 +110,8 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 
 | # | PR | Delivers | Verify or decide in this PR |
 |---|---|---|---|
-| 1 | Guardrails and named risk profiles | `config/guardrails.toml`, `config/risk/<name>.toml` and per-strategy overrides, checked at startup in [ADR-0010](docs/adr/0010-config-toml-pydantic.md)'s order, each violation naming the file, key, value and limit. `tyche init` ships the `default` profile of brief §7.1; `tyche config check` prints the active profile; `--risk-profile` on every backtest command, recorded in the run record | An ADR for the real schema (ADR-0010's was illustrative). Decide: how a capital cap in CAD applies to a USD-only profile before currency conversion exists (Phase 4); which limits only the guardrails hold |
-| 2 | Risk gate: position rules | `RiskGate` replaces `PassThroughGate`: risk-per-trade sizing for targets with a stop ([ADR-0006](docs/adr/0006-target-positions-with-optional-stops.md)), max position size, max open positions. `RiskEvent`, and `adjustments` on `ApprovedPortfolioEvent`. Property-based tests: no input yields an approved portfolio that breaks the profile or the guardrails | Decide: which targets give way above max open positions (holdings first, budget order or signal rank); whether a cap shrinks each sleeve's contribution or the instrument's total |
+| 1 | Guardrails and named risk profiles (**in review**) | `config/guardrails.toml`, `config/risk/<name>.toml` and per-strategy overrides, checked at startup in [ADR-0010](docs/adr/0010-config-toml-pydantic.md)'s order, each violation naming the file, key, value and limit. `tyche init` ships the `default` profile of brief §7.1; `tyche config check --risk-profile` prints the active profile | Decided 2026-11-23 ([ADR-0032](docs/adr/0032-risk-limits-in-three-layers.md), proposed): a guardrail ceiling for every profile limit; money caps per cash currency, no exchange rate; a strategy's `[risk]` table may tighten risk per trade, position size and its own position count only. Every profile checked, only the active one hashed. `--risk-profile` on the backtest commands moved to PR 2 |
+| 2 | Risk gate: position rules | `--risk-profile` on every backtest command, recorded in the run record (moved from PR 1). `RiskGate` replaces `PassThroughGate`: risk-per-trade sizing for targets with a stop ([ADR-0006](docs/adr/0006-target-positions-with-optional-stops.md)), max position size, max open positions. `RiskEvent`, and `adjustments` on `ApprovedPortfolioEvent`. Property-based tests: no input yields an approved portfolio that breaks the profile or the guardrails | Decide: which targets give way above max open positions (holdings first, budget order or signal rank); whether a cap shrinks each sleeve's contribution or the instrument's total |
 | 3 | Order-level guardrails | A last check in execution that every order is within the guardrails (long only, no leverage, max order value, capital cap), because orders are only sized in shares after the gate | Decide: refuse the order or shrink it; either way it is recorded, never silent |
 | 4 | Daily loss limit and drawdown kill switch | [ADR-0015](docs/adr/0015-daily-loss-limit.md)'s close-to-close limit (no new entries or additions after a losing session); peak equity tracked by the risk layer; a drawdown halt that only a manual restart lifts; a `RiskEvent` for every trigger | Decide: what a halted backtest does for the rest of its days, and how the report shows it |
 | 5 | Risk profiles side by side | The same strategies under several profiles over the same days, reported side by side in one report: the brief's risk-profile sweeps | Decide: whether a profile comparison counts towards the plugin's trial count ([ADR-0030](docs/adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md)); and the small-account profile from [ADR-0031](docs/adr/0031-minimum-viable-capital.md)'s proposed defaults, which is yours to decide |
@@ -240,6 +244,7 @@ Two things in the brief's Phase 1 that this plan moves:
 
 | Decision | Needed by |
 |---|---|
+| Accept [ADR-0032](docs/adr/0032-risk-limits-in-three-layers.md) (risk limits in three layers) | PR 1's review |
 | Turn on branch protection for `main` (require a PR and the CI check); a GitHub setting only you can change | Now, recommended |
 | Whether to add "never move `holdout_starts` later" to the never-do rules in `CLAUDE.md`. The code cannot stop an edit to your own config file; the rules are yours to change | Open since PR 15's review |
 | PR 22's proposed defaults for a small account: Tiered for the real account; one or two positions below about USD 5,000, which needs a small-account risk profile with a single-position limit above 20%; low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)) | Phase 2, PR 5 |
@@ -271,11 +276,12 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Phase 2, PR 1 (guardrails and named risk profiles)**, when Pablo says to start it.
+**Review Phase 2, PR 1** (guardrails and named risk profiles) and ADR-0032. PR 2 (the risk gate's position rules) starts when Pablo says so.
 
-1. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
-2. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
-3. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
+1. **Your workspace** needs `config/guardrails.toml` and `config/risk/default.toml` before any command runs again: copy them from a scratch workspace (`uv run tyche init --home /tmp/tyche-fresh`) and set the guardrail values you want. Claude never edits your guardrails (never-do rule 3).
+2. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
+3. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
+4. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
    git tag -a v0.1.0 979937f -m "Phase 1: core and backtesting" && git push origin v0.1.0

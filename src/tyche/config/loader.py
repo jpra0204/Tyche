@@ -17,11 +17,11 @@ import hashlib
 import json
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -52,6 +52,14 @@ from tyche.core.domain import (
     require_budgets,
     require_profile_name,
     require_strategy_id,
+)
+from tyche.core.risk import (
+    DEFAULT_RISK_PROFILE,
+    Guardrails,
+    LimitBreach,
+    RiskProfile,
+    StrategyRiskLimits,
+    require_risk_profile_name,
 )
 
 SCHEMA_VERSION = 1
@@ -113,6 +121,21 @@ class TycheFile(_ConfigFile):
     backtest: BacktestFile
 
 
+class StrategyRiskFile(_ConfigFile):
+    """The optional ``[risk]`` table of a strategy file: stricter position limits (ADR-0032)."""
+
+    risk_per_trade: ExactDecimal | None = None
+    max_open_positions: StrictInt | None = None
+    max_position_size: ExactDecimal | None = None
+
+    def to_domain(self) -> StrategyRiskLimits:
+        return StrategyRiskLimits(
+            risk_per_trade=self.risk_per_trade,
+            max_open_positions=self.max_open_positions,
+            max_position_size=self.max_position_size,
+        )
+
+
 class StrategyFile(_ConfigFile):
     """``config/strategies/<id>.toml``: which plugin a strategy instance uses, and how.
 
@@ -122,6 +145,67 @@ class StrategyFile(_ConfigFile):
 
     plugin: StrictStr
     parameters: dict[StrictStr, Any] = {}
+    risk: StrategyRiskFile | None = None
+
+
+class MoneyFile(_ConfigFile):
+    """An amount with its currency, such as ``{ amount = "700", currency = "USD" }``."""
+
+    amount: ExactDecimal
+    currency: Currency
+
+    def to_domain(self) -> Money:
+        return Money(self.amount, self.currency)
+
+
+class GuardrailsFile(_ConfigFile):
+    """``config/guardrails.toml``: the absolute limits. Only Pablo edits it (ADR-0032)."""
+
+    long_only: Literal[True]
+    """Tyche cannot sell short (brief §2); only ``true`` is accepted."""
+    allow_leverage: Literal[False]
+    """Tyche trades a cash account without margin (brief §2); only ``false`` is accepted."""
+    max_risk_per_trade: ExactDecimal
+    max_open_positions: StrictInt
+    max_position_size: ExactDecimal
+    max_daily_loss_limit: ExactDecimal
+    max_drawdown_kill: ExactDecimal
+    max_total_capital: tuple[MoneyFile, ...]
+    max_order_value: tuple[MoneyFile, ...]
+
+    def to_domain(self) -> Guardrails:
+        return Guardrails(
+            max_risk_per_trade=self.max_risk_per_trade,
+            max_open_positions=self.max_open_positions,
+            max_position_size=self.max_position_size,
+            max_daily_loss_limit=self.max_daily_loss_limit,
+            max_drawdown_kill=self.max_drawdown_kill,
+            max_total_capital=tuple(cap.to_domain() for cap in self.max_total_capital),
+            max_order_value=tuple(cap.to_domain() for cap in self.max_order_value),
+        )
+
+
+class RiskProfileFile(_ConfigFile):
+    """``config/risk/<name>.toml``: one named risk profile (ADR-0032).
+
+    The file name is the profile's name, so the file has no ``name`` key.
+    """
+
+    risk_per_trade: ExactDecimal
+    max_open_positions: StrictInt
+    max_position_size: ExactDecimal
+    daily_loss_limit: ExactDecimal
+    drawdown_kill: ExactDecimal
+
+    def to_domain(self, name: str) -> RiskProfile:
+        return RiskProfile(
+            name=name,
+            risk_per_trade=self.risk_per_trade,
+            max_open_positions=self.max_open_positions,
+            max_position_size=self.max_position_size,
+            daily_loss_limit=self.daily_loss_limit,
+            drawdown_kill=self.drawdown_kill,
+        )
 
 
 class SweepFile(_ConfigFile):
@@ -320,6 +404,8 @@ class StrategySpec:
         plugin: The built-in plugin it uses.
         parameters: The plugin's parameters, as read from the file.
         source: The strategy file, relative to the workspace, for messages.
+        risk: Its own position limits from the file's ``[risk]`` table, each at least
+            as strict as the active risk profile's; empty without the table.
     """
 
     strategy_id: str
@@ -327,6 +413,7 @@ class StrategySpec:
     plugin: str
     parameters: Mapping[str, Any]
     source: str
+    risk: StrategyRiskLimits = field(default_factory=StrategyRiskLimits)
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,6 +429,10 @@ class TycheConfig:
             Backtests never use it.
         strategies: The configured strategy instances, ordered by id.
         backtest: The starting cash and the reserved holdout (ADR-0024).
+        guardrails: The absolute limits, from ``config/guardrails.toml`` (ADR-0032).
+        risk_profile: The active risk profile, from ``config/risk/<name>.toml``.
+        risk_profiles: The name of every profile in ``config/risk/``, sorted. Each was
+            checked against the guardrails; only the active one is in the hash.
         config_hash: Fingerprint of every loaded setting. Two runs with the same hash
             used the same configuration. Comments, blank lines and key order do not
             affect it; any change of value does.
@@ -356,6 +447,9 @@ class TycheConfig:
     backtest: BacktestSettings
     config_hash: str
     snapshot: Mapping[str, Any]
+    guardrails: Guardrails
+    risk_profile: RiskProfile
+    risk_profiles: tuple[str, ...]
     tiered_costs: TradingCosts | None = None
 
     @property
@@ -364,8 +458,15 @@ class TycheConfig:
         return {spec.strategy_id: spec.budget for spec in self.strategies}
 
 
-def load_config(workspace: Workspace) -> TycheConfig:
-    """Load and validate the workspace configuration, or raise ``ConfigError``."""
+def load_config(workspace: Workspace, risk_profile: str = DEFAULT_RISK_PROFILE) -> TycheConfig:
+    """Load and validate the workspace configuration, or raise ``ConfigError``.
+
+    Args:
+        workspace: The workspace to read.
+        risk_profile: The risk profile to make active. Every profile in
+            ``config/risk/`` is checked against the guardrails whichever is chosen, so
+            that switching to any of them later cannot fail on a limit.
+    """
     tyche = _read(workspace, workspace.tyche_config, TycheFile)
     tyche_name = workspace.relative(workspace.tyche_config)
 
@@ -418,7 +519,44 @@ def load_config(workspace: Workspace) -> TycheConfig:
             f"{profile.name} holds cash in {', '.join(profile.cash_currencies)}"
         )
 
+    guardrails_name = workspace.relative(workspace.guardrails)
+    guardrails_file, guardrails = _load_guardrails(workspace)
+    uncapped = guardrails.uncapped(profile.cash_currencies)
+    if uncapped:
+        raise ConfigError(
+            f"{guardrails_name}: market profile {profile.name} holds cash in "
+            f"{', '.join(uncapped)}, but max_total_capital and max_order_value need a cap "
+            "in each such currency; Tyche cannot convert between currencies yet"
+        )
+    profiles, profile_files = _load_risk_profiles(workspace, guardrails)
+    try:
+        require_risk_profile_name(risk_profile)
+    except ValueError as error:
+        raise ConfigError(f"risk profile: {error}") from None
+    active = profiles.get(risk_profile)
+    if active is None:
+        missing = workspace.relative(workspace.risk_dir / f"{risk_profile}.toml")
+        if profiles:
+            hint = f"available: {', '.join(sorted(profiles))}"
+        else:
+            hint = "there are none; `tyche init` on a scratch folder writes `default` to copy"
+        raise ConfigError(
+            f"no risk profile named {risk_profile!r}: {missing} does not exist; {hint}"
+        )
+    active_name = workspace.relative(workspace.risk_dir / f"{risk_profile}.toml")
+
     strategies, strategy_files = _load_strategies(workspace, tyche, tyche_name)
+    for spec in strategies:
+        breaches = spec.risk.breaches(active)
+        if breaches:
+            raise ConfigError(
+                _describe_breaches(
+                    f"{spec.source}: [risk] may only be stricter than the active risk "
+                    f"profile {risk_profile!r} ({active_name})",
+                    breaches,
+                    "risk.",
+                )
+            )
 
     try:
         backtest = BacktestSettings(
@@ -432,6 +570,8 @@ def load_config(workspace: Workspace) -> TycheConfig:
         tyche_name: tyche,
         profile_name: profile_file,
         costs_name: costs_file,
+        guardrails_name: guardrails_file,
+        active_name: profile_files[risk_profile],
         **strategy_files,
     }
     return TycheConfig(
@@ -442,8 +582,68 @@ def load_config(workspace: Workspace) -> TycheConfig:
         backtest=backtest,
         config_hash=config_hash(files),
         snapshot=config_snapshot(files),
+        guardrails=guardrails,
+        risk_profile=active,
+        risk_profiles=tuple(sorted(profiles)),
         tiered_costs=tiered_costs,
     )
+
+
+def _load_guardrails(workspace: Workspace) -> tuple[GuardrailsFile, Guardrails]:
+    name = workspace.relative(workspace.guardrails)
+    if not workspace.guardrails.is_file():
+        raise ConfigError(
+            f"{name} is missing: Tyche refuses to start without its hard limits. "
+            "`tyche init` on a scratch folder writes an example to copy; the values are "
+            "yours to set"
+        )
+    guardrails_file = _read(workspace, workspace.guardrails, GuardrailsFile)
+    try:
+        return guardrails_file, guardrails_file.to_domain()
+    except ValueError as error:
+        raise ConfigError(f"{name}: {error}") from None
+
+
+def _load_risk_profiles(
+    workspace: Workspace, guardrails: Guardrails
+) -> tuple[dict[str, RiskProfile], dict[str, RiskProfileFile]]:
+    """Every profile in ``config/risk/``, each checked against the guardrails."""
+    guardrails_name = workspace.relative(workspace.guardrails)
+    profiles: dict[str, RiskProfile] = {}
+    files: dict[str, RiskProfileFile] = {}
+    paths = sorted(workspace.risk_dir.glob("*.toml")) if workspace.risk_dir.is_dir() else []
+    for path in paths:
+        name = workspace.relative(path)
+        try:
+            require_risk_profile_name(path.stem)
+        except ValueError as error:
+            raise ConfigError(f"{name}: {error}") from None
+        risk_file = _read(workspace, path, RiskProfileFile)
+        try:
+            profile = risk_file.to_domain(path.stem)
+        except ValueError as error:
+            raise ConfigError(f"{name}: {error}") from None
+        breaches = guardrails.breaches(profile)
+        if breaches:
+            raise ConfigError(
+                _describe_breaches(
+                    f"{name}: a risk profile may not exceed the guardrails ({guardrails_name})",
+                    breaches,
+                    "",
+                )
+            )
+        profiles[path.stem] = profile
+        files[path.stem] = risk_file
+    return profiles, files
+
+
+def _describe_breaches(heading: str, breaches: tuple[LimitBreach, ...], prefix: str) -> str:
+    lines = [heading]
+    for breach in breaches:
+        lines.append(
+            f"  {prefix}{breach.key} = {breach.value} is above {breach.limit_key} = {breach.limit}"
+        )
+    return "\n".join(lines)
 
 
 def _load_strategies(
@@ -470,6 +670,14 @@ def _load_strategies(
             )
         strategy_file = _read(workspace, path, StrategyFile)
         files[name] = strategy_file
+        try:
+            limits = (
+                strategy_file.risk.to_domain()
+                if strategy_file.risk is not None
+                else StrategyRiskLimits()
+            )
+        except ValueError as error:
+            raise ConfigError(f"{name}: risk: {error}") from None
         specs.append(
             StrategySpec(
                 strategy_id,
@@ -477,6 +685,7 @@ def _load_strategies(
                 strategy_file.plugin,
                 strategy_file.parameters,
                 name,
+                limits,
             )
         )
     return tuple(specs), files

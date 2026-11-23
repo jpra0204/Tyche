@@ -1,0 +1,28 @@
+# Risk profile `default` (brief §7.1, ADR-0032).
+#
+# A risk profile is a named set of limits. The file name, without .toml, is its name;
+# add as many as you like (safecash.toml, test-a.toml, ...). Every value must be within
+# config/guardrails.toml, or Tyche refuses to start.
+#
+# Fractions are of account equity and are written as strings, so they stay exact:
+# "0.01" is 1%.
+#
+# Nothing applies these limits to trades yet: Phase 2 builds the risk gate in steps.
+
+# The most one position may lose before its stop triggers. Applies only to targets that
+# carry a stop; the position is sized so that being stopped out loses at most this.
+risk_per_trade = "0.01"
+
+# How many instruments may be held at once, across all strategies.
+max_open_positions = 5
+
+# The largest single position.
+max_position_size = "0.20"
+
+# A loss of at least this much from one close to the next stops new entries and
+# additions at that close; exits still go through (ADR-0015).
+daily_loss_limit = "0.03"
+
+# A fall of at least this much from peak equity halts everything until you restart it
+# by hand.
+drawdown_kill = "0.15"

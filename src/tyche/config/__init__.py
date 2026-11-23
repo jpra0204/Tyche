@@ -11,6 +11,10 @@ Available now:
   strategy instances with their budgets (``[strategies]`` in ``tyche.toml``) and
   plugin parameters (``config/strategies/<id>.toml``), as ``StrategySpec``s (ADR-0022);
   the backtest settings, with the reserved holdout, from ``[backtest]`` (ADR-0024).
+* Risk limits in three layers (ADR-0032): ``config/guardrails.toml``, the named
+  profiles in ``config/risk/`` (each checked against the guardrails; the active one,
+  ``default`` unless chosen, is hashed), and an optional ``[risk]`` table per strategy,
+  checked against the active profile.
 * ``load_sweep``: reads a parameter sweep, ``config/sweeps/<name>.toml``, as a
   ``SweepSpec`` (ADR-0030). Sweep files are read on demand and are not part of the
   config hash.
