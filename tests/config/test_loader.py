@@ -142,6 +142,19 @@ class TestValidConfig:
             + BENCHMARK_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
+        # Without currency conversion, each cash currency needs caps of its own.
+        guardrails = workspace.guardrails.read_text(encoding="utf-8")
+        write(
+            workspace,
+            "config/guardrails.toml",
+            guardrails.replace(
+                '{ amount = "700", currency = "USD" },',
+                '{ amount = "700", currency = "USD" }, { amount = "1000", currency = "CAD" },',
+            ).replace(
+                '{ amount = "350", currency = "USD" },',
+                '{ amount = "350", currency = "USD" }, { amount = "500", currency = "CAD" },',
+            ),
+        )
 
         profile = load_config(workspace).market_profile
 
@@ -708,7 +721,9 @@ class TestBacktestSettings:
 
         assert sorted(config.snapshot) == [
             "config/costs/US.toml",
+            "config/guardrails.toml",
             "config/markets/US.toml",
+            "config/risk/default.toml",
             "config/strategies/buy_and_hold.toml",
             "config/tyche.toml",
         ]

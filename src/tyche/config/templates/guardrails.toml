@@ -1,0 +1,33 @@
+# Hard guardrails: the absolute limits no risk profile may exceed (ADR-0010, ADR-0032).
+#
+# Only you edit this file. Tyche checks every profile in config/risk/ against it when it
+# starts, and refuses to start if one is looser. Agents may propose a change in writing;
+# they never apply one.
+#
+# The values below are an example to start from, not advice. Fractions are of account
+# equity and are written as strings, so they stay exact: "0.25" is 25%.
+#
+# Nothing enforces these limits on trades yet: Phase 2 builds the risk gate in steps,
+# and until then this file only bounds the risk profiles.
+
+# The only trading Tyche can do: long only, in a cash account, without margin. Only
+# these values are accepted.
+long_only = true
+allow_leverage = false
+
+# Ceilings for every risk profile, so that no profile can switch a protection off.
+max_risk_per_trade = "0.02"   # most one stopped-out position may lose
+max_open_positions = 10
+max_position_size = "0.25"    # largest single position
+max_daily_loss_limit = "0.05" # a profile's daily loss limit must be at most this
+max_drawdown_kill = "0.25"    # a profile's drawdown kill must be at most this
+
+# Money caps, one per cash currency. Tyche cannot convert between currencies until
+# Phase 4, so every currency the market profile holds needs a cap of its own. The
+# order cap is at most the capital cap in the same currency.
+max_total_capital = [
+    { amount = "700", currency = "USD" },
+]
+max_order_value = [
+    { amount = "350", currency = "USD" },
+]

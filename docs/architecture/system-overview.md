@@ -156,7 +156,7 @@ This is how lookahead is prevented: a decision uses data up to the close of sess
 
 ## 6. Risk and safety model
 
-Limits are layered, and each layer can only be stricter than the one above it ([ADR-0010](../adr/0010-config-toml-pydantic.md)):
+Limits are layered, and each layer can only be stricter than the one above it ([ADR-0010](../adr/0010-config-toml-pydantic.md); the files' schema in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md)). The guardrails hold a ceiling for every profile limit, and money caps per cash currency; a strategy may tighten position rules only:
 
 ```mermaid
 flowchart TB

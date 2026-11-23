@@ -25,6 +25,8 @@ _TEMPLATES = {
     "tyche.toml": "config/tyche.toml",
     "markets/US.toml": "config/markets/US.toml",
     "costs/US.toml": "config/costs/US.toml",
+    "guardrails.toml": "config/guardrails.toml",
+    "risk/default.toml": "config/risk/default.toml",
     "strategies/buy_and_hold.toml": "config/strategies/buy_and_hold.toml",
     "strategies/mean_reversion.toml": "config/strategies/mean_reversion.toml",
     "strategies/trend_rotation.toml": "config/strategies/trend_rotation.toml",
@@ -60,6 +62,16 @@ class Workspace:
     @property
     def costs_dir(self) -> Path:
         return self.config_dir / "costs"
+
+    @property
+    def guardrails(self) -> Path:
+        """The hard limits no risk profile may exceed; only Pablo edits it (ADR-0032)."""
+        return self.config_dir / "guardrails.toml"
+
+    @property
+    def risk_dir(self) -> Path:
+        """One file per named risk profile (ADR-0032)."""
+        return self.config_dir / "risk"
 
     @property
     def strategies_dir(self) -> Path:

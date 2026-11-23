@@ -28,6 +28,7 @@ uv run tyche init --home /tmp/tyche-fresh
 | `config/strategies/trend_rotation.toml`, `mean_reversion.toml` | PR 18 | The files, if you want to try the example strategies |
 | `config/sweeps/trend_rotation.toml` | PR 21 | The file, if you want the example sweep |
 | `[tiered]` in `config/costs/US.toml` | PR 22 | The table, if you want `tyche capital` to compare Tiered. Optional: without it, Fixed only |
+| `config/guardrails.toml` and `config/risk/default.toml` | Phase 2, PR 1 | Both files. Tyche refuses to start without its hard limits. The guardrail values are an example: set your own ([risk profiles](08-risk-profiles.md)) |
 
 Copying changes your config hash, as any change of setting does: runs before and after the copy are told apart in their records. That is intended.
 

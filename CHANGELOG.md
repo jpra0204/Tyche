@@ -4,6 +4,17 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Risk limits in three layers (Phase 2, PR 1, ADR-0032): `config/guardrails.toml` with a ceiling for every profile limit and capital and order caps per cash currency; named risk profiles in `config/risk/`, `default` shipped with the brief's values; an optional `[risk]` table in a strategy file that may only tighten position rules. Every layer is checked against the one above at startup, each breach named with its file, key, value and limit. Not yet applied to trades.
+- `tyche config check --risk-profile <name>`, which also prints the active profile, the other valid profiles, the guardrails and each strategy's own limits.
+- User guide: risk profiles and guardrails. Learning note: layered limits.
+
+### Changed
+
+- A workspace now needs `config/guardrails.toml` and `config/risk/default.toml`; Tyche refuses to start without them. Copy them from a new workspace ([troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche)).
+- The config hash now covers the guardrails and the active risk profile, so every workspace's hash changes once. Trial counts are unaffected.
+
 ## [0.1.0] - 2026-11-23
 
 Phase 1: core and backtesting, for the `US` profile at end of day. Tyche fetches daily data from Yahoo Finance into a private workspace, and backtests strategies on it through the whole trading path (universe, screening, signals, portfolio, a pass-through risk gate, execution, a simulated broker with IBKR's costs and T+1 settlement), against SPY's total return. It reserves a holdout, records every run, checks its own engine against backtesting.py, reports in HTML, tests out of sample with walk-forward, counts every trial behind a parameter sweep and deflates its Sharpe ratio, and measures the account size each strategy needs. No paper or live trading yet.

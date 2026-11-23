@@ -138,6 +138,54 @@ class TestConfigCheck:
         assert "cash:" not in result.stdout
         assert "Config hash:    sha256:" in result.stdout
 
+    def test_reports_the_risk_profile_and_the_guardrails(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(app, ["config", "check"])
+
+        assert result.exit_code == 0, result.output
+        assert (
+            "Risk profile:   default: risk per trade 0.01, 5 positions, position size 0.20, "
+            "daily loss 0.03, drawdown kill 0.15"
+        ) in result.stdout
+        assert "Guardrails:     long only, no leverage; capital 700 USD, order 350 USD" in (
+            result.stdout
+        )
+        assert "not applied to trades yet" in result.stdout
+
+    def test_checks_against_the_chosen_risk_profile(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+        risk_dir = home / "tyche-workspace" / "config" / "risk"
+        strict = (
+            (risk_dir / "default.toml")
+            .read_text()
+            .replace('max_position_size = "0.20"', 'max_position_size = "0.05"')
+        )
+        (risk_dir / "safecash.toml").write_text(strict)
+        strategy_file = home / "tyche-workspace" / "config" / "strategies" / "buy_and_hold.toml"
+        with strategy_file.open("a") as file:
+            file.write('\n[risk]\nmax_position_size = "0.10"\n')
+
+        default = runner.invoke(app, ["config", "check"])
+        safecash = runner.invoke(app, ["config", "check", "--risk-profile", "safecash"])
+
+        assert default.exit_code == 0, default.output
+        assert "also within the guardrails: safecash" in default.stdout
+        assert "own limits: position size 0.10" in default.stdout
+        assert safecash.exit_code == 1
+        assert "risk.max_position_size = 0.10 is above max_position_size = 0.05" in (
+            safecash.stderr
+        )
+
+    def test_an_unknown_risk_profile_fails_with_the_ones_available(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(app, ["config", "check", "--risk-profile", "riskybusiness"])
+
+        assert result.exit_code == 1
+        assert "no risk profile named 'riskybusiness'" in result.stderr
+        assert "available: default" in result.stderr
+
     def test_lists_the_cash_left_after_budgets(self, home: Path) -> None:
         runner.invoke(app, ["init"])
         config_file = home / "tyche-workspace" / "config" / "tyche.toml"

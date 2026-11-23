@@ -38,6 +38,7 @@ from tyche.core.backtest import (
 )
 from tyche.core.domain import AssetClass, Money
 from tyche.core.ports import DataError
+from tyche.core.risk import DEFAULT_RISK_PROFILE
 from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
 from tyche.runtime.capital import (
     DEFAULT_AMOUNTS,
@@ -149,11 +150,20 @@ def init(home: HomeOption = None) -> None:
 
 
 @config_app.command("check")
-def config_check(home: HomeOption = None) -> None:
+def config_check(
+    home: HomeOption = None,
+    risk_profile: Annotated[
+        str,
+        typer.Option(
+            "--risk-profile",
+            help="Risk profile to check the strategies' own limits against.",
+        ),
+    ] = DEFAULT_RISK_PROFILE,
+) -> None:
     """Validate the workspace configuration and show its fingerprint."""
     try:
         workspace = Workspace(resolve_home(home, os.environ))
-        config = load_config(workspace)
+        config = load_config(workspace, risk_profile)
         configured = build_strategies(config)
     except (WorkspaceError, ConfigError) as error:
         _fail(str(error))
@@ -166,9 +176,36 @@ def config_check(home: HomeOption = None) -> None:
         f"  Execution:      rebalance band {execution.rebalance_band}, "
         f"price buffer {execution.price_buffer}"
     )
+    profile = config.risk_profile
+    typer.echo(
+        f"  Risk profile:   {profile.name}: risk per trade {profile.risk_per_trade}, "
+        f"{profile.max_open_positions} positions, position size {profile.max_position_size}, "
+        f"daily loss {profile.daily_loss_limit}, drawdown kill {profile.drawdown_kill}"
+    )
+    others = [name for name in config.risk_profiles if name != profile.name]
+    if others:
+        typer.echo(f"                  also within the guardrails: {', '.join(others)}")
+    guardrails = config.guardrails
+    caps = ", ".join(
+        f"capital {capital}, order {guardrails.order_cap(capital.currency)}"
+        for capital in guardrails.max_total_capital
+    )
+    typer.echo(f"  Guardrails:     long only, no leverage; {caps}")
+    typer.echo("                  (not applied to trades yet: Phase 2 builds the risk gate)")
     typer.echo("  Strategies:")
     for spec in config.strategies:
         typer.echo(f"    {spec.strategy_id} ({spec.plugin}), budget {spec.budget}")
+        limits = [
+            f"{key} {value}"
+            for key, value in (
+                ("risk per trade", spec.risk.risk_per_trade),
+                ("positions", spec.risk.max_open_positions),
+                ("position size", spec.risk.max_position_size),
+            )
+            if value is not None
+        ]
+        if limits:
+            typer.echo(f"      own limits: {', '.join(limits)}")
     cash = 1 - sum(configured.budgets.values())
     if cash:
         typer.echo(f"    cash: {cash}")
