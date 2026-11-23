@@ -80,10 +80,13 @@ class Table:
 
 @dataclass(frozen=True, slots=True)
 class Line:
-    """One series on a chart: values at moments, oldest first."""
+    """One series on a chart: values at moments, oldest first.
+
+    ``colour`` overrides the line's place in ``COLOURS``, as a ``#rrggbb`` string."""
 
     label: str
     points: tuple[tuple[datetime, float], ...]
+    colour: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,7 +188,8 @@ def render_chart_svg(chart: Chart) -> str:
         figure = Figure(figsize=(9.0, 3.2), layout="constrained")
         axes = figure.add_subplot()
         span = 0.0
-        for colour, line in zip(_colours(len(chart.lines)), chart.lines, strict=True):
+        for default, line in zip(_colours(len(chart.lines)), chart.lines, strict=True):
+            colour = line.colour or default
             moments = [_year(moment) for moment, _ in line.points]
             values = [value for _, value in line.points]
             if moments:

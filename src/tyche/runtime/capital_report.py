@@ -33,9 +33,11 @@ from tyche.runtime.report import (
     ReportError,
     data_limits,
     fmt_amount,
+    fmt_day,
     fmt_pct,
     fmt_points,
     fmt_ratio,
+    halts_callout,
 )
 from tyche.runtime.trials import CAPITAL_FILE
 
@@ -99,6 +101,21 @@ def capital_report(record: dict[str, Any]) -> Document:
         ),
         *_verdicts(record),
     ]
+    halted: list[str] = []
+    runs = 0
+    for study in record["strategies"]:
+        for plan in study["plans"]:
+            for run in (*plan["runs"], plan["reference"]):
+                runs += 1
+                if run.get("halted_at"):
+                    halted.append(
+                        f"{study['id']} at {_amount(run['amount'], currency)} under "
+                        f"{PLAN_NAMES.get(plan['plan'], plan['plan'])} "
+                        f"({fmt_day(run['halted_at'])})"
+                    )
+    halts = halts_callout(halted, f"{runs} runs")
+    if halts is not None:
+        callouts.append(halts)
     if record["code"]["git_dirty"]:
         callouts.append(
             Callout(

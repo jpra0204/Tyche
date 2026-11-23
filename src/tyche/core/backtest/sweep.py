@@ -47,6 +47,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from itertools import pairwise, product
 from statistics import NormalDist, median
@@ -155,12 +156,15 @@ class Trial:
             could not be measured.
         session_sharpe: The Sharpe ratio per session; ``None`` if it cannot be computed.
         failure: Why there are no metrics, or ``None``.
+        halted_at: The close at which the drawdown kill halted its trading, or
+            ``None``. A halted trial still runs to the end and is measured (ADR-0035).
     """
 
     combination: Combination
     metrics: BacktestMetrics | None
     session_sharpe: float | None
     failure: str | None = None
+    halted_at: datetime | None = None
 
     @property
     def sharpe(self) -> Decimal | None:

@@ -40,9 +40,11 @@ from tyche.runtime.report import (
     equity_line,
     fmt_amount,
     fmt_budget,
+    fmt_day,
     fmt_pct,
     fmt_points,
     fmt_ratio,
+    halts_callout,
     read_record,
 )
 from tyche.runtime.sweep import PICK_FOLDER, SWEEP_FILE, SWEEP_FORMAT
@@ -125,6 +127,16 @@ def sweep_report(record: SweepRecord) -> Document:
         _verdict(trials),
     ]
     callouts.extend(Callout(w, Tone.WARNING) for w in trials["warnings"])
+    halts = halts_callout(
+        [
+            f"trial {t['number']} ({fmt_day(t['halted_at'])})"
+            for t in trials["trials"]
+            if t.get("halted_at")
+        ],
+        f"{len(trials['trials'])} trials",
+    )
+    if halts is not None:
+        callouts.append(halts)
     if study["code"]["git_dirty"]:
         callouts.append(
             Callout(

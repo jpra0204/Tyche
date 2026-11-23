@@ -9,6 +9,7 @@ and the sweep ``small`` tries four combinations of it.
 import json
 import math
 import re
+import shutil
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -372,6 +373,21 @@ class TestTheSweepReport:
         assert "Every figure here is in-sample" in html
         assert "Trials counted: 4." in html
         assert "Every trial" in html
+
+    def test_records_and_warns_of_trials_the_drawdown_kill_halted(
+        self, swept: SweepOutcome, tmp_path: Path
+    ) -> None:
+        trials = read(swept.record_dir / TRIALS_FILE)
+        assert all(t["halted_at"] is None for t in trials["trials"])
+        assert "The drawdown kill halted" not in write_sweep_report(swept.record_dir).read_text()
+
+        copy = tmp_path / "sweep"
+        shutil.copytree(swept.record_dir, copy)
+        trials["trials"][1]["halted_at"] = "2021-03-04T21:00:00+00:00"
+        (copy / TRIALS_FILE).write_text(json.dumps(trials))
+
+        html = write_sweep_report(copy).read_text(encoding="utf-8")
+        assert "The drawdown kill halted 1 of 4 trials: trial 2 (2021-03-04)." in html
 
     def test_reads_the_picks_full_record(self, swept: SweepOutcome) -> None:
         record = read_sweep(swept.record_dir)

@@ -161,6 +161,8 @@ class SizedRun:
             a bar's volume bound. On the reference account it means the account is too
             large for the strategy, and its result is not the strategy free of its size.
         failure: Why it was not measured, or ``None``.
+        halted_at: The close at which the drawdown kill halted its trading, or ``None``
+            (ADR-0035).
     """
 
     strategy_id: str
@@ -173,6 +175,7 @@ class SizedRun:
     free_riding: int
     cut_short: int = 0
     failure: str | None = None
+    halted_at: datetime | None = None
 
     @property
     def cagr(self) -> Decimal | None:
@@ -438,6 +441,7 @@ def _sized(
         free_riding=len(result.free_riding),
         cut_short=cut_short,
         failure=failure,
+        halted_at=result.halt.at if result.halt is not None else None,
     )
 
 
@@ -726,6 +730,7 @@ def _run_record(
         "short_of_a_share": run.short_of_a_share,
         "free_riding": run.free_riding,
         "cut_short": run.cut_short,
+        "halted_at": run.halted_at.isoformat() if run.halted_at is not None else None,
     }
     metrics, drag = run.metrics, run.drag
     if metrics is None or drag is None:

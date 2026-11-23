@@ -10,6 +10,7 @@ training on 2020 to 2021 and testing 2022, then training on 2020 to 2022 and tes
 import csv
 import json
 import math
+import shutil
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -317,6 +318,33 @@ class TestTheReport:
         second = write_walk_forward_report(walked.record_dir).read_bytes()
 
         assert first == second
+
+    def test_warns_of_windows_the_drawdown_kill_halted(
+        self, walked: WalkForwardOutcome, tmp_path: Path
+    ) -> None:
+        before = walk_forward_report(read_walk_forward(walked.record_dir)).callouts
+        assert not any(c.text.startswith("The drawdown kill halted") for c in before)
+        copy = tmp_path / "walk"
+        shutil.copytree(walked.record_dir, copy)
+        [path] = sorted(copy.glob("folds/01-test/run.json"))
+        run = read(path)
+        run["outcome"]["account_rules"]["halt"] = {
+            "at": "2022-06-16T20:00:00+00:00",
+            "peak": {"amount": "10100", "currency": "USD"},
+            "equity": {"amount": "8500", "currency": "USD"},
+            "drawdown": "0.158416",
+            "limit": "0.15",
+        }
+        path.write_text(json.dumps(run))
+
+        texts = [c.text for c in walk_forward_report(read_walk_forward(copy)).callouts]
+
+        assert any(
+            t.startswith(
+                "The drawdown kill halted 1 of 4 windows: fold 1's test window (2022-06-16)"
+            )
+            for t in texts
+        )
 
     def test_shows_each_fold_side_by_side(self, walked: WalkForwardOutcome) -> None:
         record = read_walk_forward(walked.record_dir)

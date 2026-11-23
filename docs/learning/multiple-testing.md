@@ -23,6 +23,7 @@ Two things the deflated Sharpe ratio does not do: it does not test out of sample
 - `src/tyche/runtime/sweep.py`: `tyche sweep <name>` runs every combination of `config/sweeps/<name>.toml`, picks, deflates, and writes `reports/sweeps/<id>/`.
 - `tyche walk-forward --sweep <name>`: picks on each training window and tests the pick on the year after.
 - [ADR-0030](../adr/0030-parameter-sweeps-trial-count-and-deflated-sharpe.md) records the choices.
+- `tyche compare-profiles` is the other side of the same idea. Comparing risk profiles adds no trial, because the strategies' parameters do not change, so it **picks nothing**: the report warns that choosing the best-looking profile is a selection that nothing corrects for ([ADR-0036](../adr/0036-risk-profiles-side-by-side.md)). Where a correction would be awkward, refusing to choose is the honest alternative.
 
 ## What does it cost
 

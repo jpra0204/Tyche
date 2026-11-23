@@ -8,6 +8,7 @@ of SPY alone.
 
 import json
 import math
+import shutil
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -262,6 +263,23 @@ class TestTheReport:
         ):
             assert heading in html
         assert "IBKR Pro Tiered" in html
+
+    def test_records_and_warns_of_runs_the_drawdown_kill_halted(
+        self, analysed: CapitalOutcome, tmp_path: Path
+    ) -> None:
+        record = read(analysed.record_dir / CAPITAL_FILE)
+        plan = record["strategies"][0]["plans"][0]
+        assert plan["runs"][0]["halted_at"] is None
+        copy = tmp_path / "capital"
+        shutil.copytree(analysed.record_dir, copy)
+        plan["runs"][0]["halted_at"] = "2021-03-04T21:00:00+00:00"
+        (copy / CAPITAL_FILE).write_text(json.dumps(record))
+
+        html = write_capital_report(copy).read_text(encoding="utf-8")
+
+        assert "The drawdown kill halted 1 of " in html
+        assert "buy_and_hold at " in html
+        assert "(2021-03-04)" in html
 
     def test_refuses_a_record_of_another_format(self, tmp_path: Path) -> None:
         (tmp_path / CAPITAL_FILE).write_text('{"capital_format": 99}', encoding="utf-8")

@@ -459,6 +459,32 @@ class TestBacktest:
         assert Path(report.group(1)) == Path(record.group(1)).parent / "report.html"
         assert Path(report.group(1)).is_file()
 
+    def test_compares_risk_profiles_side_by_side(self, fetched: Path) -> None:
+        risk = fetched / "config" / "risk"
+        wide = (risk / "default.toml").read_text().replace('"0.20"', '"0.25"')
+        (risk / "wide.toml").write_text(wide)
+
+        result = runner.invoke(app, ["compare-profiles", "--from", "2023-11-01"])
+
+        assert result.exit_code == 0, result.output
+        out = result.stdout
+        assert "Comparing 2 risk profiles: default, wide" in out
+        assert re.search(r"^  default: CAGR .*; drawdown kill never hit$", out, re.MULTILINE)
+        assert re.search(r"^  wide: CAGR ", out, re.MULTILINE)
+        assert "the report names no best one" in out
+        report = re.search(r"Report:\s+(\S+)", out)
+        assert report is not None
+        assert Path(report.group(1)).is_relative_to(fetched / "reports" / "profiles")
+        comparison = Path(report.group(1)).parent.name
+        rebuilt = runner.invoke(app, ["report", comparison])
+        assert rebuilt.exit_code == 0, rebuilt.output
+
+    def test_compare_profiles_needs_two(self, fetched: Path) -> None:
+        result = runner.invoke(app, ["compare-profiles", "--from", "2023-11-01"])
+
+        assert result.exit_code == 1
+        assert "at least two risk profiles" in plain(result.stderr)
+
     def test_runs_under_a_chosen_risk_profile(self, fetched: Path) -> None:
         risk = fetched / "config" / "risk"
         wide = (risk / "default.toml").read_text().replace('"0.20"', '"0.25"')
@@ -522,9 +548,10 @@ class TestBacktest:
         result = runner.invoke(app, ["report", run_id])
 
         assert result.exit_code == 1
-        assert f"no backtest, walk-forward, sweep or capital record named {run_id!r}" in plain(
-            result.stderr
-        )
+        assert (
+            f"no backtest, walk-forward, sweep, capital or profile comparison record named "
+            f"{run_id!r}"
+        ) in plain(result.stderr)
 
     def test_a_range_reaching_the_holdout_is_refused(self, fetched: Path) -> None:
         result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--to", "2024-01-05"])
