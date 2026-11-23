@@ -10,11 +10,23 @@ It acts on ``ApprovedPortfolioEvent`` only (ADR-0006). At each decision it:
 3. **Crosses** between sleeves first: shares one sleeve gives up and another wants
    move between them in the sleeve book at the last close, with no order and no
    commission. What is left is **netted** into one market order per instrument.
-4. **Fits purchases to cash**: together they must be payable from the buying power at
+4. **Fits purchases to the guardrails' money caps**, when the run applies them
+   (ADR-0034): each purchase within the order cap, and all of them within what is left
+   under the capital cap after the cycle's sales, valued at the last close plus the
+   price buffer. A purchase over a cap shrinks to the whole shares that fit, and each
+   cut is published as a ``RiskEvent``; sales are never cut.
+5. **Fits purchases to cash**: together they must be payable from the buying power at
    the next open, at the last close plus the price buffer, costs included; if not,
    every purchase shrinks in proportion.
-5. **Publishes** an ``ExecutionPlanEvent``, then cancellations, then the orders: sales
+6. **Publishes** an ``ExecutionPlanEvent``, then cancellations, then the orders: sales
    first, then purchases, then any stop that must be placed again.
+
+With money caps, weights are sized on the account's equity or the capital cap,
+whichever is lower: money above the cap, gains included, stays in cash until Pablo
+raises the cap. Long only and no leverage hold in every run: sales and resting stops
+never add up to more shares than the account holds, and purchases never cost more
+than the buying power. Execution cannot break either by design, so a breach is a bug
+and halts the run.
 
 Fills come back as ``FillEvent``s. A sleeve's share of a netted fill is in proportion
 to what each sleeve the order serves is still owed. When a purchase fills, each sleeve
@@ -27,7 +39,8 @@ sleeve), or for a stop placed after a fill, from that fill: the same decision al
 gives the same ids, and a decision handled once is not handled again.
 
 A broken assumption (no account snapshot, a market order still open at a decision, the
-sleeves not adding up to the account's positions) is a bug, and halts the run.
+sleeves not adding up to the account's positions, a sale that would go short, a
+purchase the cash cannot pay for) is a bug, and halts the run.
 """
 
 from collections.abc import Mapping
@@ -37,14 +50,19 @@ from decimal import Decimal
 
 from tyche.core.domain import (
     Account,
+    Currency,
     ExecutionRules,
     Instrument,
     Money,
+    MoneyLimits,
     Order,
+    OrderAdjustment,
     OrderState,
     OrderType,
     PlanLine,
     PlanNote,
+    RiskAction,
+    RiskRule,
     Side,
     TimeInForce,
     TradingCosts,
@@ -61,10 +79,17 @@ from tyche.core.events import (
     ExecutionPlanEvent,
     FillEvent,
     OrderEvent,
+    RiskEvent,
     SessionEvent,
     SessionPhase,
 )
-from tyche.core.pipeline.execution.allocation import fit_to_cash, split_pro_rata
+from tyche.core.pipeline.execution.allocation import (
+    cap_order,
+    fit_to_cash,
+    fit_to_value,
+    purchase_cost,
+    split_pro_rata,
+)
 from tyche.core.pipeline.execution.sleeves import RestingStop, SleeveBook
 from tyche.core.ports import Calendar, OutOfCalendarRangeError
 
@@ -124,6 +149,8 @@ class ExecutionStage:
         calendars: A calendar for every calendar code the traded instruments use, to
             know when cash settles.
         rules: The market profile's execution rules.
+        money: The guardrails' money caps by currency, or ``None`` for a run that does
+            not apply them: research backtests keep their own starting cash (ADR-0034).
     """
 
     def __init__(
@@ -133,12 +160,14 @@ class ExecutionStage:
         costs: TradingCosts,
         calendars: Mapping[str, Calendar],
         rules: ExecutionRules,
+        money: Mapping[Currency, MoneyLimits] | None = None,
     ) -> None:
         self._bus = bus
         self._book = book
         self._costs = costs
         self._calendars = dict(calendars)
         self._rules = rules
+        self._money = dict(money) if money is not None else {}
 
         self._account: AccountEvent | None = None
         self._closes: dict[Instrument, Money] = {}
@@ -278,21 +307,29 @@ class ExecutionStage:
                 for strategy_id, quantity in sellers.items():
                     mine[strategy_id].ordered = -quantity
 
-        fitted = self._fit_purchases(purchases, account)
+        fitted, cuts = self._fit_purchases(purchases, account, sales)
+        capped = {cut.instrument for cut in cuts}
         for instrument, wanted_total in purchases.items():
             owed = owed_on_purchase[instrument]
             quantity = fitted[instrument]
             if quantity < wanted_total:
+                note = PlanNote.CAPPED if instrument in capped else PlanNote.CASH_LIMITED
                 given = split_pro_rata(quantity, owed)
                 for strategy_id, wanted in owed.items():
                     if given[strategy_id] < wanted:
-                        plans[(strategy_id, instrument)].note = PlanNote.CASH_LIMITED
+                        plans[(strategy_id, instrument)].note = note
                 owed = {s: q for s, q in given.items() if q > 0}
                 owed_on_purchase[instrument] = owed
             for strategy_id, owed_quantity in owed.items():
                 plans[(strategy_id, instrument)].ordered = owed_quantity
 
-        self._bus.publish(ExecutionPlanEvent(approved.as_of, _lines(plans)))
+        for cut in cuts:
+            self._bus.publish(RiskEvent(approved.as_of, approved.profile, cut))
+        sized_on = tuple(
+            self._trading_equity(account, currency)
+            for currency in sorted({i.currency for i in instruments})
+        )
+        self._bus.publish(ExecutionPlanEvent(approved.as_of, _lines(plans), sized_on))
 
         for instrument, owed in sorted(sales.items(), key=lambda item: _key(item[0])):
             self._send_market(instrument, Side.SELL, owed, stamp, at)
@@ -301,6 +338,7 @@ class ExecutionStage:
             owed = owed_on_purchase[instrument]
             if owed:
                 self._send_market(instrument, Side.BUY, owed, stamp, at)
+        self._require_long_only(account, sales)
 
     def _plan_instrument(
         self,
@@ -323,7 +361,7 @@ class ExecutionStage:
             note: PlanNote | None = None
             target = Decimal(0)
             if weight > 0:
-                equity = account.equity(instrument.currency)
+                equity = self._trading_equity(account, instrument.currency)
                 target = whole_shares(equity * weight, self._close(instrument))
                 if target == 0:
                     note = PlanNote.BELOW_ONE_SHARE
@@ -340,18 +378,99 @@ class ExecutionStage:
         return plans
 
     def _fit_purchases(
-        self, purchases: Mapping[Instrument, Decimal], account: Account
-    ) -> dict[Instrument, Decimal]:
-        """Shrink the cycle's purchases until the buying power at the next open pays them."""
+        self,
+        purchases: Mapping[Instrument, Decimal],
+        account: Account,
+        sales: Mapping[Instrument, Mapping[str, Decimal]],
+    ) -> tuple[dict[Instrument, Decimal], list[OrderAdjustment]]:
+        """The cycle's purchases within the money caps, then the buying power at the next open.
+
+        Returns the shares to buy of each instrument, and every cut the caps made.
+        """
         fitted: dict[Instrument, Decimal] = {}
+        cuts: list[OrderAdjustment] = []
         for currency in sorted({i.currency for i in purchases}):
             wanted = {i: q for i, q in purchases.items() if i.currency is currency}
-            settles_by = min(self._next_session(i.calendar) for i in wanted)
-            cash = account.cash(currency).buying_power(settles_by)
             buffer = 1 + self._rules.price_buffer
             references = {i: self._close(i) * buffer for i in wanted}
-            fitted.update(fit_to_cash(wanted, references, self._costs, cash))
+            limits = self._money.get(currency)
+            if limits is not None:
+                wanted = self._fit_caps(wanted, references, account, sales, limits, cuts)
+            settles_by = min(self._next_session(i.calendar) for i in wanted)
+            cash = account.cash(currency).buying_power(settles_by)
+            plan = fit_to_cash(wanted, references, self._costs, cash)
+            spent = Money.zero(currency)
+            for instrument, quantity in plan.items():
+                spent += purchase_cost(quantity, references[instrument], self._costs)
+            if spent > cash:  # no leverage: fit_to_cash makes this impossible
+                raise ExecutionError(
+                    f"purchases would cost {spent}, more than the buying power of {cash}"
+                )
+            fitted.update(plan)
+        return fitted, cuts
+
+    def _fit_caps(
+        self,
+        wanted: Mapping[Instrument, Decimal],
+        references: Mapping[Instrument, Money],
+        account: Account,
+        sales: Mapping[Instrument, Mapping[str, Decimal]],
+        limits: MoneyLimits,
+        cuts: list[OrderAdjustment],
+    ) -> dict[Instrument, Decimal]:
+        """Each purchase within the order cap, then all within the capital cap (ADR-0034)."""
+        capped: dict[Instrument, Decimal] = {}
+        for instrument in sorted(wanted, key=_key):
+            before = wanted[instrument]
+            reference = references[instrument]
+            after = cap_order(before, reference, limits.order)
+            if after < before:
+                cuts.append(
+                    _cut(
+                        RiskRule.MAX_ORDER_VALUE,
+                        instrument,
+                        before,
+                        after,
+                        limits.order,
+                        f"max_order_value is {limits.order}: {before} shares at "
+                        f"{reference.round_to(2)} (the last close plus the price buffer) "
+                        f"are worth {(reference * before).round_to(2)}; {after} fit",
+                    )
+                )
+            capped[instrument] = after
+
+        currency = limits.capital.currency
+        invested = Money.zero(currency)
+        for position in account.positions:
+            instrument = position.instrument
+            if instrument.currency is currency:
+                selling = sum(sales.get(instrument, {}).values(), start=Decimal(0))
+                invested += self._close(instrument) * (position.quantity - selling)
+        room = limits.capital - invested
+        fitted = fit_to_value(capped, references, room)
+        for instrument in sorted(fitted, key=_key):
+            before, after = capped[instrument], fitted[instrument]
+            if after < before:
+                cuts.append(
+                    _cut(
+                        RiskRule.MAX_TOTAL_CAPITAL,
+                        instrument,
+                        before,
+                        after,
+                        limits.capital,
+                        f"max_total_capital is {limits.capital}: {invested.round_to(2)} stays "
+                        f"invested after this cycle's sales, leaving {room.round_to(2)} for "
+                        "purchases at the last close plus the price buffer; every purchase "
+                        "shrinks in proportion",
+                    )
+                )
         return fitted
+
+    def _trading_equity(self, account: Account, currency: Currency) -> Money:
+        """The equity weights are sized on: the account's, or the capital cap if lower."""
+        equity = account.equity(currency)
+        limits = self._money.get(currency)
+        return limits.trading_equity(equity) if limits is not None else equity
 
     def _update_stops(
         self, sales: Mapping[Instrument, Mapping[str, Decimal]], stamp: str, at: datetime
@@ -464,6 +583,29 @@ class ExecutionStage:
                 "order should have filled or expired at the close"
             )
 
+    def _require_long_only(
+        self, account: Account, sales: Mapping[Instrument, Mapping[str, Decimal]]
+    ) -> None:
+        """No instrument may have more shares to sell than the account holds (long only).
+
+        Counts this cycle's market sales and every stop left resting for the next
+        session. Execution sizes stops to what each sleeve keeps, so this cannot fail
+        unless something is wrong.
+        """
+        held = {p.instrument: p.quantity for p in account.positions}
+        selling = {i: sum(owed.values(), start=Decimal(0)) for i, owed in sales.items()}
+        for _, instrument, stop in self._book.stops:
+            tracked = self._orders.get(stop.client_order_id)
+            remaining = tracked.state.remaining if tracked else Decimal(0)
+            selling[instrument] = selling.get(instrument, Decimal(0)) + remaining
+        for instrument in sorted(selling, key=_key):
+            have = held.get(instrument, Decimal(0))
+            if selling[instrument] > have:
+                raise ExecutionError(
+                    f"long only: sales and resting stops would sell {selling[instrument]} "
+                    f"{instrument}, but the account holds {have}"
+                )
+
     def _require_book_matches(self, account: Account) -> None:
         held = {p.instrument: p.quantity for p in account.positions}
         for instrument in sorted(set(held) | set(self._book.instruments), key=_key):
@@ -515,3 +657,15 @@ def _lines(plans: Mapping[tuple[str, Instrument], _Plan]) -> tuple[PlanLine, ...
         )
         for strategy_id, instrument in ordered
     )
+
+
+def _cut(
+    rule: RiskRule,
+    instrument: Instrument,
+    before: Decimal,
+    after: Decimal,
+    limit: Money,
+    reason: str,
+) -> OrderAdjustment:
+    action = RiskAction.BLOCK if after == 0 else RiskAction.SHRINK
+    return OrderAdjustment(rule, action, instrument, before, after, limit, reason)

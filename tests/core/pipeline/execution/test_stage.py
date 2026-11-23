@@ -21,9 +21,11 @@ from tyche.core.domain import (
     Account,
     Bar,
     Contribution,
+    Currency,
     ExecutionRules,
     Instrument,
     InstrumentTarget,
+    MoneyLimits,
     OrderStatus,
     OrderType,
     PlanLine,
@@ -117,6 +119,7 @@ class Desk:
         participation: Decimal = ALL_VOLUME,
         start: Account | None = None,
         calendars: Mapping[str, Calendar] = CALENDARS,
+        money: Mapping[Currency, MoneyLimits] | None = None,
     ) -> None:
         account = start or Account.empty().deposit(usd(cash))
         self.bus = EventBus(TickingClock().now)
@@ -125,7 +128,7 @@ class Desk:
         )
         self.state = AccountState(self.bus, account)
         self.book = SleeveBook()
-        ExecutionStage(self.bus, self.book, PLAIN, calendars, rules)
+        self.stage = ExecutionStage(self.bus, self.book, PLAIN, calendars, rules, money)
         self.recorder = Recorder(self.bus)
 
     def trade(self, day: date, *bars: Bar) -> None:
@@ -174,6 +177,8 @@ class TestSizing:
             ("20240102T210000Z-SPY.ARCX-buy", Side.BUY, D(50), OrderType.MARKET)
         ]
         assert desk.plan(caused) == (PlanLine("a", SPY, D(0), D(50), ordered=D(50)),)
+        [plan] = [e for e in caused if isinstance(e, ExecutionPlanEvent)]
+        assert plan.sized_on == (usd("10000"),)
 
     def test_the_plan_comes_before_the_orders(self) -> None:
         desk = Desk()
@@ -548,3 +553,13 @@ class TestFailClosed:
         with pytest.raises(HandlerError) as raised:
             desk.decide(TUE, (decided("a", "1", SPY),))
         assert "the sleeves hold 0" in str(raised.value.__cause__)
+
+    def test_selling_more_than_the_account_holds_halts(self) -> None:
+        # Execution never plans this; the check is the last line if a bug ever did.
+        desk = Desk()
+        desk.trade(TUE, ohlc(TUE, "100"))
+        desk.decide(TUE, (decided("a", "1", SPY),), wants(SPY, ("a", "0.1", None)))
+        desk.trade(WED, ohlc(WED, "100"))
+
+        with pytest.raises(ExecutionError, match=r"long only: .* would sell 11 .* holds 10"):
+            desk.stage._require_long_only(desk.state.account, {SPY: {"a": D(11)}})

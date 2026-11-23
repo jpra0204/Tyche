@@ -7,8 +7,10 @@
 # The values below are an example to start from, not advice. Fractions are of account
 # equity and are written as strings, so they stay exact: "0.25" is 25%.
 #
-# Nothing enforces these limits on trades yet: Phase 2 builds the risk gate in steps,
-# and until then this file only bounds the risk profiles.
+# Long only and no leverage are enforced on every run. The money caps apply in paper and
+# live trading: Tyche then trades as if the account held at most max_total_capital, and
+# cuts any purchase to fit both caps (ADR-0034). Research backtests keep their own
+# starting cash. The daily loss and drawdown ceilings bound the profiles only.
 
 # The only trading Tyche can do: long only, in a cash account, without margin. Only
 # these values are accepted.

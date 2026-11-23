@@ -1,17 +1,20 @@
-"""Two pure allocation rules execution relies on (ADR-0023).
+"""The pure allocation rules execution relies on (ADR-0023, ADR-0034).
 
 * ``split_pro_rata``: share whole shares between sleeves in proportion to what each is
   owed. Used for crossing between sleeves, for a netted fill, and for a purchase cut to
-  the cash available.
+  the cash available or to the money caps.
 * ``fit_to_cash``: shrink a cycle's purchases, in proportion, until settled cash pays
   for all of them, costs included.
+* ``cap_order``: the most whole shares one purchase may buy under the order cap.
+* ``fit_to_value``: shrink a cycle's purchases, in proportion, until their value fits
+  what is left under the capital cap.
 
-Both work in whole shares and are exact: integers for the proportions, ``Decimal`` for
+All work in whole shares and are exact: integers for the proportions, ``Decimal`` for
 the money. Ties are broken by a fixed order, so the same inputs always give the same
 answer.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from decimal import ROUND_FLOOR, Decimal
 
 from tyche.core.domain import Instrument, Money, Side, TradingCosts
@@ -94,18 +97,68 @@ def fit_to_cash(
             total += purchase_cost(quantity, references[instrument], costs)
         return total
 
-    full = needed(wanted)
-    if full <= cash:
+    return _shrink_to(wanted, needed, cash)
+
+
+def cap_order(quantity: Decimal, reference: Money, cap: Money) -> Decimal:
+    """The most of ``quantity`` whole shares whose value at ``reference`` is within ``cap``."""
+    _whole(quantity, "purchase")
+    if not reference.is_positive:
+        raise ValueError(f"a purchase needs a positive reference price, got {reference}")
+    return min(quantity, (cap / reference).quantize(Decimal(1), ROUND_FLOOR))
+
+
+def fit_to_value(
+    wanted: Mapping[Instrument, Decimal],
+    references: Mapping[Instrument, Money],
+    room: Money,
+) -> dict[Instrument, Decimal]:
+    """Shrink purchases until their value at ``references`` is at most ``room``.
+
+    The same shrinking as ``fit_to_cash``, on value alone: the capital cap limits what
+    is invested, and costs are cash, not investment.
+
+    Args:
+        wanted: Whole shares to buy, by instrument, all in ``room``'s currency.
+        references: The price to value each purchase at, by instrument.
+        room: What may still be invested.
+    """
+    for instrument, quantity in wanted.items():
+        _whole(quantity, f"purchase of {instrument}")
+
+    def value(plan: Mapping[Instrument, Decimal]) -> Money:
+        total = Money.zero(room.currency)
+        for instrument, quantity in plan.items():
+            total += references[instrument] * quantity
+        return total
+
+    return _shrink_to(wanted, value, room)
+
+
+def _shrink_to(
+    wanted: Mapping[Instrument, Decimal],
+    measure: Callable[[Mapping[Instrument, Decimal]], Money],
+    budget: Money,
+) -> dict[Instrument, Decimal]:
+    """Scale ``wanted`` down in proportion until ``measure`` is within ``budget``.
+
+    Unchanged if it already fits. Otherwise each quantity is scaled by the budget's
+    share of the whole, rounded down; then, while it still does not fit (a minimum
+    commission does not scale), the largest is cut by one share at a time, ties to the
+    first by symbol and exchange.
+    """
+    full = measure(wanted)
+    if full <= budget:
         return dict(wanted)
-    if not cash.is_positive:
+    if not budget.is_positive:
         return {instrument: Decimal(0) for instrument in wanted}
 
-    ratio = cash / full
+    ratio = budget / full
     plan = {
         instrument: (quantity * ratio).quantize(Decimal(1), ROUND_FLOOR)
         for instrument, quantity in wanted.items()
     }
-    while needed(plan) > cash:
+    while measure(plan) > budget:
         largest = max(sorted(plan, key=_key), key=lambda i: plan[i])
         plan[largest] -= 1
     return plan

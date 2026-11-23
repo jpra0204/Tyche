@@ -152,6 +152,7 @@ class TestTheRunRecord:
             "drawdown_kill": "0.15",
             "applied": ["risk_per_trade", "max_open_positions", "max_position_size"],
             "strategies": {},
+            "money_caps": None,  # a research backtest keeps its own starting cash
         }
         # buy_and_hold asks for all of its budget in SPY at every close; the gate caps it
         # at 20% every time.

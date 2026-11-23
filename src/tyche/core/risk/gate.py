@@ -34,9 +34,11 @@ from typing import Protocol
 from tyche.core.domain import (
     Account,
     Contribution,
+    Currency,
     Instrument,
     InstrumentTarget,
     Money,
+    MoneyLimits,
     RiskAction,
     RiskAdjustment,
     RiskRule,
@@ -349,12 +351,22 @@ class RiskGate:
         bus: The run's event bus.
         limits: The guardrails, the active profile and each strategy's own limits.
         holdings: What each sleeve holds: the sleeve book execution keeps.
+        money: The guardrails' money caps by currency, or ``None``, exactly as execution
+            is given them. With them, holdings are weighed against the equity execution
+            sizes on: the account's, or the capital cap if lower (ADR-0034).
     """
 
-    def __init__(self, bus: EventBus, limits: RiskLimits, holdings: Holdings) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        limits: RiskLimits,
+        holdings: Holdings,
+        money: Mapping[Currency, MoneyLimits] | None = None,
+    ) -> None:
         self._bus = bus
         self._limits = limits
         self._holdings = holdings
+        self._money = dict(money) if money is not None else {}
         self._account: AccountEvent | None = None
         self._closes: dict[Instrument, Money] = {}
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
@@ -402,11 +414,14 @@ class RiskGate:
             close = self._closes.get(instrument)
             if close is None:
                 raise RiskGateError(f"no closing price seen for {instrument}, which is held")
-            equity = account.equity(instrument.currency).amount
-            if equity <= 0:
-                raise RiskGateError(f"equity in {instrument.currency} is {equity}")
+            equity = account.equity(instrument.currency)
+            limits = self._money.get(instrument.currency)
+            if limits is not None:
+                equity = limits.trading_equity(equity)
+            if not equity.is_positive:
+                raise RiskGateError(f"equity in {instrument.currency} is {equity.amount}")
             for strategy_id in self._holdings.holders(instrument):
                 shares = self._holdings.held(strategy_id, instrument)
                 if shares > 0:
-                    held[(strategy_id, instrument)] = shares * close.amount / equity
+                    held[(strategy_id, instrument)] = shares * close.amount / equity.amount
         return held
