@@ -1,6 +1,6 @@
 # ADR-0032: Risk limits in three layers: guardrail ceilings, named profiles, stricter strategy limits
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
