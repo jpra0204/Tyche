@@ -1,6 +1,6 @@
 # ADR-0035: The account rules: the daily loss limit in the gate, and a drawdown halt that a backtest runs through
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
