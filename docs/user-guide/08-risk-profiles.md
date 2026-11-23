@@ -2,7 +2,7 @@
 
 This page explains the three files that hold Tyche's risk limits, how to make a new risk profile, how to check them, and what they do to a backtest. The decisions behind them are in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md) and [ADR-0033](../adr/0033-risk-gate-position-rules.md).
 
-> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **The risk gate applies the position rules** (risk per trade, max open positions, max position size) to every backtest. Not yet applied: the order check against the guardrails' money caps (Phase 2, PR 3), the daily loss limit and the drawdown kill switch (PR 4). This page grows with each.
+> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **The risk gate applies the position rules** (risk per trade, max open positions, max position size) to every backtest. **Execution enforces long only and no leverage** in every run, and the **money caps** in paper and live (not in research backtests; see below). Not yet applied: the daily loss limit and the drawdown kill switch (Phase 2, PR 4). This page grows with each.
 
 ## The three layers
 
@@ -47,6 +47,20 @@ The `US` market profile holds USD, so it needs a USD cap in both lists. Each ord
 
 The values `tyche init` writes are an example, not advice. Set your own. Agents may propose a change to this file in writing; they never apply one.
 
+#### What the money caps do
+
+They describe the real account, so they apply in **paper and live trading only**. Research backtests (`backtest`, `walk-forward`, `sweep`) keep their own `starting_cash`; to see what a small account does to a strategy, run `tyche capital` at your sizes ([ADR-0034](../adr/0034-order-level-guardrails.md)).
+
+When they apply:
+
+- **Tyche trades as if the account were worth at most `max_total_capital`.** A 20% position is 20% of the cap, even if the account holds more. Money above the cap, gains included, stays in cash until you raise the cap.
+- **Each purchase is cut to fit** `max_order_value`, and all of them to what is left under `max_total_capital`, valued at the last close plus the price buffer. A purchase not one share of which fits is not sent. Sales are never cut.
+- **Every cut is recorded** as a `RiskEvent` and counted in the run's record.
+
+So `max_order_value` must be at least the price of one share of anything you want to hold, plus the 2% buffer, or that fund can never be bought.
+
+**Raising a cap** is how more money goes to work. Do it by hand, in your workspace's history, with the reason.
+
 ### A strategy's own limits
 
 To hold a strategy to tighter limits than the profile, add a `[risk]` table to its file. Each key is optional:
@@ -86,7 +100,7 @@ Only these three can be set per strategy. The daily loss limit and the drawdown 
   Risk profile:   default: risk per trade 0.01, 5 positions, position size 0.20, daily loss 0.03, drawdown kill 0.15
                   also within the guardrails: safecash
   Guardrails:     long only, no leverage; capital 700 USD, order 350 USD
-                  (applied to trades: risk per trade, positions and position size; the daily loss limit, the drawdown kill and the money caps come later in Phase 2)
+                  (applied: risk per trade, positions and position size in every run; long only and no leverage in every run; the money caps in paper and live; the daily loss limit and the drawdown kill come later in Phase 2)
 ```
 
 A breach stops Tyche, naming the file, the key, its value and the limit:

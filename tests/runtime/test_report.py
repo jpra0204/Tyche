@@ -99,6 +99,20 @@ def test_names_the_risk_profile_and_what_the_gate_cut(folder: Path) -> None:
     assert "The gate shrank " in page
 
 
+def test_names_money_caps_and_the_purchases_they_cut_when_a_run_applied_them(
+    folder: Path,
+) -> None:
+    run = json.loads((folder / "run.json").read_text())
+    run["risk"]["money_caps"] = {"USD": {"max_total_capital": "690", "max_order_value": "690"}}
+    run["outcome"]["risk_adjustments"]["max_order_value.shrink"] = 2
+    (folder / "run.json").write_text(json.dumps(run))
+
+    page = write_report(folder).read_text(encoding="utf-8")
+
+    assert "money caps capital 690 and order 690 USD" in page
+    assert "the money caps cut 2 purchases" in page
+
+
 def test_a_record_from_before_the_risk_gate_says_so(folder: Path) -> None:
     run = json.loads((folder / "run.json").read_text())
     del run["risk"]

@@ -171,14 +171,15 @@ flowchart LR
 | Fills | Split between the sleeves an order serves in proportion to what each is still owed, in whole shares; leftovers to the largest remainders, ties to the earlier strategy id | |
 | Stops | Placed when the entry fills, good till cancelled, for all the sleeve's shares; working from the next session. At each decision a stop with the wrong price or size is cancelled and placed again, and one no longer wanted is cancelled | |
 | Order ids | `<decision time>-<symbol>.<exchange>-<side>`, `...-stop-<strategy>`, or `<fill id>-stop-<strategy>`. A decision handled once is not handled again | |
-| Halts | No account snapshot from the decision's close, a market order still open at a decision, or sleeves that do not add up to the account's positions | |
+| Money caps | Only when the run is given the guardrails' caps (paper and live, not research backtests). Weights are sized on the lower of equity and `max_total_capital`; then each purchase is cut to `max_order_value`, and all of them to what is left under `max_total_capital` after the cycle's sales, valued at the last close × (1 + `price_buffer`). Each cut is a `RiskEvent`; sales are never cut ([ADR-0034](../adr/0034-order-level-guardrails.md)) | |
+| Halts | No account snapshot from the decision's close, a market order still open at a decision, sleeves that do not add up to the account's positions, sales and resting stops that would sell more than the account holds (long only), or purchases costing more than the buying power (no leverage) | |
 
 What follows from the rules:
 
 - **Fully invested is about 98%.** Buy-and-hold at 1.0 buys what the cash pays for at the close plus 2%, then sits inside the band. Reports state both parameters.
 - **A rotation takes two sessions**, as ADR-0020 says: the sale's proceeds pay for the purchase only from the session after the sale settles.
 - **Per-strategy attribution is approximate where sleeves cross**: shares change sleeve at the decision's close, not at the next open. The account's totals are exact.
-- **The plan explains itself.** Each decision's `ExecutionPlanEvent` lists, per sleeve and instrument, what it held, its target, what crossed and what was ordered, and why it differs from its weight: `keep`, `within_band`, `below_one_share` or `cash_limited`.
+- **The plan explains itself.** Each decision's `ExecutionPlanEvent` lists, per sleeve and instrument, what it held, its target, what crossed and what was ordered, and why it differs from its weight: `keep`, `within_band`, `below_one_share`, `cash_limited` or `capped`; and `sized_on`, the equity it sized on.
 
 ## 7. The backtest runner
 

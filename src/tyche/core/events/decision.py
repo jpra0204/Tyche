@@ -13,6 +13,7 @@ from tyche.core.domain import (
     Exclusion,
     Instrument,
     InstrumentTarget,
+    OrderAdjustment,
     RiskAdjustment,
     ScoredInstrument,
     Sleeve,
@@ -248,20 +249,23 @@ class TargetPortfolioEvent(Event):
 
 @dataclass(frozen=True, slots=True)
 class RiskEvent(Event):
-    """One change the risk gate made to a proposed portfolio (ADR-0033).
+    """One change the risk layer made, under one rule (ADR-0033, ADR-0034).
 
-    Published for every shrink and every block, before the ``ApprovedPortfolioEvent``
-    that lists them all, so the journal and the notifier see each one on its own.
+    The risk gate publishes one for every contribution it shrinks or blocks, before
+    the ``ApprovedPortfolioEvent`` that lists them all. Execution publishes one for
+    every purchase it cuts to fit the guardrails' money caps, before its
+    ``ExecutionPlanEvent``.
 
     Attributes:
         as_of: The decision time.
         profile: The name of the active risk profile.
-        adjustment: What changed, under which rule, and why.
+        adjustment: What changed, under which rule, and why: a ``RiskAdjustment`` (a
+            weight, from the gate) or an ``OrderAdjustment`` (shares, from execution).
     """
 
     as_of: datetime
     profile: str
-    adjustment: RiskAdjustment
+    adjustment: RiskAdjustment | OrderAdjustment
 
     def __post_init__(self) -> None:
         require_utc(self.as_of, "RiskEvent as_of")

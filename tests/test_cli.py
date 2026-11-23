@@ -152,7 +152,7 @@ class TestConfigCheck:
         assert "Guardrails:     long only, no leverage; capital 700 USD, order 350 USD" in (
             result.stdout
         )
-        assert "applied to trades: risk per trade, positions and position size" in result.stdout
+        assert "the money caps in paper and live" in result.stdout
 
     def test_checks_against_the_chosen_risk_profile(self, home: Path) -> None:
         runner.invoke(app, ["init"])

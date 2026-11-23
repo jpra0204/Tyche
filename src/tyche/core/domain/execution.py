@@ -76,6 +76,9 @@ class PlanNote(StrEnum):
     CASH_LIMITED = "cash_limited"
     """The purchase was cut to what settled cash pays for, costs included."""
 
+    CAPPED = "capped"
+    """The purchase was cut to fit the guardrails' money caps (ADR-0034)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PlanLine:
@@ -116,9 +119,9 @@ class PlanLine:
         if self.crossed and self.ordered and (self.crossed > 0) != (self.ordered > 0):
             raise ValueError(f"{label}: crossed and ordered go in opposite directions")
         planned = self.held + self.crossed + self.ordered
-        if self.note is PlanNote.CASH_LIMITED:
+        if self.note in (PlanNote.CASH_LIMITED, PlanNote.CAPPED):
             if planned >= self.target:
-                raise ValueError(f"{label}: a cash-limited plan ends below its target")
+                raise ValueError(f"{label}: a {self.note} plan ends below its target")
         elif planned != self.target:
             raise ValueError(
                 f"{label}: held {self.held} + crossed {self.crossed} + ordered "

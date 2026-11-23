@@ -8,10 +8,13 @@ import pytest
 from tests.support.market import QQQ, SPY
 from tyche.core.domain import (
     Contribution,
+    Currency,
     Exclusion,
     ExclusionReason,
     Instrument,
     InstrumentTarget,
+    Money,
+    OrderAdjustment,
     RiskAction,
     RiskAdjustment,
     RiskRule,
@@ -239,3 +242,15 @@ class TestRiskEvent:
     def test_needs_a_utc_time(self) -> None:
         with pytest.raises(ValueError, match="as_of"):
             RiskEvent(datetime(2024, 1, 5, 21, 0), "default", self.adjustment())  # noqa: DTZ001
+
+    def test_carries_an_order_adjustment_from_execution(self) -> None:
+        cut = OrderAdjustment(
+            RiskRule.MAX_ORDER_VALUE,
+            RiskAction.SHRINK,
+            SPY,
+            Decimal(50),
+            Decimal(6),
+            Money.of("690", Currency.USD),
+            "over the cap",
+        )
+        assert RiskEvent(AS_OF, "default", cut).adjustment.scope is RiskScope.ORDER

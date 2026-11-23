@@ -45,7 +45,7 @@ from tyche.core.backtest import (
     fill_cost,
     yearly_returns,
 )
-from tyche.core.domain import Side
+from tyche.core.domain import ORDER_RULES, Side
 from tyche.runtime.backtest import METRICS_FORMAT, RECORD_FORMAT
 
 REPORT_FILE = "report.html"
@@ -476,10 +476,20 @@ def _risk(run: dict[str, Any]) -> str:
     )
     for strategy_id, own in risk["strategies"].items():
         text += f"; {strategy_id}'s own " + ", ".join(f"{k} {v}" for k, v in own.items())
+    caps = risk.get("money_caps")
+    if caps:
+        text += "; money caps " + ", ".join(
+            f"capital {c['max_total_capital']} and order {c['max_order_value']} {currency}"
+            for currency, c in caps.items()
+        )
     cut = run["outcome"].get("risk_adjustments", {})
-    shrunk = sum(n for key, n in cut.items() if key.endswith(".shrink"))
-    blocked = sum(n for key, n in cut.items() if key.endswith(".block"))
-    return text + f". The gate shrank {shrunk} contributions and blocked {blocked}"
+    orders = {k: n for k, n in cut.items() if k.split(".")[0] in ORDER_RULES}
+    shrunk = sum(n for key, n in cut.items() if key.endswith(".shrink") and key not in orders)
+    blocked = sum(n for key, n in cut.items() if key.endswith(".block") and key not in orders)
+    text += f". The gate shrank {shrunk} contributions and blocked {blocked}"
+    if orders:
+        text += f"; the money caps cut {sum(orders.values())} purchases"
+    return text
 
 
 def _data(run: dict[str, Any], metrics: dict[str, Any]) -> Section:
