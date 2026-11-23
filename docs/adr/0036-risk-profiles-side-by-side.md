@@ -1,6 +1,6 @@
 # ADR-0036: Risk profiles side by side, with no trials added and no pick, and one small-account profile per live stage
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
