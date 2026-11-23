@@ -78,14 +78,16 @@ There is no third kind. A stage never logs a problem and carries on with a guess
 | Keeps | Nothing between cycles |
 | Halts on | A `SignalsReadyEvent` that does not match the budgets; a signal from another decision time (`PortfolioError`) |
 
-### 5. Risk gate (`tyche.core.risk.PassThroughGate`)
+### 5. Risk gate (`tyche.core.risk.RiskGate`)
 
 | | |
 |---|---|
-| Subscribes to | `TargetPortfolioEvent` |
-| Publishes | One `ApprovedPortfolioEvent`: the **only** publisher of that type |
-| Promises | In Phase 1, the proposal unchanged, with `profile = "pass-through"`. Phase 2 adds the rules inside the gate, with `RiskEvent`s for each adjustment, without touching execution |
-| Never | Lets anything reach execution any other way. This is enforced by types: execution subscribes only to `ApprovedPortfolioEvent` ([ADR-0006](../adr/0006-risk-gate-and-guardrails.md)) |
+| Subscribes to | `TargetPortfolioEvent`, and `AccountEvent` and `BarEvent` for the account snapshot and the last close |
+| Publishes | One `RiskEvent` per cut, then one `ApprovedPortfolioEvent`: the **only** publisher of that type |
+| Promises | Only lowers or removes contributions, never raises or adds one, and never touches what a sleeve keeps without deciding. Applies risk per trade (entries and additions with a stop), open positions (per sleeve, then the account) and position size (per sleeve, then per instrument across sleeves), in that order. Weights it sets are rounded down to `1e-12`. Every cut is listed in `adjustments` ([ADR-0033](../adr/0033-risk-gate-position-rules.md)) |
+| Keeps | The latest close of each instrument and the latest account snapshot |
+| Halts on | A decision with no account snapshot from the same close; a held instrument, or one entered with a stop, with no close seen (`RiskGateError`) |
+| Never | Lets anything reach execution any other way. This is enforced by types: execution subscribes only to `ApprovedPortfolioEvent` ([ADR-0006](../adr/0006-target-positions-with-optional-stops.md)) |
 
 ### 6. Execution (`tyche.core.pipeline.execution.ExecutionStage`)
 

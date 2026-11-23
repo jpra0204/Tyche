@@ -7,7 +7,9 @@
 # Fractions are of account equity and are written as strings, so they stay exact:
 # "0.01" is 1%.
 #
-# Nothing applies these limits to trades yet: Phase 2 builds the risk gate in steps.
+# The risk gate applies risk per trade, max open positions and max position size to
+# every backtest run with this profile (the default: `--risk-profile default`). The
+# daily loss limit and the drawdown kill are not applied yet: Phase 2 adds them.
 
 # The most one position may lose before its stop triggers. Applies only to targets that
 # carry a stop; the position is sized so that being stopped out loses at most this.

@@ -140,6 +140,24 @@ class TestTheRunRecord:
         assert outcome["final_equity"]["currency"] == "USD"
         assert (outcome["metrics"], outcome["metrics_error"]) == ("metrics.json", None)
 
+    def test_states_the_risk_limits_and_what_the_gate_cut(self, config: TycheConfig) -> None:
+        record = json.loads((backtest(config).record_dir / "run.json").read_text())
+
+        assert record["risk"] == {
+            "profile": "default",
+            "risk_per_trade": "0.01",
+            "max_open_positions": 5,
+            "max_position_size": "0.20",
+            "daily_loss_limit": "0.03",
+            "drawdown_kill": "0.15",
+            "applied": ["risk_per_trade", "max_open_positions", "max_position_size"],
+            "strategies": {},
+        }
+        # buy_and_hold asks for all of its budget in SPY at every close; the gate caps it
+        # at 20% every time.
+        sessions = len(NYSE.sessions_between(FIRST, LAST))
+        assert record["outcome"]["risk_adjustments"] == {"max_position_size.shrink": sessions}
+
     def test_names_the_benchmark_and_the_data_it_used(self, config: TycheConfig) -> None:
         record = json.loads((backtest(config).record_dir / "run.json").read_text())
 

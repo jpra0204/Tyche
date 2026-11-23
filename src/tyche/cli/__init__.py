@@ -27,6 +27,7 @@ from tyche.config import (
 from tyche.core.backtest import (
     BacktestError,
     BacktestMetrics,
+    BacktestResult,
     CapitalError,
     Fold,
     FoldScheme,
@@ -39,7 +40,12 @@ from tyche.core.backtest import (
 from tyche.core.domain import AssetClass, Money
 from tyche.core.ports import DataError
 from tyche.core.risk import DEFAULT_RISK_PROFILE
-from tyche.runtime.backtest import BacktestOutcome, BacktestRequestError, run_configured_backtest
+from tyche.runtime.backtest import (
+    BacktestOutcome,
+    BacktestRequestError,
+    adjustments_record,
+    run_configured_backtest,
+)
 from tyche.runtime.capital import (
     DEFAULT_AMOUNTS,
     DEFAULT_POSITIONS,
@@ -93,6 +99,14 @@ data_app = typer.Typer(
 app.add_typer(data_app, name="data")
 
 MAX_ISSUES_SHOWN = 10
+
+RiskProfileOption = Annotated[
+    str,
+    typer.Option(
+        "--risk-profile",
+        help="Risk profile the risk gate applies: a file in config/risk/.",
+    ),
+]
 
 HomeOption = Annotated[
     Path | None,
@@ -191,7 +205,10 @@ def config_check(
         for capital in guardrails.max_total_capital
     )
     typer.echo(f"  Guardrails:     long only, no leverage; {caps}")
-    typer.echo("                  (not applied to trades yet: Phase 2 builds the risk gate)")
+    typer.echo(
+        "                  (applied to trades: risk per trade, positions and position size; "
+        "the daily loss limit, the drawdown kill and the money caps come later in Phase 2)"
+    )
     typer.echo("  Strategies:")
     for spec in config.strategies:
         typer.echo(f"    {spec.strategy_id} ({spec.plugin}), budget {spec.budget}")
@@ -330,6 +347,7 @@ def backtest(
         ),
     ] = None,
     home: HomeOption = None,
+    risk_profile: RiskProfileOption = DEFAULT_RISK_PROFILE,
 ) -> None:
     """Backtest the configured strategies on cached history, and record the run.
 
@@ -339,7 +357,7 @@ def backtest(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
-        config = load_config(workspace)
+        config = load_config(workspace, risk_profile)
         outcome = run_configured_backtest(
             config, first.date(), last.date() if last is not None else None
         )
@@ -353,7 +371,9 @@ def backtest(
     ) as error:
         _fail(str(error))
 
-    for line in _describe_backtest(outcome, config.backtest.starting_cash):
+    for line in _describe_backtest(
+        outcome, config.backtest.starting_cash, config.risk_profile.name
+    ):
         typer.echo(line)
     if outcome.metrics is not None:
         try:
@@ -417,6 +437,7 @@ def walk_forward(
         ),
     ] = None,
     home: HomeOption = None,
+    risk_profile: RiskProfileOption = DEFAULT_RISK_PROFILE,
 ) -> None:
     """Walk forward: backtest each training window and the test window after it.
 
@@ -429,7 +450,7 @@ def walk_forward(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
-        config = load_config(workspace)
+        config = load_config(workspace, risk_profile)
         spec = load_sweep(config, sweep) if sweep is not None else None
         scheme = FoldScheme(train_years, test_years, anchored=not rolling)
         typer.echo(f"Walk-forward, {scheme}")
@@ -495,6 +516,7 @@ def sweep(
         ),
     ] = None,
     home: HomeOption = None,
+    risk_profile: RiskProfileOption = DEFAULT_RISK_PROFILE,
 ) -> None:
     """Run every combination of a parameter sweep, and pick the highest Sharpe ratio.
 
@@ -506,7 +528,7 @@ def sweep(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
-        config = load_config(workspace)
+        config = load_config(workspace, risk_profile)
         spec = load_sweep(config, name)
         outcome = run_configured_sweep(
             config,
@@ -585,6 +607,7 @@ def capital(
         ),
     ] = DEFAULT_POSITIONS,
     home: HomeOption = None,
+    risk_profile: RiskProfileOption = DEFAULT_RISK_PROFILE,
 ) -> None:
     """Find the smallest account at which each strategy's edge survives costs.
 
@@ -605,7 +628,7 @@ def capital(
             positions=positions,
         )
         workspace = Workspace(resolve_home(home, os.environ))
-        config = load_config(workspace)
+        config = load_config(workspace, risk_profile)
         outcome = run_configured_capital(
             config,
             request,
@@ -682,7 +705,7 @@ def report(
     typer.echo(f"Report: {path}")
 
 
-def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
+def _describe_backtest(outcome: BacktestOutcome, starting: Money, risk_profile: str) -> list[str]:
     result = outcome.result
     record = outcome.record_dir / "run.json"
     sessions = sum(len(found) for found in result.sessions.values())
@@ -706,6 +729,7 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
     lines.append(
         f"  Fills:         {len(result.fills)}; free-riding violations: {len(result.free_riding)}"
     )
+    lines.append(f"  Risk profile:  {risk_profile}; {_describe_adjustments(result)}")
     issues = sum(len(h.issues) for h in result.histories)
     if issues:
         lines.append(f"  Data issues:   {issues}, listed by `tyche data fetch`")
@@ -721,6 +745,18 @@ def _describe_backtest(outcome: BacktestOutcome, starting: Money) -> list[str]:
             "reproduce this run."
         )
     return lines
+
+
+def _describe_adjustments(result: BacktestResult) -> str:
+    counts = adjustments_record(result)
+    if not counts:
+        return "nothing cut by the risk gate"
+    shrunk = sum(n for key, n in counts.items() if key.endswith(".shrink"))
+    blocked = sum(n for key, n in counts.items() if key.endswith(".block"))
+    return (
+        f"the risk gate shrank {_count(shrunk, 'contribution')} and blocked "
+        f"{blocked:,} {'entry' if blocked == 1 else 'entries'}"
+    )
 
 
 def _describe_metrics(metrics: BacktestMetrics) -> list[str]:

@@ -32,6 +32,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Multiple testing and the deflated Sharpe ratio](multiple-testing.md) | Count every version ever tried, and judge the best against what the best of that many tries reaches by luck |
 | [Layered limits](layered-limits.md) | Guardrails above profiles above strategy limits, each only stricter, all checked before anything runs |
 | [What account size costs](account-size.md) | Run the same strategy on a large account and on yours, change nothing else, and read the difference as the price of being small |
+| [Functional core, imperative shell](functional-core.md) | Put the rules in a pure function of plain values, and keep the wiring in a thin wrapper around it |
 
 ## Planned
 

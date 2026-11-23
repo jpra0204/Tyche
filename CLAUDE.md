@@ -55,6 +55,7 @@ uv run tyche init --home <scratch-folder>   # creates a workspace; never run it 
 uv run tyche config check                  # validates the workspace config, prints its hash
 uv run tyche data fetch SPY --exchange ARCX  # downloads from Yahoo (network; personal-use data)
 uv run tyche backtest --from 2005-01-03    # cache only; refuses the holdout; writes reports/backtests/<run id>/
+uv run tyche backtest --from 2005-01-03 --risk-profile default  # every backtest command takes it; default is `default`
 uv run tyche walk-forward --from 2005-01-03  # folds of backtests; writes reports/walk_forward/<id>/
 uv run tyche sweep trend_rotation --from 2005-01-03  # every combination of config/sweeps/<name>.toml; writes reports/sweeps/<id>/
 uv run tyche walk-forward --from 2005-01-03 --sweep trend_rotation  # picks parameters on each training window

@@ -1,6 +1,7 @@
 """The `tyche` command, run as a user would: version, init, config, data, backtest,
 walk-forward and report."""
 
+import json
 import re
 import subprocess
 import sys
@@ -151,7 +152,7 @@ class TestConfigCheck:
         assert "Guardrails:     long only, no leverage; capital 700 USD, order 350 USD" in (
             result.stdout
         )
-        assert "not applied to trades yet" in result.stdout
+        assert "applied to trades: risk per trade, positions and position size" in result.stdout
 
     def test_checks_against_the_chosen_risk_profile(self, home: Path) -> None:
         runner.invoke(app, ["init"])
@@ -436,6 +437,9 @@ class TestBacktest:
         assert "Warm-up:       20 sessions from 2023-10-04 (20 needed)" in out
         assert "Starting cash: 10000 USD" in out
         assert "Fills:         1; free-riding violations: 0" in out
+        assert (
+            "Risk profile:  default; the risk gate shrank 41 contributions and blocked 0 entries"
+        ) in out
         assert "Data issues:   1, listed by `tyche data fetch`" in out
         assert re.search(r"^  Metrics\s+strategy\s+SPY@ARCX total return$", out, re.MULTILINE)
         for figure in ("CAGR", "Volatility", "Sharpe (rf 0)", "Sortino (rf 0)", "Max drawdown"):
@@ -450,6 +454,27 @@ class TestBacktest:
         assert report is not None
         assert Path(report.group(1)) == Path(record.group(1)).parent / "report.html"
         assert Path(report.group(1)).is_file()
+
+    def test_runs_under_a_chosen_risk_profile(self, fetched: Path) -> None:
+        risk = fetched / "config" / "risk"
+        wide = (risk / "default.toml").read_text().replace('"0.20"', '"0.25"')
+        (risk / "wide.toml").write_text(wide)
+
+        result = runner.invoke(app, ["backtest", "--from", "2023-11-01", "--risk-profile", "wide"])
+
+        assert result.exit_code == 0, result.output
+        assert "Risk profile:  wide;" in result.stdout
+        record = re.search(r"Record:\s+(\S+)", result.stdout)
+        assert record is not None
+        assert json.loads(Path(record.group(1)).read_text())["risk"]["max_position_size"] == "0.25"
+
+    @pytest.mark.parametrize("command", ["backtest", "walk-forward", "sweep", "capital"])
+    def test_an_unknown_risk_profile_is_refused(self, fetched: Path, command: str) -> None:
+        arguments = [command, *(["trend_rotation"] if command == "sweep" else [])]
+        result = runner.invoke(app, [*arguments, "--from", "2023-11-01", "--risk-profile", "nope"])
+
+        assert result.exit_code == 1
+        assert "no risk profile named 'nope'" in result.output
 
     def test_report_rebuilds_a_recorded_runs_report(self, fetched: Path) -> None:
         ran = runner.invoke(app, ["backtest", "--from", "2023-11-01"])

@@ -51,7 +51,9 @@ from tyche.core.backtest import (
 )
 from tyche.core.backtest.metrics import DAYS_PER_YEAR, RISK_FREE_RATE, SESSIONS_PER_YEAR
 from tyche.core.domain import AssetClass, BarHistory, Currency, Money, PriceAdjustment
+from tyche.core.events import RiskEvent
 from tyche.core.ports import Calendar, Clock, DataProvider
+from tyche.core.risk import RiskLimits
 from tyche.runtime.data import CALENDAR_START
 from tyche.runtime.strategies import ConfiguredStrategies, build_strategies
 
@@ -271,6 +273,7 @@ def run_and_measure(
         costs=config.costs,
         strategies=strategies.strategies,
         budgets=strategies.budgets,
+        risk=config.risk_limits,
         settings=config.backtest,
         first=first,
         last=last,
@@ -445,6 +448,7 @@ def run_record(
             "price_buffer": str(spec.profile.execution.price_buffer),
         },
         "costs_checked_on": config.costs.checked_on.isoformat(),
+        "risk": risk_record(spec.risk),
         "strategies": [
             {
                 "id": strategy.strategy_id,
@@ -468,6 +472,7 @@ def run_record(
             "events": run.events,
             "fills": len(result.fills),
             "free_riding": len(result.free_riding),
+            "risk_adjustments": adjustments_record(result),
             "final_equity": _money(result.account.equity(currency)),
             "final_cash": _money(result.account.cash(currency).total),
             "agrees_with_broker": result.account == result.broker_account,
@@ -556,6 +561,43 @@ def write_run_record(
                     fill.fill_id,
                 ]
             )
+
+
+def risk_record(limits: RiskLimits) -> dict[str, Any]:
+    """The risk limits a run applied: the active profile and each strategy's own."""
+    profile = limits.profile
+    own = {
+        strategy_id: {
+            key: str(value)
+            for key, value in (
+                ("risk_per_trade", strategy.risk_per_trade),
+                ("max_open_positions", strategy.max_open_positions),
+                ("max_position_size", strategy.max_position_size),
+            )
+            if value is not None
+        }
+        for strategy_id, strategy in sorted(limits.strategies.items())
+    }
+    return {
+        "profile": profile.name,
+        "risk_per_trade": str(profile.risk_per_trade),
+        "max_open_positions": profile.max_open_positions,
+        "max_position_size": str(profile.max_position_size),
+        "daily_loss_limit": str(profile.daily_loss_limit),
+        "drawdown_kill": str(profile.drawdown_kill),
+        "applied": ["risk_per_trade", "max_open_positions", "max_position_size"],
+        "strategies": {k: v for k, v in own.items() if v},
+    }
+
+
+def adjustments_record(result: BacktestResult) -> dict[str, int]:
+    """How many contributions the risk gate cut, by rule and action (ADR-0033)."""
+    counts: dict[str, int] = {}
+    for envelope in result.journal.of_type(RiskEvent):
+        adjustment = envelope.event.adjustment
+        key = f"{adjustment.rule}.{adjustment.action}"
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _write_json(path: Path, content: dict[str, Any]) -> None:

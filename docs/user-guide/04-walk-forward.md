@@ -28,6 +28,7 @@ uv run tyche walk-forward --from 2005-01-03
 | `--test-years` | 1 | Calendar years in each test window |
 | `--rolling` | off | Keep every training window at `--train-years`, sliding forward, instead of growing it from `--from` |
 | `--sweep` | none | A sweep in `config/sweeps/`: every combination runs on each training window, and the test window runs the one with the highest Sharpe ratio |
+| `--risk-profile` | `default` | The risk profile every fold runs under, a file in `config/risk/` | The figures on this page were recorded before the risk gate applied limits (Phase 2, PR 2); under `default` they are smaller ([risk profiles](08-risk-profiles.md#expect-smaller-numbers-under-default)). |
 
 Windows are whole calendar years. With the defaults and history from 2005, the first fold trains on 2005 to 2009 and tests 2010; the last trains on 2005 to 2022 and tests 2023: 14 folds. Each window is a backtest of its own, starting from your `starting_cash`, so a walk-forward takes much longer than one backtest. Over 2005 to 2023 on the nine-ETF profile it takes 2 to 3 minutes.
 

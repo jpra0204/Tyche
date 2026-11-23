@@ -13,6 +13,7 @@ from tyche.core.domain import (
     Exclusion,
     Instrument,
     InstrumentTarget,
+    RiskAdjustment,
     ScoredInstrument,
     Sleeve,
     SleeveStatus,
@@ -246,6 +247,61 @@ class TargetPortfolioEvent(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class RiskEvent(Event):
+    """One change the risk gate made to a proposed portfolio (ADR-0033).
+
+    Published for every shrink and every block, before the ``ApprovedPortfolioEvent``
+    that lists them all, so the journal and the notifier see each one on its own.
+
+    Attributes:
+        as_of: The decision time.
+        profile: The name of the active risk profile.
+        adjustment: What changed, under which rule, and why.
+    """
+
+    as_of: datetime
+    profile: str
+    adjustment: RiskAdjustment
+
+    def __post_init__(self) -> None:
+        require_utc(self.as_of, "RiskEvent as_of")
+        if not self.profile.strip():
+            raise ValueError("RiskEvent: needs the name of the risk profile")
+
+
+def _require_adjustments(
+    targets: tuple[InstrumentTarget, ...], adjustments: tuple[RiskAdjustment, ...]
+) -> None:
+    """Each sleeve and instrument the gate adjusted ends where its last adjustment says.
+
+    Adjustments to one contribution follow on from each other (each ``before`` is the
+    previous ``after``), and the approved weight is the last ``after``: no contribution
+    at all after a block.
+    """
+    last: dict[tuple[str, Instrument], RiskAdjustment] = {}
+    for adjustment in adjustments:
+        key = (adjustment.strategy_id, adjustment.instrument)
+        previous = last.get(key)
+        if previous is not None and adjustment.before != previous.after:
+            raise ValueError(
+                f"ApprovedPortfolioEvent: adjustments of {adjustment.strategy_id} in "
+                f"{adjustment.instrument} do not follow on: {previous.after} then "
+                f"{adjustment.before}"
+            )
+        last[key] = adjustment
+    by_instrument = {t.instrument: t for t in targets}
+    for (strategy_id, instrument), adjustment in last.items():
+        target = by_instrument.get(instrument)
+        contribution = target.contribution_of(strategy_id) if target else None
+        approved = contribution.weight if contribution else Decimal(0)
+        if approved != adjustment.after or (contribution is not None and approved == 0):
+            raise ValueError(
+                f"ApprovedPortfolioEvent: {strategy_id} in {instrument} was adjusted to "
+                f"{adjustment.after}, but {approved} is approved"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovedPortfolioEvent(Event):
     """The portfolio the risk gate approved at one decision time (ADR-0006, ADR-0022).
 
@@ -254,26 +310,31 @@ class ApprovedPortfolioEvent(Event):
     sleeve and instrument, a contribution gives its weight, ``decided_on`` without one
     gives zero, and anything else the sleeve holds is kept.
 
-    In Phase 1 the gate has no rules, so the approved portfolio is the proposed one.
-    The ``RiskEvent``s that explain each change are added with the rules in Phase 2.
+    The gate only lowers or removes contributions (ADR-0033). Each change is listed in
+    ``adjustments``, in the order the gate made it, and was published as a
+    ``RiskEvent`` just before this event.
 
     Attributes:
         as_of: The decision time.
         sleeves: One per strategy with a budget, ordered by strategy id.
         targets: One per instrument with an approved contribution, ordered by symbol
             and exchange.
-        profile: The risk profile the gate applied. ``"pass-through"`` in Phase 1.
+        profile: The name of the risk profile the gate applied.
+        adjustments: Every change the gate made to the proposal, in order. Empty when
+            it approved the proposal as it was.
     """
 
     as_of: datetime
     sleeves: tuple[Sleeve, ...]
     targets: tuple[InstrumentTarget, ...]
     profile: str
+    adjustments: tuple[RiskAdjustment, ...] = ()
 
     def __post_init__(self) -> None:
         _require_portfolio("ApprovedPortfolioEvent", self.as_of, self.sleeves, self.targets)
         if not self.profile.strip():
             raise ValueError("ApprovedPortfolioEvent: needs the name of the risk profile")
+        _require_adjustments(self.targets, self.adjustments)
 
     def sleeve(self, strategy_id: str) -> Sleeve:
         return _sleeve(self.sleeves, strategy_id)

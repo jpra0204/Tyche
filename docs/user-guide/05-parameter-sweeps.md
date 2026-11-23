@@ -38,6 +38,7 @@ uv run tyche sweep trend_rotation --from 2005-01-03
 | `NAME` | (required) | The sweep's file name in `config/sweeps/`, without `.toml` |
 | `--from` | (required) | First session date to trade, for every trial |
 | `--to` | the day before the holdout | Last session date to trade |
+| `--risk-profile` | `default` | The risk profile every trial runs under, a file in `config/risk/`. Compare trials only under one profile | The figures on this page were recorded before the risk gate applied limits (Phase 2, PR 2); under `default` they are smaller ([risk profiles](08-risk-profiles.md#expect-smaller-numbers-under-default)). |
 
 It prints the trial count first, then a line per trial, then the pick:
 

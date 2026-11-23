@@ -1,8 +1,8 @@
 # Risk profiles and guardrails
 
-This page explains the three files that hold Tyche's risk limits, how to make a new risk profile, and how to check them. The decisions behind them are in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md).
+This page explains the three files that hold Tyche's risk limits, how to make a new risk profile, how to check them, and what they do to a backtest. The decisions behind them are in [ADR-0032](../adr/0032-risk-limits-in-three-layers.md) and [ADR-0033](../adr/0033-risk-gate-position-rules.md).
 
-> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **It does not yet apply them to trades.** Phase 2 builds the risk gate in steps: the position rules (PR 2), an order check against the guardrails (PR 3), then the daily loss limit and the drawdown kill switch (PR 4). This page grows with each.
+> **What works today.** Tyche reads and checks these files every time it starts, and refuses to start if one breaks a limit. **The risk gate applies the position rules** (risk per trade, max open positions, max position size) to every backtest. Not yet applied: the order check against the guardrails' money caps (Phase 2, PR 3), the daily loss limit and the drawdown kill switch (PR 4). This page grows with each.
 
 ## The three layers
 
@@ -86,7 +86,7 @@ Only these three can be set per strategy. The daily loss limit and the drawdown 
   Risk profile:   default: risk per trade 0.01, 5 positions, position size 0.20, daily loss 0.03, drawdown kill 0.15
                   also within the guardrails: safecash
   Guardrails:     long only, no leverage; capital 700 USD, order 350 USD
-                  (not applied to trades yet: Phase 2 builds the risk gate)
+                  (applied to trades: risk per trade, positions and position size; the daily loss limit, the drawdown kill and the money caps come later in Phase 2)
 ```
 
 A breach stops Tyche, naming the file, the key, its value and the limit:
@@ -97,6 +97,47 @@ Error: config/risk/safecash.toml: a risk profile may not exceed the guardrails (
 ```
 
 Fix the value, or the limit above it if you meant to change that, and check again.
+
+## What a profile does to a backtest
+
+Every backtest command runs under a risk profile: `tyche backtest`, `tyche walk-forward`, `tyche sweep` and `tyche capital` all take `--risk-profile <name>`, and use `default` without it.
+
+```bash
+uv run tyche backtest --from 2005-01-03 --risk-profile safecash
+```
+
+The risk gate sits between what the strategies want and what is traded. It only ever trades **less** than the strategies asked for:
+
+| Rule | What the gate does |
+|---|---|
+| `risk_per_trade` | For a position with a stop, when a strategy enters or adds to it: sizes it so that falling from the last close to the stop loses at most this much of equity. A stop 5% below the close and a limit of 1% allow at most 20% of equity. It never sells what is already held to meet it |
+| `max_open_positions` | Positions already held keep their place. New ones fill the free places, the largest first; the rest are not entered. A position the strategy is selling frees its place |
+| `max_position_size` | Caps each instrument, at every close, including what is already held. When several strategies hold one instrument, each one's share shrinks by the same proportion |
+
+The backtest's summary says which profile ran and how often the gate cut something:
+
+```text
+  Risk profile:  default; the risk gate shrank 4,781 contributions and blocked 0 entries
+```
+
+The record (`run.json`) has the profile's values under `risk`, and the counts by rule under `outcome.risk_adjustments`; the report shows both under **What ran**.
+
+### Expect smaller numbers under `default`
+
+`default` caps every position at 20% of equity, so a strategy that wants to be fully invested in one fund holds a fifth of the account and leaves the rest in cash, which earns nothing in the simulator. On Yahoo data from 2005 to 2023, with USD 10,000:
+
+| | No limits (as recorded before Phase 2) | `default` |
+|---|---|---|
+| Buy-and-hold SPY | 52,168 USD; max drawdown 53% | 14,568 USD; max drawdown 13% |
+| Trend rotation | 30,049 USD; max drawdown 30% | 23,464 USD; max drawdown 15% |
+| Mean reversion | 12,735 USD; max drawdown 12% | 10,650 USD; max drawdown 6% |
+
+The Sharpe ratios barely move: the same funds, held smaller. Two things to keep in mind:
+
+- **Compare like with like.** A strategy under `default` against SPY held at 100% is not a fair test of the strategy. Run both under the same profile; comparing profiles side by side arrives in Phase 2, PR 5.
+- **Small accounts may hold nothing.** With USD 1,000, 20% is about USD 200, less than one share of SPY, so buy-and-hold never buys. Run `tyche capital` to see where your account size stands.
+
+Records written before this change have no `risk` section; their report says they ran before the risk gate.
 
 ## Your config hash
 

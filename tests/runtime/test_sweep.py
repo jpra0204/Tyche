@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
-from tests.support.workspace import keep_candidates
+from tests.support.workspace import add_unbound_profile, keep_candidates
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.adapters.data import YFinanceSource
 from tyche.config import (
@@ -86,7 +86,7 @@ def workspace(root: Path) -> TycheConfig:
     )
     (ws.strategies_dir / "trend_rotation.toml").write_text(STRATEGY, encoding="utf-8")
     (ws.sweeps_dir / "small.toml").write_text(SWEEP, encoding="utf-8")
-    config = load_config(Workspace(ws.root))
+    config = load_config(Workspace(ws.root), add_unbound_profile(ws.root))
     profile = config.market_profile
     days = [s.day for s in NYSE.sessions_between(CACHED_FROM, CACHED_TO)]
     spy = [row(d, 300 + i * 0.05 + 25 * math.sin(i / 40)) for i, d in enumerate(days)]

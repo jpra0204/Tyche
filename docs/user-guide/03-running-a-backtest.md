@@ -78,33 +78,36 @@ uv run tyche backtest --from 2005-01-03
 |---|---|
 | `--from` | First day to trade, `YYYY-MM-DD`. Required. History before it is used only to warm up. |
 | `--to` | Last day to trade. Defaults to the day before the holdout. A date in the holdout is refused. |
+| `--risk-profile` | The risk profile the risk gate applies, a file in `config/risk/`. Defaults to `default`. See [risk profiles](08-risk-profiles.md#what-a-profile-does-to-a-backtest). |
 | `--home` | Workspace folder, as for every command. |
 
 ```text
-Backtest 20261119T172646Z-75505646: completed
+Backtest 20261123T145931Z-239f4f5d: completed
   Range:         2005-01-03 to 2023-12-31, 4,781 sessions
   Warm-up:       20 sessions from 2004-12-03 (20 needed)
   Starting cash: 10000 USD
-  Final equity:  52168.20 USD (+421.68%)
-  Fills:         3; free-riding violations: 0
+  Final equity:  14567.81 USD (+45.68%)
+  Fills:         98; free-riding violations: 0
+  Risk profile:  default; the risk gate shrank 4,781 contributions and blocked 0 entries
   Metrics           strategy  SPY@ARCX total return
-    CAGR               9.09%       9.59%
-    Volatility        18.28%      19.31%
-    Sharpe (rf 0)       0.57        0.57
-    Sortino (rf 0)      0.80        0.80
-    Max drawdown      53.23%      55.20%
-    Exposure          94.25%     100.00%
-  Turnover:      0.03 a year; costs 3.03 USD
+    CAGR               2.00%       9.59%
+    Volatility         3.69%      19.31%
+    Sharpe (rf 0)       0.56        0.57
+    Sortino (rf 0)      0.78        0.80
+    Max drawdown      13.19%      55.20%
+    Exposure          19.34%     100.00%
+  Turnover:      0.15 a year; costs 99.00 USD
   Trades:        0 closed, win rate n/a; 1 still open
-  Code:          0.0.1+g4ed905d3be34
-  Record:        /Users/<you>/tyche-workspace/reports/backtests/20261119T172646Z-75505646/run.json
-  Report:        /Users/<you>/tyche-workspace/reports/backtests/20261119T172646Z-75505646/report.html
+  Code:          0.1.0+g0123456789ab
+  Record:        /Users/<you>/tyche-workspace/reports/backtests/20261123T145931Z-239f4f5d/run.json
+  Report:        /Users/<you>/tyche-workspace/reports/backtests/20261123T145931Z-239f4f5d/report.html
 ```
 
 - **Range** is what was traded; **Warm-up** is the history learned before it. If fewer warm-up sessions were available than needed, the first decisions wait for enough history.
 - **Final equity** is cash plus holdings at the last close. The change is total, not yearly.
 - **Metrics** put your strategies, all together, beside the benchmark. Both start from the same equity at the same first close and are measured on the same closes with the same formulas, defined below.
 - **Turnover, costs and trades** are about your strategies only: the benchmark pays nothing and never trades. **Costs** here are commissions and regulatory fees; slippage is in the prices, and the report's cost-drag section counts it too.
+- **Risk profile** names the profile the risk gate applied, and how often it cut what a strategy asked for. Here buy-and-hold asks for all of its budget in SPY at every close and `default` caps a position at 20%, so it holds a fifth of the account: that is why its return is far below the benchmark's while its Sharpe ratio is about the same. Without limits the same run ends at 52,168 USD ([risk profiles](08-risk-profiles.md#expect-smaller-numbers-under-default)).
 - **Fills** counts every trade. **Free-riding violations** should always be 0 ([costs and settlement](../developer-guide/ibkr-canada-costs-and-settlement.md)).
 - **Code** is Tyche's version and the git commit it ran from. If the code had uncommitted changes, it ends in `.dirty` and a warning says the commit alone cannot reproduce the run.
 

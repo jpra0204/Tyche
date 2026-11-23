@@ -15,6 +15,7 @@ import pytest
 from tests.support.costs import US_COSTS, usd
 from tests.support.market import QQQ, SPY, bar
 from tests.support.profiles import US_PROFILE
+from tests.support.risk import UNBOUND
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.backtest import (
     BacktestError,
@@ -77,6 +78,7 @@ def spec(**changes: object) -> BacktestSpec:
         costs=US_COSTS,
         strategies=(BuyAndHold(SPY),),
         budgets={"buy_and_hold": Decimal(1)},
+        risk=UNBOUND,
         settings=SETTINGS,
         first=FIRST,
         last=LAST,
