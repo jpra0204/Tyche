@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 2: risk and paper trading (`US`, end of day). Planning: the PR list below is proposed and waits for Pablo's agreement.** No Phase 2 code is written until it is agreed.
+**Phase 2: risk and paper trading (`US`, end of day). Pablo agreed the PR list below on 2026-11-23; PR 1 starts when he says so.**
 
 **Phase 1 is done.** All 23 PRs are merged (the last, #28, on 2026-11-23), every ADR up to 0031 is accepted, and the version is 0.1.0. Its PR list and decisions are kept below for reference.
 
@@ -96,7 +96,7 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 
 ## Phase 2 plan: risk and paper trading (`US`, end of day)
 
-*Proposed 2026-11-23, waiting for Pablo's agreement.* Twenty small PRs in five groups. Each PR includes its tests and docs, and a learning note when it introduces a pattern. A dependency is added in the PR that first uses it. The brief's Phase 2: the risk layer with named profiles and guardrails, profile comparison in backtests, the IBKR paper adapter, execution, reconciliation, the scheduler, the catch-up rule, the journal, the Discord webhook, the kill switch, Docker, and a user guide for running in paper.
+*Agreed by Pablo on 2026-11-23, with the three moves listed after the tables.* Twenty small PRs in five groups. Each PR includes its tests and docs, and a learning note when it introduces a pattern. A dependency is added in the PR that first uses it. The brief's Phase 2: the risk layer with named profiles and guardrails, profile comparison in backtests, the IBKR paper adapter, execution, reconciliation, the scheduler, the catch-up rule, the journal, the Discord webhook, the kill switch, Docker, and a user guide for running in paper.
 
 **Order.** Groups A and B need no broker account: the risk layer is pure core code, tested in backtests, and the running state and operations come next. That leaves time for the IBKR account and its paper account to be approved before group C needs them (PR 10).
 
@@ -147,7 +147,7 @@ Packages still holding only a docstring: `core.improvement`, `core.agents`, `cor
 | 19 | Paper against backtest | A command that replays a paper period in the simulator with the same config and data, and compares fills, slippage, costs and equity with what paper did; a proposed ADR for revised promotion criteria: the edge shown by out-of-sample backtests, paper judged by a tracking threshold (carried from the Phase 0 review) | The ADR is yours to accept |
 | 20 | Phase 2 wrap-up | User guide: the IBKR paper account, the gateway, Discord and `.env`; choosing and comparing risk profiles; the daily routine; reading Discord reports; the kill switch; what protects a position within a session (ADR-0015). `maintenance` runbook (updating `exchange_calendars`). Version 0.2.0 | Stop for the Phase 2 review |
 
-What this plan moves, for your agreement:
+What this plan moves (agreed 2026-11-23):
 
 - **The live gate moves to Phase 3.** `tyche live arm` and the Claude Code rule that denies it to agents go with the strategy lifecycle, because only strategies in the `live` state may run live ([ADR-0013](docs/adr/0013-live-trading-gate.md)) and that state arrives in Phase 3. Phase 2 keeps the account-identity check (PR 11), so paper cannot reach a live account, and nothing in Phase 2 can trade live.
 - **Withholding tax on US dividends moves to Phase 4**, with currency conversion and the tax export.
@@ -271,12 +271,11 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Agree the Phase 2 PR list.** Nothing in Phase 2 is coded until Pablo agrees the list above, then each PR starts when Pablo says so.
+**Phase 2, PR 1 (guardrails and named risk profiles)**, when Pablo says to start it.
 
-1. **The Phase 2 plan**: the twenty PRs, their order, and the three moves (the live gate to Phase 3, withholding tax to Phase 4, interest on cash after Phase 2).
-2. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
-3. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
-4. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
+1. **The IBKR account and its paper account**, if not opened yet: approval can take days, and PR 10 is the first that needs it.
+2. **Decisions still open from Phase 1**, in the table above: branch protection for `main`; adding "never move `holdout_starts` later" to the never-do rules; whether the Phase 3 gate deflates against zero or against the benchmark. The small-account defaults are now decided in PR 5.
+3. **A release marker for Phase 1**, if you want one (no `v0.1.0` tag exists yet). Tagging publishes to the public repository, so it is yours to do:
 
    ```bash
    git tag -a v0.1.0 979937f -m "Phase 1: core and backtesting" && git push origin v0.1.0

@@ -180,7 +180,7 @@ Other safety mechanisms:
 | Manual kill switch | `KILL` flag file plus a CLI command. No new orders; optional flatten. | 2 |
 | Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
 | Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
-| Live gate | Live mode needs a manual, interactive arming step that code and agents cannot perform. | 2 |
+| Live gate | Live mode needs a manual, interactive arming step that code and agents cannot perform. | 2 (the paper adapter refuses a live account), 3 (arming, with the strategy lifecycle; moved by the Phase 2 plan, 2026-11-23) |
 
 ## 7. Where state lives
 
