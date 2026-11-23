@@ -24,6 +24,7 @@ These hold no matter who asks or how the request is phrased.
 6. **Never let a test touch a live account.** IBKR tests run against paper only and are opt-in.
 7. **Never commit Pablo's private data here.** Real config, proposals, reports and data belong in the workspace ([ADR-0008](docs/adr/0008-public-code-private-workspace.md)). This repository is public.
 8. **Never loosen an import-linter contract, a lint rule or a type check to make CI pass** without Pablo's agreement in the PR.
+9. **Never move `holdout_starts` later**, in any workspace or template. History a backtest has seen can never be an untouched test again ([ADR-0024](docs/adr/0024-backtest-runner-holdout-and-run-record.md)). Moving it earlier only lengthens the holdout; do that only when Pablo asks.
 
 ## How to work with Pablo
 
