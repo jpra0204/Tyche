@@ -54,6 +54,7 @@ from tyche.core.domain import (
     Account,
     Currency,
     ExecutionRules,
+    ExecutionState,
     Instrument,
     Money,
     MoneyLimits,
@@ -61,6 +62,7 @@ from tyche.core.domain import (
     OrderAdjustment,
     OrderState,
     OrderType,
+    OwedShares,
     PlanLine,
     PlanNote,
     RiskAction,
@@ -68,6 +70,8 @@ from tyche.core.domain import (
     Side,
     TimeInForce,
     TradingCosts,
+    WantedStop,
+    WorkingOrder,
     whole_shares,
 )
 from tyche.core.events import (
@@ -153,6 +157,9 @@ class ExecutionStage:
         rules: The market profile's execution rules.
         money: The guardrails' money caps by currency, or ``None`` for a run that does
             not apply them: research backtests keep their own starting cash (ADR-0034).
+        start: Execution's state from a previous run's checkpoint (ADR-0038): its
+            working orders, the stops sleeves want and the last decision handled.
+            ``None`` to start with none. The book must be that checkpoint's too.
     """
 
     def __init__(
@@ -163,6 +170,7 @@ class ExecutionStage:
         calendars: Mapping[str, Calendar],
         rules: ExecutionRules,
         money: Mapping[Currency, MoneyLimits] | None = None,
+        start: ExecutionState | None = None,
     ) -> None:
         self._bus = bus
         self._book = book
@@ -177,6 +185,8 @@ class ExecutionStage:
         self._orders: dict[str, _Tracked] = {}
         self._wanted_stops: dict[tuple[str, Instrument], Money] = {}
         self._handled: set[datetime] = set()
+        if start is not None:
+            self._resume(start)
 
         bus.subscribe(SessionEvent, self._on_session, name=SUBSCRIBER)
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
@@ -184,6 +194,38 @@ class ExecutionStage:
         bus.subscribe(ApprovedPortfolioEvent, self._on_approved, name=SUBSCRIBER)
         bus.subscribe(FillEvent, self._on_fill, name=SUBSCRIBER)
         bus.subscribe(OrderEvent, self._on_order, name=SUBSCRIBER)
+
+    # --- carrying on from a checkpoint ------------------------------------------------
+
+    def _resume(self, start: ExecutionState) -> None:
+        for working in start.orders:
+            self._orders[working.state.order.client_order_id] = _Tracked(
+                working.state,
+                owed={o.strategy_id: o.quantity for o in working.owed},
+                strategy_id=working.strategy_id,
+            )
+        for wanted in start.wanted_stops:
+            self._wanted_stops[(wanted.strategy_id, wanted.instrument)] = wanted.price
+        if start.last_decision is not None:
+            self._handled.add(start.last_decision)
+
+    def state(self) -> ExecutionState:
+        """What a checkpoint keeps: what ``ExecutionStage(start=...)`` carries on from."""
+        orders = tuple(
+            WorkingOrder(
+                tracked.state,
+                owed=tuple(OwedShares(s, q) for s, q in sorted(tracked.owed.items())),
+                strategy_id=tracked.strategy_id,
+            )
+            for _, tracked in sorted(self._orders.items())
+        )
+        wanted = tuple(
+            WantedStop(strategy_id, instrument, price)
+            for (strategy_id, instrument), price in sorted(
+                self._wanted_stops.items(), key=lambda item: (item[0][0], *_key(item[0][1]))
+            )
+        )
+        return ExecutionState(orders, wanted, max(self._handled, default=None))
 
     # --- what the stage is told ------------------------------------------------------
 

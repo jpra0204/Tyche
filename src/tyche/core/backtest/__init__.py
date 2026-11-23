@@ -44,6 +44,7 @@ from tyche.core.backtest.runner import (
     BacktestError,
     BacktestResult,
     BacktestSpec,
+    Resume,
     run_backtest,
 )
 from tyche.core.backtest.settings import BacktestSettings, HoldoutError
@@ -100,6 +101,7 @@ __all__ = [
     "Grid",
     "HoldoutError",
     "MetricsError",
+    "Resume",
     "ReturnMoments",
     "SeriesMetrics",
     "SizedResult",

@@ -25,6 +25,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - A durable journal: the `JournalStore` port, `SqliteJournalStore` (an append-only `journal` table keyed by run and `seq`, each cause a foreign key) and `StoredJournal`, which stores every envelope as it is delivered and halts the bus if the store refuses one. Events are stored as tagged JSON (`tyche.adapters.storage.codec`) for Tyche's own types only, and read back identical. Nothing writes to it yet; the paper cycle will.
 - `JournalView`: the in-memory journal's questions (by type, by cycle, `causes_of`) over any run's envelopes, including one read back from the store.
 - Developer guide: the state database. Learning note: schema migrations and an append-only log.
+- State across restarts (Phase 2, PR 7, ADR-0038): `Checkpoint` and its parts (`SleeveState`, `ExecutionState`, `AccountRulesState`, with `SleeveHolding`, `SleeveStop`, `WorkingOrder`, `OwedShares`, `WantedStop`) in `tyche.core.domain`, checked on construction. `SleeveBook`, `ExecutionStage` and `AccountRules` export their state and can be built from it; `RiskGate` takes the rules' state (`rules=`) and gives it back (`rules_state()`). A drawdown halt carried in a checkpoint stays.
+- The `CheckpointStore` port and `SqliteCheckpointStore`: migration `0002_checkpoint.sql`, one append-only row per run, tied to the run's stored journal, read back through `latest()` or `read(run_id)`. `codec.dumps_checkpoint` and `codec.loads_checkpoint`.
+- `run_backtest(..., resume=Resume(checkpoint, broker_state))` carries a backtest on from a checkpoint; `BacktestResult.checkpoint` and `.broker_state` give the state a completed run ended in. `SimBroker.state()`, `SimBroker.resume()` and `SimBrokerState`.
+- Learning note: checkpoints.
 
 ### Changed
 

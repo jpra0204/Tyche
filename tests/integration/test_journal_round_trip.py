@@ -13,10 +13,11 @@ from pathlib import Path
 import pytest
 
 import tyche.core.events
-from tests.integration.test_example_strategies import GLD, TLT, run
+from tests.integration.test_example_strategies import run
 from tests.support.events import rare_events
 from tests.support.market import QQQ, SPY
 from tests.support.risk import DEFAULT
+from tests.support.walks import GLD, TLT
 from tyche.adapters.storage import SqliteJournalStore, open_database
 from tyche.core.backtest import BacktestResult
 from tyche.core.events import Event, RiskEvent

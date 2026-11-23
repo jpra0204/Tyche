@@ -11,6 +11,12 @@ hands the replay to the engine::
         for every candidate and for the benchmark
     warm up the universe and the signals windows on the sessions before the first day
     run the engine over the replay of first..last
+    take the checkpoint the run ends in, if it completed
+
+A run can also carry on from where an earlier one stopped (``Resume``, ADR-0038):
+Tyche's stages start from that run's checkpoint and the simulator from its own state,
+as paper will restart from its checkpoint with the real broker still holding the
+account. The universe and the signals are warmed up exactly as for a fresh run.
 
 It does no I/O of its own: history comes through the ``DataProvider`` port, and
 writing the run record is the runtime's job.
@@ -26,6 +32,7 @@ from tyche.core.domain import (
     Account,
     AccountTrigger,
     BarHistory,
+    Checkpoint,
     Currency,
     Fill,
     MarketProfile,
@@ -44,7 +51,13 @@ from tyche.core.pipeline.signals import SignalsStage, Strategy
 from tyche.core.pipeline.universe import UniverseStage
 from tyche.core.ports import Calendar, DataProvider, OutOfCalendarRangeError
 from tyche.core.risk import RiskGate, RiskLimits
-from tyche.core.sim import FreeRidingViolation, HistoricalReplay, SimBroker, SimClock
+from tyche.core.sim import (
+    FreeRidingViolation,
+    HistoricalReplay,
+    SimBroker,
+    SimBrokerState,
+    SimClock,
+)
 
 
 class BacktestError(Exception):
@@ -88,6 +101,21 @@ class BacktestSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class Resume:
+    """Where a backtest carries on from: an earlier run's end (ADR-0038).
+
+    Attributes:
+        checkpoint: Tyche's state when the earlier run ended. Replaces the starting
+            cash: the account is the checkpoint's.
+        broker: The simulator's own state at the same moment, standing in for the
+            real broker, which keeps the account while Tyche is stopped.
+    """
+
+    checkpoint: Checkpoint
+    broker: SimBrokerState
+
+
+@dataclass(frozen=True, slots=True)
 class BacktestResult:
     """What one backtest produced.
 
@@ -104,6 +132,9 @@ class BacktestResult:
         account: Tyche's own view of the account at the end.
         broker_account: The simulated broker's record of the same account.
         free_riding: Free-riding violations the broker recorded (ADR-0020).
+        checkpoint: The state the run ended in, for a run that completed; ``None`` for
+            one that halted, whose state cannot be trusted (ADR-0038).
+        broker_state: The simulator's own state at the end, with the checkpoint.
     """
 
     run: RunResult
@@ -116,6 +147,8 @@ class BacktestResult:
     account: Account
     broker_account: Account
     free_riding: tuple[FreeRidingViolation, ...]
+    checkpoint: Checkpoint | None = None
+    broker_state: SimBrokerState | None = None
 
     @property
     def closes(self) -> list[AccountEvent]:
@@ -144,13 +177,18 @@ class BacktestResult:
 
 
 def run_backtest(
-    spec: BacktestSpec, data: DataProvider, calendars: Mapping[str, Calendar]
+    spec: BacktestSpec,
+    data: DataProvider,
+    calendars: Mapping[str, Calendar],
+    *,
+    resume: Resume | None = None,
 ) -> BacktestResult:
-    """Run one backtest.
+    """Run one backtest, from the starting cash or carrying on from ``resume``.
 
     Raises:
         HoldoutError: ``spec.last`` reaches the holdout.
-        BacktestError: The range or the setup cannot be run.
+        BacktestError: The range or the setup cannot be run, or ``resume`` was taken
+            after the first session opens.
         DataError: The data provider could not supply a candidate's history.
 
     A run that starts and then halts (a stage failing closed) does not raise: its
@@ -176,18 +214,46 @@ def run_backtest(
     start = min(found[0].opens_at for found in sessions.values())
     last_close = max(found[-1].closes_at for found in sessions.values())
 
+    if resume is not None and resume.checkpoint.saved_at >= start:
+        raise BacktestError(
+            f"cannot carry on from {resume.checkpoint.run_id}'s checkpoint, taken at "
+            f"{resume.checkpoint.saved_at.isoformat()}, in a run whose first session opens "
+            f"at {start.isoformat()}"
+        )
+
     clock = SimClock(start)
     bus = EventBus(clock.now)
-    opening = Account.empty().deposit(spec.settings.starting_cash)
-    book = SleeveBook()
     universe = UniverseStage(bus, spec.profile)
     ScreeningStage(bus, DollarVolumeScreen())
+    if resume is None:
+        opening = Account.empty().deposit(spec.settings.starting_cash)
+        book = SleeveBook()
+    else:
+        opening = resume.checkpoint.account
+        book = SleeveBook(resume.checkpoint.sleeves)
     signals = SignalsStage(bus, spec.strategies, positions=book)
     PortfolioStage(bus, spec.budgets)
     state = AccountState(bus, opening)
-    RiskGate(bus, spec.risk, book, spec.money_limits)
-    ExecutionStage(bus, book, spec.costs, calendars, spec.profile.execution, spec.money_limits)
-    broker = SimBroker(bus, opening, spec.costs, calendars)
+    gate = RiskGate(
+        bus,
+        spec.risk,
+        book,
+        spec.money_limits,
+        rules=resume.checkpoint.rules if resume else None,
+    )
+    execution = ExecutionStage(
+        bus,
+        book,
+        spec.costs,
+        calendars,
+        spec.profile.execution,
+        spec.money_limits,
+        start=resume.checkpoint.execution if resume else None,
+    )
+    if resume is None:
+        broker = SimBroker(bus, opening, spec.costs, calendars)
+    else:
+        broker = SimBroker.resume(bus, resume.broker, spec.costs, calendars)
     journal = InMemoryJournal(bus)
 
     needed = max(universe.history_needed, *signals.history_needed.values())
@@ -232,6 +298,18 @@ def run_backtest(
         config_hash=spec.config_hash,
     )
     run = engine.run(replay)
+    checkpoint = None
+    if run.completed:
+        checkpoint = Checkpoint(
+            run_id=spec.run_id,
+            saved_at=clock.now(),
+            code_version=spec.code_version,
+            config_hash=spec.config_hash,
+            account=state.account,
+            sleeves=book.state(),
+            execution=execution.state(),
+            rules=gate.rules_state(),
+        )
     return BacktestResult(
         run=run,
         sessions=sessions,
@@ -243,6 +321,8 @@ def run_backtest(
         account=state.account,
         broker_account=broker.account(),
         free_riding=broker.free_riding,
+        checkpoint=checkpoint,
+        broker_state=broker.state() if run.completed else None,
     )
 
 

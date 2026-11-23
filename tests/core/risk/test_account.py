@@ -96,3 +96,32 @@ def test_refuses_a_close_that_is_not_after_the_previous_one() -> None:
     rules = closes("10000")
     with pytest.raises(ValueError, match="not after"):
         rules.close(FIRST, cash("10000"))
+
+
+class TestCarriedFromACheckpoint:
+    def test_rules_rebuilt_from_their_state_carry_on_as_if_never_stopped(self) -> None:
+        straight = closes("10000", "10500", "10400", "9500")
+        limits = profile(daily_loss="0.03", drawdown="0.15")
+        restarted = AccountRules(limits, closes("10000", "10500", "10400").state())
+
+        triggers = restarted.close(at(3), cash("9500"))
+
+        assert [t.rule for t in triggers] == [RiskRule.DAILY_LOSS_LIMIT]
+        assert restarted.state() == straight.state()
+        assert restarted.peak(Currency.USD) == usd("10500")
+
+    def test_a_halt_carried_in_stays(self) -> None:
+        halted = closes("10000", "8000")
+        assert halted.halt is not None
+
+        restarted = AccountRules(profile(), halted.state())
+
+        assert restarted.halt == halted.halt
+        assert restarted.close(at(2), cash("12000")) == ()
+        assert restarted.halt == halted.halt
+
+    def test_refuses_a_close_already_measured_before_the_restart(self) -> None:
+        restarted = AccountRules(profile(), closes("10000", "10100").state())
+
+        with pytest.raises(ValueError, match="is not after the previous one"):
+            restarted.close(at(1), cash("10100"))

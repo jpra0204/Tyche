@@ -1,6 +1,6 @@
 # System overview
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Phase 1 (version 0.1.0) implements the trading path for backtests: data, universe, screening, signals, portfolio, a pass-through risk gate, execution, the simulated broker and an in-memory journal. Phase 2 adds the risk gate's position rules (ADR-0033), the order-level guardrails (ADR-0034) and the account rules (ADR-0035), and a journal that can be stored in SQLite (ADR-0037); reconciliation, paper and live trading, stored state, notifications and agents come in later phases; the [event catalog](event-catalog.md) marks what each event's status is, and [`STATUS.md`](../../STATUS.md) what works today.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Phase 1 (version 0.1.0) implements the trading path for backtests: data, universe, screening, signals, portfolio, a pass-through risk gate, execution, the simulated broker and an in-memory journal. Phase 2 adds the risk gate's position rules (ADR-0033), the order-level guardrails (ADR-0034) and the account rules (ADR-0035), a journal that can be stored in SQLite (ADR-0037), and a checkpoint at the end of every run that the next one carries on from (ADR-0038); reconciliation, paper and live trading, notifications and agents come in later phases; the [event catalog](event-catalog.md) marks what each event's status is, and [`STATUS.md`](../../STATUS.md) what works today.*
 
 This is the one document to read to understand how Tyche is put together. Each section links to the ADR that records the decision behind it.
 
@@ -176,7 +176,7 @@ Other safety mechanisms:
 | Position sizing | With a stop: sized so a stop-out loses at most the profile's risk per trade. Always: capped by max position size and max open positions. | 2 |
 | Protective stops | A target may carry a stop price. The stop rests at the broker, so it works while Tyche is not running. | 1 (sim), 2 (IBKR) |
 | Daily loss limit | Measured close to close, including stop-outs and fees. When hit, the decision at that close opens no new positions and adds to none ([ADR-0015](../adr/0015-daily-loss-limit.md), [ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
-| Drawdown kill switch | Checked at every close. A latch: once hit, the gate approves nothing and execution sends no order; resting stops stay. Only a manual restart resumes (PR 8). A backtest runs on to its last day without trading ([ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
+| Drawdown kill switch | Checked at every close. A latch: once hit, the gate approves nothing and execution sends no order; resting stops stay. Only a manual restart resumes (PR 8); a restart from a checkpoint stays halted ([ADR-0038](../adr/0038-checkpoints-across-restarts.md)). A backtest runs on to its last day without trading ([ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
 | Manual kill switch | `KILL` flag file plus a CLI command. No new orders; optional flatten. | 2 |
 | Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
 | Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
@@ -207,7 +207,7 @@ $TYCHE_HOME/
 └── KILL                 kill-switch flag (present means on)
 ```
 
-Storage formats are in [ADR-0009](../adr/0009-storage-sqlite-parquet.md): SQLite for operational state, Parquet for market data, DuckDB for ad hoc analysis. The state database's file, migrations and stored journal are in [ADR-0037](../adr/0037-state-database-migrations-and-stored-journal.md) and the [state database](../developer-guide/state-database.md) page.
+Storage formats are in [ADR-0009](../adr/0009-storage-sqlite-parquet.md): SQLite for operational state, Parquet for market data, DuckDB for ad hoc analysis. The state database's file, migrations and stored journal are in [ADR-0037](../adr/0037-state-database-migrations-and-stored-journal.md); what a run hands to the next (the account view, the sleeve book, working orders, the peak and the halt) is one checkpoint per run ([ADR-0038](../adr/0038-checkpoints-across-restarts.md)). Both are described on the [state database](../developer-guide/state-database.md) page.
 
 ## 8. Agents
 
