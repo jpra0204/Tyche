@@ -1,6 +1,6 @@
 # ADR-0037: The state database, numbered SQL migrations, and a journal stored as tagged JSON
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
