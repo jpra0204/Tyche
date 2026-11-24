@@ -1,6 +1,6 @@
 # ADR-0044: Reconciliation: exact positions and orders, the broker's cash
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-24)
 - **Date:** 2026-11-24
 
 ## Context
