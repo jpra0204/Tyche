@@ -38,7 +38,8 @@ src/tyche/
 │   │   ├── portfolio/        stage 4: budgets, sleeves, the proposed portfolio in weights
 │   │   ├── execution/        stage 6: account state, sleeve book, sizing, netting, orders, stops
 │   │   ├── reconciliation/   stage 7
-│   │   └── journal/          stage 8
+│   │   ├── journal/          stage 8
+│   │   └── alerts/           AlertCollector: the events Pablo must hear about, as alerts (ADR-0040)
 │   ├── risk/               stage 5: risk limits in three layers (ADR-0032), the gate's position rules (ADR-0033), the account rules and the drawdown halt (ADR-0035), the kill switch (ADR-0039)
 │   ├── engine/             the run loop shared by all three modes
 │   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
@@ -51,12 +52,13 @@ src/tyche/
 │   ├── brokers/            IBKR (later Kraken)
 │   ├── calendars/          exchange calendars
 │   ├── clocks/             wall clock
-│   ├── notifiers/          Discord webhook
+│   ├── notifiers/          Discord webhook, with urllib (ADR-0040)
+│   ├── logs/               JSON-lines logs, one file per UTC day, secrets redacted
 │   ├── llm/                claude-code (later ollama, anthropic-api)
 │   ├── storage/            the state database: migrations, codec, journal and checkpoint stores
 │   ├── kill_switch/        the KILL flag file (ADR-0039)
 │   └── reports/            report rendering
-├── config/               the workspace, config file schemas, loading, config hash
+├── config/               the workspace, config file schemas, loading, config hash, .env secrets
 │   └── templates/          files `tyche init` copies into a new workspace
 ├── runtime/              composition root: chooses adapters and builds the engine
 └── cli/                  the `tyche` command

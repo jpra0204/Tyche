@@ -26,6 +26,8 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 
    Add `--flatten` to sell everything at the next open; it asks you to confirm. You should see `Kill switch engaged`, your reason, what happens to holdings, and then either the orders the last run left working at the broker or `left no order working`.
 
+   Last comes a `Discord:` line. With a webhook set, the channel gets *Kill switch engaged* with your reason ([alerts](../user-guide/09-discord-alerts-and-logs.md)). If Discord cannot be reached, the line says why; the switch is engaged anyway.
+
    *If the command itself fails*, create the file by hand: `touch "$TYCHE_HOME/KILL"`. An empty `KILL` file engages the switch without flatten.
 
 2. **Read the list of working orders.** Each line is an order id, side, quantity, instrument, order type (and stop price), and time in force. Stops are your protection: leave them unless you mean to remove it. Market orders fill at the next open unless you cancel them.
@@ -46,7 +48,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 
    It shows the kill switch, if engaged, and the drawdown halt, if the last run's state carries one, with when and why. **Lifting a halt forgets the peak:** the next close becomes the new peak, and the drawdown kill counts from there. Answer `y` only if you mean it.
 
-2. **Expected result:** `Lifted the kill switch` (and/or `the drawdown halt`), then `Recorded as run resume-<time> in the state database` once paper has run, and `The next decision trades normally`. The `KILL` file is gone.
+2. **Expected result:** `Lifted the kill switch` (and/or `the drawdown halt`), then `Recorded as run resume-<time> in the state database` once paper has run, and `The next decision trades normally`. The `KILL` file is gone. With a webhook set, the channel gets *Trading resumed*.
 
 3. **Confirm.** `uv run tyche resume --reason check` now says `Nothing to resume`. If you resumed after a flatten, the next decision rebuilds positions from cash, with the usual risk limits.
 
@@ -57,6 +59,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 | `no workspace at …` | Wrong folder. Give `--home` with the real workspace, the one with `config/tyche.toml`. |
 | `Could not read state/tyche.db` after `tyche kill` | The switch is still engaged: the flag is written first. Working orders are unknown, so check them in IBKR's app. |
 | `the state database cannot be read, so a drawdown halt cannot be ruled out` | `tyche resume` refused, and trading stays stopped. Fix the database first ([state database](../developer-guide/state-database.md)). Deleting `KILL` by hand would release only the kill switch, not a halt. |
+| `Discord: … not sent: …` | The kill or resume itself worked; only the message failed. The log in `logs/` has it. See [if it did not work](../user-guide/09-discord-alerts-and-logs.md#if-it-did-not-work). |
 | `changed since you confirmed` | Something changed the switch or the state while you were reading. Run `tyche resume` again and read what it shows. |
 | `check this machine's clock` | The last saved state is newer than this computer's clock. Fix the clock; nothing was written. |
 | The `KILL` file reads as `engaged without flatten` with a reason saying it is unreadable | The file was edited by hand and is not valid. That is safe: no new orders, nothing sold. Run `tyche kill` (with `--flatten` if you meant it) to rewrite it. |

@@ -36,6 +36,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Circuit breakers and latches](circuit-breakers.md) | Watch the whole account, trip at a limit, and stay tripped until a person resets it; let a person trip it too, with a switch that fails closed |
 | [Checkpoints](checkpoints.md) | Save what a run did, whole and checked, when it ends; rebuild what the market says from the cache; prove it by cutting a run in two |
 | [Schema migrations and an append-only log](schema-migrations.md) | Number every change to the tables and never edit a shipped one; make every stored row say what it is and how it was written |
+| [Notifications outside the trading path](notifications-outside-the-trading-path.md) | Decide what to tell a person as plain values inside the system, send it at the edge after the work, and never let a failed message stop the work; secrets as types, redacted at the last moment |
 
 ## Planned
 

@@ -4,6 +4,7 @@ Commands are thin: they parse options, call one function elsewhere in Tyche, and
 its result or error into text and an exit code. No logic lives here.
 """
 
+import logging
 import os
 from collections.abc import Mapping
 from datetime import datetime
@@ -21,7 +22,9 @@ from tyche.config import (
     WorkspaceError,
     init_workspace,
     load_config,
+    load_secrets,
     load_sweep,
+    readable_by_others,
     resolve_home,
 )
 from tyche.core.backtest import (
@@ -71,6 +74,14 @@ from tyche.runtime.kill_switch import (
     resume,
     status,
 )
+from tyche.runtime.logs import open_logs
+from tyche.runtime.notify import (
+    ChannelCheckError,
+    Delivery,
+    check_channel,
+    notify_kill,
+    notify_resume,
+)
 from tyche.runtime.profiles import (
     PROFILES_FILE,
     ProfileRun,
@@ -107,6 +118,12 @@ config_app = typer.Typer(
 )
 app.add_typer(config_app, name="config")
 
+notify_app = typer.Typer(
+    help="Check the Discord channel that receives alerts.",
+    no_args_is_help=True,
+)
+app.add_typer(notify_app, name="notify")
+
 data_app = typer.Typer(
     help="Fetch market data into the workspace.",
     no_args_is_help=True,
@@ -114,6 +131,8 @@ data_app = typer.Typer(
 app.add_typer(data_app, name="data")
 
 MAX_ISSUES_SHOWN = 10
+
+_log = logging.getLogger("tyche.cli")
 
 RiskProfileOption = Annotated[
     str,
@@ -134,6 +153,7 @@ HomeOption = Annotated[
 
 
 def _fail(message: str) -> NoReturn:
+    _log.error("command failed: %s", message)
     typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(code=1)
 
@@ -192,8 +212,10 @@ def config_check(
     """Validate the workspace configuration and show its fingerprint."""
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "config check")
         config = load_config(workspace, risk_profile)
         configured = build_strategies(config)
+        secrets = load_secrets(workspace.env_file, os.environ)
     except (WorkspaceError, ConfigError) as error:
         _fail(str(error))
 
@@ -243,6 +265,17 @@ def config_check(
     if cash:
         typer.echo(f"    cash: {cash}")
     typer.echo(f"  Config hash:    {config.config_hash}")
+    webhook = (
+        "set (`tyche notify test` checks it)"
+        if secrets.discord_webhook_url is not None
+        else "not set: alerts are not sent"
+    )
+    typer.echo(f"  Secrets:        Discord webhook {webhook}")
+    if readable_by_others(workspace.env_file):
+        typer.echo(
+            f"  Warning: other users can read {workspace.relative(workspace.env_file)}; "
+            f"make it private with: chmod 600 {workspace.env_file}"
+        )
 
 
 @data_app.command("fetch")
@@ -292,6 +325,7 @@ def data_fetch(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "data fetch")
         config = load_config(workspace)
         instruments = [
             instrument_for(symbol, exchange, asset_class, config.market_profile)
@@ -373,6 +407,7 @@ def backtest(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "backtest")
         config = load_config(workspace, risk_profile)
         outcome = run_configured_backtest(
             config, first.date(), last.date() if last is not None else None
@@ -466,6 +501,7 @@ def walk_forward(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "walk-forward")
         config = load_config(workspace, risk_profile)
         spec = load_sweep(config, sweep) if sweep is not None else None
         scheme = FoldScheme(train_years, test_years, anchored=not rolling)
@@ -544,6 +580,7 @@ def sweep(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "sweep")
         config = load_config(workspace, risk_profile)
         spec = load_sweep(config, name)
         outcome = run_configured_sweep(
@@ -644,6 +681,7 @@ def capital(
             positions=positions,
         )
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "capital")
         config = load_config(workspace, risk_profile)
         outcome = run_configured_capital(
             config,
@@ -711,6 +749,7 @@ def compare_profiles(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "compare-profiles")
         configs = chosen_profiles(workspace, tuple(risk_profiles or ()))
         typer.echo(
             f"Comparing {len(configs)} risk profiles: "
@@ -778,6 +817,7 @@ def report(
     """
     try:
         workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "report")
     except WorkspaceError as error:
         _fail(str(error))
     folders = [
@@ -844,9 +884,15 @@ def kill(
             "Sell every holding at the next decision, cancelling each stop first?", abort=True
         )
     outcome = engage_kill(workspace, reason, flatten=flatten)
+    _open_logs(workspace, "kill", flatten=flatten)  # after the flag: nothing may delay it
     current = outcome.status
     if current.kill is None:  # cannot happen: the flag was just written or was there
         _fail(f"the kill switch at {workspace.kill_file} does not read as engaged")
+    _log.warning(
+        "kill switch %s",
+        "engaged" if outcome.changed else "already engaged",
+        extra={"fields": {"reason": current.kill.reason, "flatten": current.kill.flatten}},
+    )
     verb = "engaged" if outcome.changed else "was already engaged"
     typer.echo(f"Kill switch {verb}: {workspace.kill_file}")
     for line in _describe_kill(current.kill):
@@ -855,6 +901,8 @@ def kill(
         typer.echo("  It already flattens; only `tyche resume` releases it.")
     for line in _describe_status(current, workspace.relative(workspace.state_database)):
         typer.echo(line)
+    if outcome.changed:
+        _said(notify_kill(workspace, current.kill, environ=os.environ, code_version=__version__))
 
 
 @app.command("resume")
@@ -872,6 +920,7 @@ def resume_trading(
     database, with a new peak from the next close; the KILL file is removed last.
     """
     workspace = _existing_workspace(home)
+    _open_logs(workspace, "resume")
     current = status(workspace)
     if current.kill is not None:
         typer.echo(f"Kill switch engaged: {workspace.kill_file}")
@@ -907,6 +956,53 @@ def resume_trading(
     if outcome.run_id is not None:
         typer.echo(f"Recorded as run {outcome.run_id} in the state database.")
     typer.echo("The next decision trades normally.")
+    _log.warning(
+        "trading resumed",
+        extra={
+            "fields": {
+                "reason": reason,
+                "kill_released": outcome.released is not None,
+                "halt_lifted": outcome.lifted is not None,
+                "run_id": outcome.run_id,
+            }
+        },
+    )
+    delivery = notify_resume(
+        workspace,
+        reason,
+        released=outcome.released,
+        lifted=outcome.lifted,
+        environ=os.environ,
+        code_version=__version__,
+    )
+    _said(delivery)
+
+
+@notify_app.command("test")
+def notify_test(home: HomeOption = None) -> None:
+    """Send a test message to the Discord channel in DISCORD_WEBHOOK_URL.
+
+    Use it after creating or changing the webhook. Nothing happens in trading.
+    """
+    workspace = _existing_workspace(home)
+    _open_logs(workspace, "notify test")
+    try:
+        check_channel(workspace, environ=os.environ, code_version=__version__)
+    except ChannelCheckError as error:
+        _fail(str(error))
+    typer.echo("Discord: test message sent. Check the channel.")
+
+
+def _open_logs(workspace: Workspace, command: str, **fields: object) -> None:
+    """Send this command's logs to the workspace's daily file. Never fails the command."""
+    off = open_logs(workspace, command, environ=os.environ, code_version=__version__, **fields)
+    if off is not None and off != "no workspace":
+        typer.echo(f"Warning: {off}", err=True)
+
+
+def _said(delivery: Delivery) -> None:
+    """Say what became of an alert. A failure is a warning: the command still worked."""
+    typer.echo(delivery.describe(), err=bool(delivery.failures))
 
 
 def _existing_workspace(home: Path | None) -> Workspace:
@@ -1277,4 +1373,8 @@ def _count(number: int, noun: str) -> str:
 
 def main() -> None:
     """Entry point for the ``tyche`` console script and ``python -m tyche``."""
-    app(prog_name="tyche")
+    try:
+        app(prog_name="tyche")
+    except Exception:
+        _log.exception("command crashed")
+        raise

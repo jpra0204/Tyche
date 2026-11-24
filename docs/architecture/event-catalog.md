@@ -120,5 +120,5 @@ The `client_order_id` is derived from the decision that created the order: `<dec
 ## What is deliberately not an event
 
 - **Agent activity.** Research notes and proposals are files in the workspace, not events. Agents run offline and have no access to the bus.
-- **Notifications.** The notifier subscribes to the events above and formats messages. There is no `NotificationEvent`, so nothing can ask the notifier to say something that did not happen.
+- **Notifications.** `AlertCollector` subscribes to the events above and turns some of them into alerts ([ADR-0040](../adr/0040-logs-secrets-and-alerts.md)): a `RiskEvent` carrying an `AccountTrigger` (the daily loss limit or the drawdown kill, not routine cuts), the first `ApprovedPortfolioEvent` of a run carrying the kill switch, and every `DataQualityEvent` of a run, as one alert. The runtime sends them through the `Notifier` port after the run, never from inside a handler. There is no `NotificationEvent`, so nothing can ask the notifier to say something that did not happen.
 - **Configuration changes.** Config is loaded and validated once at startup. Changing the risk profile or a strategy's state is a CLI command that writes to the database and takes effect on the next run; it is recorded in the journal as an audit entry.
