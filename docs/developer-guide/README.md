@@ -15,6 +15,7 @@ For Pablo as a developer, and for any Claude Code session working on the code.
 | [The state database](state-database.md) | `state/tyche.db`: how it is opened, the journal table, adding a migration, and changing an event that is stored |
 | [How to add a notifier](how-to-add-a-notifier.md) | How alerts are made from events and sent after a run; writing a `Notifier`, its secret and its tests |
 | [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md) | Commissions, fractional shares, cash-account settlement and currency conversion, checked against IBKR's pages and dated |
+| [IBKR: the API, orders and the paper account](ibkr-orders-and-paper-account.md) | `ib_async`, gateway ports, paper and live accounts, market-on-open orders, GTC stops, order ids and references, pacing, FINRA's fee from 2027, and what to confirm on the paper account; checked and dated |
 
 For the end-to-end flow of an event from data to fill, see the [system overview](../architecture/system-overview.md#5-the-event-flow) and the [event catalog](../architecture/event-catalog.md).
 

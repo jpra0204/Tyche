@@ -38,6 +38,8 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `AlertCollector` and the alert builders in `tyche.core.pipeline.alerts`: the daily loss limit and the drawdown kill, the kill switch once per run, a run's data problems as one alert, a failed run. Routine risk cuts are not alerts. Paper runs send them from PR 14; backtests never do.
 - `tyche kill` and `tyche resume` post an alert when a webhook is set, and print what became of it; a Discord failure never fails them. `tyche notify test` posts a test message.
 - Secrets from `.env` (`tyche.config.load_secrets`), read with the standard library: a strict `KEY=value` format, known keys only, the process environment winning, values as `SecretStr`. `tyche config check` reports the webhook and warns when `.env` is readable by other users; a malformed `DISCORD_WEBHOOK_URL` fails it.
+- Developer guide: IBKR's API, orders and the paper account (Phase 2, PR 10): `ib_async`, gateway ports, paper and live accounts, market-on-open orders, GTC stops, order ids and references, pacing, cash-account settlement re-read, FINRA's fee from 2027, and seven checks for the paper account, all read on 2026-11-23. ADR-0041 proposes how `IBKRBroker` uses them.
+- The kill-switch runbook gives IBKR's steps for cancelling one order, and warns that IBKR Mobile's **Cancel Orders** cancels the protective stops too.
 - Structured logs: every command run on a workspace writes JSON lines to `logs/<UTC date>.jsonl` (folder `0700`, files `0600`), with every `.env` secret and any Discord webhook URL redacted (`tyche.adapters.logs`).
 - User guide: Discord alerts, secrets and logs. Developer guide: how to add a notifier. Learning note: notifications outside the trading path.
 

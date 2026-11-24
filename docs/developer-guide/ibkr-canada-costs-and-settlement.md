@@ -1,6 +1,6 @@
 # IBKR Canada: costs and settlement for US stocks and ETFs
 
-**Checked on 2026-11-17** against IBKR's own pages, listed under [Sources](#sources), and **re-checked on 2026-11-22** for PR 22: the commission page's Fixed, Tiered and third-party figures were unchanged, and the exchange-fee figures in section 1 were added. Nothing here is from memory. IBKR may change any of it at any time; when a number here is used in code, the code cites this page and its date. Re-check before Phase 2 (paper trading) and before going live.
+**Checked on 2026-11-17** against IBKR's own pages, listed under [Sources](#sources), and **re-checked on 2026-11-22** for PR 22: the commission page's Fixed, Tiered and third-party figures were unchanged, and the exchange-fee figures in section 1 were added. **Re-checked on 2026-11-23** for Phase 2, PR 10: the commission page's Fixed, Tiered, regulatory, clearing and pass-through figures were unchanged; FINRA's fee after its holiday and the settlement FAQs are now on [IBKR: the API, orders and the paper account](ibkr-orders-and-paper-account.md). Nothing here is from memory. IBKR may change any of it at any time; when a number here is used in code, the code cites this page and its date. Re-check before Phase 2 (paper trading) and before going live.
 
 This page records facts. The modelling choices built on them are in [ADR-0020](../adr/0020-cost-and-settlement-model.md). The rates Tyche uses live in the workspace, in `config/costs/US.toml`, with the date they were checked; `tyche config check` prints that date.
 
@@ -52,7 +52,7 @@ Two of the page's footnotes are easy to misread: "Maximum 0.5% of trade value" b
 | Fee | Amount (as published) | Applies to |
 |---|---|---|
 | SEC transaction fee | USD 0.0000206 × value of sales | Sales only |
-| FINRA Trading Activity Fee | USD 0.00 × quantity sold, under a fee holiday for trades from 2026-10-01 to 2026-12-31 | Sales only. The rate after the holiday is not published on the page |
+| FINRA Trading Activity Fee | USD 0.00 × quantity sold, under a fee holiday for trades from 2026-10-01 to 2026-12-31 | Sales only. The rate after the holiday is not published on IBKR's page. FINRA's filings set it at **USD 0.000195 a share sold, at most USD 9.79 a trade, from 2027-01-01 through 2028** ([section 9 of the API and paper page](ibkr-orders-and-paper-account.md#9-finras-trading-activity-fee-from-2027)) |
 | FINRA Consolidated Audit Trail fees | USD 0.000003 × quantity | Every trade. FINRA re-evaluates these twice a year |
 
 **Other rules on the page that matter to Tyche:**
@@ -102,7 +102,7 @@ Under Tiered the minimum is USD 0.35 plus exchange and clearing fees, so small o
 | Consequence of a violation: the account is put on "Cash Up Front" for **90 days**, meaning new orders may use fully settled funds only | Free riding FAQs |
 | A margin account may trade with unsettled funds, but not withdraw them before settlement | Free riding rule FAQ |
 
-**Two things these pages do not settle**, to confirm in the paper account in Phase 2 or with IBKR support:
+**Two things these pages do not settle.** They were to be confirmed on the paper account in Phase 2, but paper trades never settle at a clearing house, so only IBKR support or the live account can answer them ([section 8 of the API and paper page](ibkr-orders-and-paper-account.md#8-settlement-in-a-cash-account-read-again), re-read 2026-11-23):
 
 1. **The pages disagree on buying with unsettled proceeds.** The buying-power FAQ says a cash account trades only with settled cash. The free-riding FAQ's examples show an account selling ABC and buying XYZ with the proceeds on the same day. ADR-0020 takes the stricter reading.
 2. **They are IBKR-wide pages and do not name IBKR Canada.** They do not say whether the Canadian entity applies exactly the same checks, or when on the settlement date the proceeds count as settled.
