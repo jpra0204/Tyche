@@ -55,6 +55,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0042](0042-ibkr-paper-adapter-at-most-once-orders.md) | The IBKR paper adapter: orders sent at most once | Accepted (Pablo, 2026-11-24) |
 | [0043](0043-daily-feed-and-the-catch-up-rule.md) | The daily feed and the catch-up rule | Accepted (Pablo, 2026-11-24) |
 | [0044](0044-reconciliation-exact-positions-broker-cash.md) | Reconciliation: exact positions and orders, the broker's cash | Accepted (Pablo, 2026-11-24) |
+| [0045](0045-the-paper-cycle.md) | The paper cycle | Proposed |
 
 ## Template
 
