@@ -32,7 +32,12 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 
 2. **Read the list of working orders.** Each line is an order id, side, quantity, instrument, order type (and stop price), and time in force. Stops are your protection: leave them unless you mean to remove it. Market orders fill at the next open unless you cancel them.
 
-3. **If you want a working market order gone, cancel it in IBKR's own app.** Find it by the order id, or by instrument, side and quantity, and cancel it there. *The exact steps in IBKR's apps are written in Phase 2, PR 10, once checked on the paper account.* Tyche never cancels for you: only the decision cycle talks to the broker.
+3. **If you want a working market order gone, cancel it in IBKR's own app.** Find it by instrument, side and quantity, and cancel that one order. Tyche never cancels for you: only the decision cycle talks to the broker.
+
+   - **Client Portal** (the website): **Trade** menu, then **Orders & Trades**. On the order's row, click the **pencil icon**, then **Cancel Order** in the ticket on the right.
+   - **IBKR Mobile:** do **not** use **Cancel Orders** in the Orders screen's menu. It cancels *every* working order, Tyche's protective stops included. Use Client Portal for a single order.
+
+   *These steps are from IBKR's FAQs, read on 2026-11-23 ([IBKR: the API, orders and the paper account](../developer-guide/ibkr-orders-and-paper-account.md#11-cancelling-an-order-in-ibkrs-own-apps)). They are confirmed on the paper account, including whether the apps can cancel an order Tyche placed through the gateway, before paper trading starts (PR 14).*
 
 4. **Confirm.** `cat "$TYCHE_HOME/KILL"` shows `reason`, `flatten` and `engaged_at`. Running `uv run tyche kill` again changes nothing and says `was already engaged`. A switch that flattens is never turned back into one that does not; only resuming releases it.
 
