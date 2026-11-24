@@ -1,10 +1,19 @@
 """Reading secrets from ``.env`` with the standard library (ADR-0040)."""
 
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
-from tyche.config import EnvFileError, Secrets, load_secrets, parse_env, readable_by_others
+from tyche.config import (
+    EnvFileError,
+    Secrets,
+    ibkr_connection,
+    load_secrets,
+    parse_env,
+    readable_by_others,
+)
 
 WEBHOOK = "https://discord.com/api/webhooks/123456789012345678/abc-DEF_123"
 OTHER_WEBHOOK = "https://discord.com/api/webhooks/987654321098765432/zzz"
@@ -110,7 +119,60 @@ class TestLoad:
 
     def test_the_new_workspace_template_is_valid(self) -> None:
         template = Path(__file__).parents[2] / "src/tyche/config/templates/env.example"
-        assert load_secrets(template, {}) == Secrets()
+        assert load_secrets(template, {}) == Secrets(ibkr_host="127.0.0.1", ibkr_client_id=1)
+
+
+IBKR_ENVIRON: Mapping[str, str] = MappingProxyType(
+    {
+        "IBKR_HOST": "127.0.0.1",
+        "IBKR_PORT": "4002",
+        "IBKR_CLIENT_ID": "7",
+        "IBKR_ACCOUNT_ID": "TEST-PAPER-1",
+    }
+)
+"""A complete IB Gateway connection, with a made-up account id."""
+
+
+class TestIbkr:
+    def test_reads_the_connection(self, tmp_path: Path) -> None:
+        secrets = load_secrets(tmp_path / ".env", IBKR_ENVIRON)
+        connection = ibkr_connection(secrets)
+        assert (connection.host, connection.port, connection.client_id) == ("127.0.0.1", 4002, 7)
+        assert connection.account_id.get_secret_value() == "TEST-PAPER-1"
+        assert "TEST-PAPER-1" not in repr(connection)
+
+    def test_only_the_account_id_is_a_secret(self, tmp_path: Path) -> None:
+        assert load_secrets(tmp_path / ".env", IBKR_ENVIRON).values() == ("TEST-PAPER-1",)
+
+    @pytest.mark.parametrize("missing", list(IBKR_ENVIRON))
+    def test_every_missing_key_is_named(self, tmp_path: Path, missing: str) -> None:
+        environ = {k: v for k, v in IBKR_ENVIRON.items() if k != missing}
+        with pytest.raises(EnvFileError, match=f"needs {missing} in .env"):
+            ibkr_connection(load_secrets(tmp_path / ".env", environ))
+
+    def test_nothing_set_names_every_key(self, tmp_path: Path) -> None:
+        every = "IBKR_HOST, IBKR_PORT, IBKR_CLIENT_ID, IBKR_ACCOUNT_ID"
+        with pytest.raises(EnvFileError, match=every):
+            ibkr_connection(load_secrets(tmp_path / ".env", {}))
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("IBKR_PORT", "0"),
+            ("IBKR_PORT", "65536"),
+            ("IBKR_PORT", "40O2"),
+            ("IBKR_PORT", "-1"),
+            ("IBKR_PORT", "\uff14\uff10\uff10\uff12"),  # full-width digits
+            ("IBKR_CLIENT_ID", "0"),
+            ("IBKR_CLIENT_ID", "1.5"),
+            ("IBKR_CLIENT_ID", "2147483648"),
+        ],
+    )
+    def test_refuses_a_port_or_client_id_out_of_range(
+        self, tmp_path: Path, key: str, value: str
+    ) -> None:
+        with pytest.raises(EnvFileError, match=f"{key} must be a whole number"):
+            load_secrets(tmp_path / ".env", {**IBKR_ENVIRON, key: value})
 
 
 class TestSecrets:

@@ -2,7 +2,7 @@
 
 **Checked on 2026-11-23** against the pages listed under [Sources](#sources), for Phase 2, PR 10. Nothing here is from memory. Where IBKR's own pages disagree, or say nothing, the page says so, and [section 10](#10-to-confirm-on-the-paper-account) lists what to confirm on the paper account. Re-check before PR 11 if a month has passed, and before going live.
 
-This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md), accepted on 2026-11-24. Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
+Section 12 adds what PR 11 read on 2026-11-24. This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md), accepted on 2026-11-24, and [ADR-0042](../adr/0042-ibkr-paper-adapter-at-most-once-orders.md), the adapter itself. Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
 
 ## 1. The client library: `ib_async`
 
@@ -165,6 +165,10 @@ Each item is something IBKR's pages leave open and that PR 11 builds on. **They 
 | 5 | A GTC sell stop shows its auto-expiry date (end of the next quarter), and survives an overnight gateway restart | Section 5 |
 | 6 | An order sent with an `orderRef` comes back with it on the open order, the execution and the completed order, after disconnecting and reconnecting | Section 6. The pages disagree on `orderRef` |
 | 7 | Cancelling a single order in Client Portal and in IBKR Mobile, step by step; and whether IBKR Mobile's **Cancel Orders** also cancels resting stops | Section 11 and the [kill-switch runbook](../runbooks/kill-switch.md) |
+| 8 | Each `XNAS` candidate (QQQ, TLT, IEF) resolves to exactly one stock contract without a listing-exchange code, and which code IBKR gives it (`test_every_candidate_resolves_to_one_contract` prints them). Add each code to `PRIMARY_EXCHANGES` once seen | Section 12. IBKR's pages give `ARCA` only |
+| 9 | Whether the paper account reports `SettledCashByDate`, and what it holds after a trade, since paper never settles | Section 12. `IBKRBroker.account()` refuses an account without it |
+| 10 | The currency of the commission report on a US trade in a CAD-based account | Section 12. A fill's commission must be in the trade's currency; another currency stops the run |
+| 11 | What status an order IBKR refuses ends in (`Inactive` or `Cancelled`), and its error message | Section 12. IBKR's page describes `Inactive` only as an order not yet transmitted |
 
 **Not confirmable on paper:** unsettled proceeds in a cash account (section 8), real opening-auction fills, and exchange fees.
 
@@ -176,6 +180,46 @@ Each item is something IBKR's pages leave open and that PR 11 builds on. **They 
 | IBKR Mobile (iPhone) | Account menu (head and shoulders, top left), **Transactions**, **Orders**, the three dots at the top right, **Cancel Orders**, then confirm. **This cancels all working orders**, which would include Tyche's protective stops | *How do I cancel all my open orders in IBKR Mobile for iPhone?* |
 
 A page for cancelling a *single* order in IBKR Mobile was not found. Orders Tyche places through the gateway are bound to its API client id (section 6); whether Client Portal and IBKR Mobile can cancel them is item 7 above.
+
+## 12. Read for PR 11
+
+**Read on 2026-11-24** in a browser, for the adapter ([ADR-0042](../adr/0042-ibkr-paper-adapter-at-most-once-orders.md)). IBKR's documentation refuses automated fetches.
+
+**Cash in the account**
+
+| Fact | Source |
+|---|---|
+| Account summary tags: `TotalCashValue` is "Total cash balance recognized at the time of trade + futures PNL"; `SettledCash` is cash "recognized at the time of settlement", less purchases at the time of trade, commissions, taxes and fees | TWS API, *Account Summary* |
+| `$LEDGER` relays the cash balance tags in the base currency only; `$LEDGER:ALL` in every currency | Same |
+| **`SettledCashByDate`** is "returned for each currency held in the account", plus `BASE`. Its value is `YYYYMMDD:amount` pairs joined by semicolons: the first is the settled cash available now, and later dates are **cumulative** values, so what settles on a date is its difference from the one before. TWS's own window shows the differences instead | TWS API, *Account Updates* |
+| Account values are sent at subscription, then on a position change, or every three minutes if a value changed | Same |
+
+**Orders and statuses**
+
+| Fact | Source |
+|---|---|
+| `tif`: the reference lists `DAY` and `GTC` and repeats IBKR's automatic GTC cancellations. `OPG` for market-on-open comes from IBKR's *Market on Open* page (section 4) | TWS API, `Order` reference |
+| `orderRef` is still described as "Intended for institutional customers only"; no length limit is stated | Same |
+| Statuses: `PendingSubmit` (transmitted, not yet confirmed), `PreSubmitted` (accepted by the system for simulated orders, or by an exchange, "yet to be elected"), `Submitted` (working), `Filled`, `PendingCancel` and `PreCancelled` (a cancel not yet confirmed; an execution may still arrive), `Cancelled` ("could occur unexpectedly when the destination has rejected your order"), `Inactive` (described only as an order being created and not yet transmitted), `WarnState` | TWS API, *Order Status* |
+| `ib_async` also counts `Inactive` among the finished states, beside `Filled`, `Cancelled` and `ApiCancelled` | `ib_async` 2.1.0, `order.py` |
+| After a fill, `execDetails` and a separate commission report arrive. The report holds `execId`, `commission`, `currency`, `realizedPnl`, `yield` and `yieldRedemptionDate`. Whether `commission` includes regulatory fees is not stated | TWS API, *Commission And Fees Report* |
+| `ib_async` gives an execution's time with a time zone, or in the gateway's zone if the gateway sent none and `IB.TimezoneTWS` is set | `ib_async` 2.1.0, `decoder.py` |
+
+**Contracts**
+
+| Fact | Source |
+|---|---|
+| A minimum contract is a `conId` and an exchange, or a symbol, security type, exchange, primary exchange and currency | TWS API, *The Contract Object* |
+| A stock or ETF is `secType` `STK`, exchange `SMART`. "For certain smart-routed stock that have the same symbol, currency and exchange, you would also need to specify the primary exchange"; it is "good practice to include for all stocks". The example: SPY with `primaryExchange` **`ARCA`** | TWS API, *Stocks* |
+| IBKR's codes for Nasdaq and NYSE listings were not found on the pages read. Tyche looks those up without one and requires a single match (check 8) | Not found |
+| `reqContractDetails` returns every match: none means unknown, several means ambiguous | `ib_async` 2.1.0, `ib.py` |
+
+**`tzdata`**
+
+| Fact | Source |
+|---|---|
+| `tzdata` 2025.3 was uploaded on 2025-12-13, after IANA release 2025c (2025-12-10); 2026.6 on 2026-10-28 | PyPI, *tzdata* release history |
+| Releases 2026a to 2026f change no rule for `America/New_York` or `America/Toronto`. 2026d changes the old `EST5EDT`-style names before 1966 only; the Canadian changes are in British Columbia, Alberta, the Northwest Territories and Manitoba | IANA, tzdb `NEWS` |
 
 ## Sources
 
@@ -205,6 +249,8 @@ All read on 2026-11-23. IBKR's pages were read in a browser; their FAQs carry no
 - FAQs: [Buying power less than available cash](https://www.interactivebrokers.com/support/faq/content/699740704), [Free riding rule](https://www.interactivebrokers.com/support/faq/content/1163245617), [Free riding violation](https://www.interactivebrokers.com/support/faq/content/699745149), [Unable to use cash after selling](https://www.interactivebrokers.com/support/faq/content/29079698), [Cash available for withdrawal](https://www.interactivebrokers.com/support/faq/content/32647712).
 - FAQ: [Market and stop orders outside RTH](https://www.interactivebrokers.com/support/faq/content/did-market-stop-order-u-35803691).
 - FAQs: [Orders & Trades in Client Portal](https://www.interactivebrokers.com/support/faq/content/38453132), [Cancel all open orders in IBKR Mobile](https://www.interactivebrokers.com/support/faq/content/cancel-all-open-orders-ibkr-181474102).
+
+**Read for PR 11** (2026-11-24): TWS API [Account Summary](https://www.interactivebrokers.com/docs/tws-api/doc/accounts/summary), [Account Updates](https://www.interactivebrokers.com/docs/tws-api/doc/accounts/updates), [Order Status](https://www.interactivebrokers.com/docs/tws-api/doc/order-management/order-status), [Commission And Fees Report](https://www.interactivebrokers.com/docs/tws-api/doc/order-management/commission-and-fees-report), [The Contract Object](https://www.interactivebrokers.com/docs/tws-api/doc/contracts/object), [Stocks](https://www.interactivebrokers.com/docs/tws-api/contracts/stocks) and the [Order reference](https://www.interactivebrokers.com/docs/tws-api/ref/order); IANA [tzdb NEWS](https://data.iana.org/time-zones/tzdb/NEWS); PyPI [tzdata](https://pypi.org/project/tzdata/#history); the installed `ib_async` 2.1.0 source.
 
 **FINRA**
 

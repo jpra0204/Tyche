@@ -25,7 +25,7 @@ the cost still held, to the last digit. Ten places is far below a cent; tax repo
 round to cents at the end.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
@@ -139,6 +139,52 @@ class Account:
     @classmethod
     def empty(cls) -> Account:
         return cls()
+
+    @classmethod
+    def reported(
+        cls,
+        *,
+        settled: Iterable[Money],
+        pending: Iterable[PendingCash],
+        positions: Iterable[Position],
+        marks: Mapping[Instrument, Money],
+    ) -> Account:
+        """An account as a broker reports it, for comparing with Tyche's own (PR 13).
+
+        Not built from fills: a broker's report is a snapshot, so it carries no realised
+        profit, no distributions and no applied fill ids. ``pending`` amounts are what
+        the broker says will settle on each date; their ``fill_id`` only labels them.
+
+        Raises:
+            LedgerError: a currency's settled cash is given twice, an instrument is held
+                twice, or a position has no mark (or a mark has no position, or is not a
+                positive price in the instrument's currency).
+        """
+        settled_by_currency: dict[Currency, Money] = {}
+        for amount in settled:
+            if amount.currency in settled_by_currency:
+                raise LedgerError(f"settled {amount.currency} cash is reported twice")
+            settled_by_currency[amount.currency] = amount
+        held: dict[Instrument, Position] = {}
+        for position in positions:
+            if position.instrument in held:
+                raise LedgerError(f"{position.instrument} is reported twice")
+            held[position.instrument] = position
+        if set(marks) != set(held):
+            missing = sorted(str(i) for i in set(held) - set(marks))
+            extra = sorted(str(i) for i in set(marks) - set(held))
+            raise LedgerError(
+                f"every position needs one mark: without a mark {missing}, not held {extra}"
+            )
+        for instrument, price in marks.items():
+            if price.currency is not instrument.currency or not price.is_positive:
+                raise LedgerError(f"cannot mark {instrument} at {price}")
+        return cls(
+            _settled=settled_by_currency,
+            _pending=tuple(pending),
+            _positions=held,
+            _marks=dict(marks),
+        )
 
     # --- reading -----------------------------------------------------------------
 

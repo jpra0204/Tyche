@@ -37,6 +37,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Checkpoints](checkpoints.md) | Save what a run did, whole and checked, when it ends; rebuild what the market says from the cache; prove it by cutting a run in two |
 | [Schema migrations and an append-only log](schema-migrations.md) | Number every change to the tables and never edit a shipped one; make every stored row say what it is and how it was written |
 | [Notifications outside the trading path](notifications-outside-the-trading-path.md) | Decide what to tell a person as plain values inside the system, send it at the edge after the work, and never let a failed message stop the work; secrets as types, redacted at the last moment |
+| [Orders sent at most once](at-most-once-orders.md) | Write down what you send before sending it, look for it after a failure, and never send it twice; keep the vendor's model behind a small translating layer |
 
 ## Planned
 

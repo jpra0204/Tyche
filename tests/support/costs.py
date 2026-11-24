@@ -29,7 +29,7 @@ US_COSTS = TradingCosts(
     ),
     regulatory_fees=RegulatoryFees(
         sec_fee_rate=Decimal("0.0000206"),
-        taf_per_share_sold=usd("0"),
+        taf_per_share_sold=usd("0.000195"),
         cat_per_share=usd("0.000003"),
     ),
     slippage_bps=Decimal(5),

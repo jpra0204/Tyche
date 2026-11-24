@@ -18,8 +18,10 @@ from tyche import __version__
 from tyche.config import (
     HOME_ENV_VAR,
     ConfigError,
+    EnvFileError,
     Workspace,
     WorkspaceError,
+    ibkr_connection,
     init_workspace,
     load_config,
     load_secrets,
@@ -271,6 +273,16 @@ def config_check(
         else "not set: alerts are not sent"
     )
     typer.echo(f"  Secrets:        Discord webhook {webhook}")
+    try:
+        gateway = ibkr_connection(secrets)
+    except EnvFileError as missing:
+        ibkr = f"not set, needed from the first paper run: {missing}"
+    else:
+        ibkr = (
+            f"{gateway.host}:{gateway.port}, client id {gateway.client_id}, "
+            "account id set (checked against the gateway at every connection)"
+        )
+    typer.echo(f"                  IB Gateway {ibkr}")
     if readable_by_others(workspace.env_file):
         typer.echo(
             f"  Warning: other users can read {workspace.relative(workspace.env_file)}; "

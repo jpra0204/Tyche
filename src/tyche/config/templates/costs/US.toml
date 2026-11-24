@@ -31,9 +31,12 @@ maximum_rate = "0.01"
 [regulatory_fees]
 # SEC transaction fee, as a fraction of the value of each sale.
 sec_fee_rate = "0.0000206"
-# FINRA Trading Activity Fee, per share sold. Zero under a fee holiday for trades from
-# 2026-10-01 to 2026-12-31; the rate after that is not published on IBKR's page yet.
-taf_per_share_sold = "0"
+# FINRA Trading Activity Fee, per share sold: USD 0.000195 for trades in 2027 and 2028
+# (SR-FINRA-2026-020, read 2026-11-23). It was paused for trades from 2026-10-01 to
+# 2026-12-31; a backtest applies one rate to all its history, and the normal rate is
+# the better figure for it (ADR-0041). The cap of USD 9.79 a trade is not modelled: it
+# binds only above about 50,000 shares sold at once.
+taf_per_share_sold = "0.000195"
 # FINRA Consolidated Audit Trail fees, per share, on buys and sells.
 cat_per_share = "0.000003"
 

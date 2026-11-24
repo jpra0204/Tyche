@@ -67,6 +67,7 @@ uv run tyche kill --reason "..." [--flatten]  # writes the KILL flag; never run 
 uv run tyche resume --reason "..."        # lifts the kill switch and the drawdown halt; Pablo's alone
 uv run tyche notify test                   # posts a test message to DISCORD_WEBHOOK_URL; never with Pablo's real .env
 uv run pytest -m network                   # opt-in tests against real services
+uv run pytest -m ibkr_paper                # opt-in, IB Gateway on the PAPER account only; see tests/adapters/brokers/ibkr/test_paper_account.py
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.
