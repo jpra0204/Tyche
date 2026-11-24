@@ -1,6 +1,6 @@
 # ADR-0043: The daily feed and the catch-up rule
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-24)
 - **Date:** 2026-11-24
 
 ## Context
