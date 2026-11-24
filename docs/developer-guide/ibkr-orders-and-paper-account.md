@@ -187,7 +187,7 @@ The four opt-in tests (`-m ibkr_paper`) against IB Gateway 10.50 logged in to th
 | 8 | **Every candidate resolves to exactly one contract**, the three `XNAS` ones (QQQ, TLT, IEF) included. Contract ids: SPY 756733, QQQ 320227571, IWM 9579970, EFA 13002510, EEM 6604766, TLT 15547841, IEF 15547844, GLD 51529211, VNQ 31230302 | The listing-exchange code IBKR gives the `XNAS` ones; the test prints only the contract id |
 | 9 | **Paper reports `SettledCashByDate`**, so `IBKRBroker.account()` works on it | What it holds after a trade |
 
-**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run.
+**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run, nor 12 and 13 (added by PR 13), which need a dividend on a held position.
 
 ## 11. Cancelling an order in IBKR's own apps
 
