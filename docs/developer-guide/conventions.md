@@ -30,7 +30,9 @@ Further rules checked in review:
 - **Config has two layers** ([ADR-0017](../adr/0017-config-schemas-at-the-boundary.md)). A pydantic file schema in `tyche.config` checks keys and types; a domain object in the core checks meaning. The core never imports pydantic. Integer and string fields are `StrictInt` and `StrictStr`.
 - **A new config setting changes three places together:** the file schema, the domain object and the template in `src/tyche/config/templates/`.
 - **Fail closed.** When something unexpected happens in the trading path, stop and alert. Do not guess and continue.
-- **No secrets in code, logs or tests.** Log an account id or URL only in a masked form.
+- **No secrets in code, logs or tests.** Secrets come from `.env` through `tyche.config.load_secrets` as `SecretStr`s, and an error message never shows one. The log formatter redacts every `.env` secret and any Discord webhook URL as a second line of defence; do not rely on it as the first ([ADR-0040](../adr/0040-logs-secrets-and-alerts.md)).
+- **Log through `logging.getLogger(__name__)`,** under `tyche`. Put facts in named fields (`extra={"fields": {...}}`), not only in the message. The core does not log: it publishes events, and the journal records them.
+- **A notification never stops anything.** Catch `NotifierError`, log it, carry on.
 - **Comments explain why,** not what. Public modules, classes and functions have a docstring.
 - **A dependency is added in the PR that first uses it,** with a line in the PR description saying why. Anything that costs money is flagged to Pablo before it is added.
 

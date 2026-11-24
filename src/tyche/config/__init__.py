@@ -18,10 +18,23 @@ Available now:
 * ``load_sweep``: reads a parameter sweep, ``config/sweeps/<name>.toml``, as a
   ``SweepSpec`` (ADR-0030). Sweep files are read on demand and are not part of the
   config hash.
+* ``load_secrets``: reads the secrets in the workspace's ``.env`` with the standard
+  library, the process environment winning, as a ``Secrets`` whose values never print
+  (ADR-0040). Unknown keys and a malformed webhook URL raise ``EnvFileError``.
 
 The file schemas live here; the core only receives domain objects (ADR-0017).
 """
 
+from tyche.config.env import (
+    DISCORD_WEBHOOK_URL,
+    KNOWN_KEYS,
+    SECRET_KEYS,
+    EnvFileError,
+    Secrets,
+    load_secrets,
+    parse_env,
+    readable_by_others,
+)
 from tyche.config.exchanges import KNOWN_EXCHANGES, ExchangeInfo
 from tyche.config.loader import (
     SCHEMA_VERSION,
@@ -51,14 +64,19 @@ from tyche.config.workspace import (
 
 __all__ = [
     "DEFAULT_HOME",
+    "DISCORD_WEBHOOK_URL",
     "HOME_ENV_VAR",
     "KNOWN_EXCHANGES",
+    "KNOWN_KEYS",
     "SCHEMA_VERSION",
+    "SECRET_KEYS",
     "BacktestFile",
     "ConfigError",
     "CostsFile",
+    "EnvFileError",
     "ExchangeInfo",
     "MarketProfileFile",
+    "Secrets",
     "StrategyFile",
     "StrategySpec",
     "SweepFile",
@@ -71,6 +89,9 @@ __all__ = [
     "config_hash",
     "init_workspace",
     "load_config",
+    "load_secrets",
     "load_sweep",
+    "parse_env",
+    "readable_by_others",
     "resolve_home",
 ]

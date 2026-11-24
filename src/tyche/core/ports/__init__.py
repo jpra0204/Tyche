@@ -5,9 +5,10 @@ has to provide the same methods. Implementations that touch the outside world li
 ``tyche.adapters``; the simulated ones are pure code and live in ``tyche.core.sim``.
 
 Available now: ``Clock`` and ``PacedClock``, ``Calendar``, ``DataProvider``, ``Feed``,
-``Broker``, ``JournalStore``, ``CheckpointStore`` and ``KillSwitch``.
+``Broker``, ``JournalStore``, ``CheckpointStore``, ``KillSwitch`` and ``Notifier``
+(with ``Alert``, ADR-0040).
 
-Planned (Phase 2 onward): ``Notifier``, ``LLMProvider`` and the other storage ports.
+Planned: ``LLMProvider`` and the other storage ports.
 """
 
 from tyche.core.ports.broker import Broker
@@ -18,8 +19,11 @@ from tyche.core.ports.data import DataError, DataProvider
 from tyche.core.ports.feed import Feed, FeedInput
 from tyche.core.ports.journal import JournalStore, JournalStoreError
 from tyche.core.ports.kill_switch import KillSwitch
+from tyche.core.ports.notifier import Alert, AlertKind, Notifier, NotifierError
 
 __all__ = [
+    "Alert",
+    "AlertKind",
     "Broker",
     "Calendar",
     "CalendarError",
@@ -33,6 +37,8 @@ __all__ = [
     "JournalStore",
     "JournalStoreError",
     "KillSwitch",
+    "Notifier",
+    "NotifierError",
     "OutOfCalendarRangeError",
     "PacedClock",
 ]

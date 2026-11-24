@@ -34,6 +34,12 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `tyche resume --reason [--yes]`: the manual restart. It shows what it lifts and asks. It journals a `ResumeEvent` as a run of its own (`resume-<time>`). Under a drawdown halt, it also saves a checkpoint with the halt lifted and the peak forgotten (`AccountRulesState.resumed()`). It removes the flag last.
 - `run_backtest(..., kill_switch=)`, for tests; backtest commands read no switch.
 - Runbook: the kill switch. The circuit-breakers learning note covers a breaker a person trips.
+- Discord alerts (Phase 2, PR 9, ADR-0040): the `Notifier` port with `Alert`, `AlertKind` and `NotifierError` in `tyche.core.ports`; `DiscordWebhookNotifier` in `tyche.adapters.notifiers`, with the standard library's `urllib`. It waits for Discord's confirmation (`?wait=true`), mentions nobody, follows the rate-limit headers and a `429`'s `retry_after` (up to 30 s), and stops using a webhook Discord refuses (401, 403, 404).
+- `AlertCollector` and the alert builders in `tyche.core.pipeline.alerts`: the daily loss limit and the drawdown kill, the kill switch once per run, a run's data problems as one alert, a failed run. Routine risk cuts are not alerts. Paper runs send them from PR 14; backtests never do.
+- `tyche kill` and `tyche resume` post an alert when a webhook is set, and print what became of it; a Discord failure never fails them. `tyche notify test` posts a test message.
+- Secrets from `.env` (`tyche.config.load_secrets`), read with the standard library: a strict `KEY=value` format, known keys only, the process environment winning, values as `SecretStr`. `tyche config check` reports the webhook and warns when `.env` is readable by other users; a malformed `DISCORD_WEBHOOK_URL` fails it.
+- Structured logs: every command run on a workspace writes JSON lines to `logs/<UTC date>.jsonl` (folder `0700`, files `0600`), with every `.env` secret and any Discord webhook URL redacted (`tyche.adapters.logs`).
+- User guide: Discord alerts, secrets and logs. Developer guide: how to add a notifier. Learning note: notifications outside the trading path.
 
 ### Changed
 

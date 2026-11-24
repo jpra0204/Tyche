@@ -103,6 +103,11 @@ class Workspace:
         return self.state_dir / "tyche.db"
 
     @property
+    def logs_dir(self) -> Path:
+        """Structured logs, one file per UTC day (ADR-0040). Gitignored."""
+        return self.root / "logs"
+
+    @property
     def kill_file(self) -> Path:
         """The kill switch: while this file exists, Tyche sends no new orders (ADR-0039).
 

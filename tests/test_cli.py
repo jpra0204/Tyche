@@ -10,9 +10,10 @@ from dataclasses import replace
 from datetime import date
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
+from pydantic import SecretStr
 from typer.testing import CliRunner
 
 import tyche
@@ -27,6 +28,7 @@ from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
 from tyche.adapters.kill_switch import FlagFileKillSwitch
 from tyche.cli import app
 from tyche.config.workspace import Workspace
+from tyche.core.ports import Alert, AlertKind, NotifierError
 from tyche.runtime import data as runtime_data
 from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
 from tyche.runtime.report import ReportError
@@ -946,3 +948,190 @@ class TestKillAndResume:
         result = runner.invoke(app, ["resume"])
 
         assert result.exit_code == 2
+
+
+WEBHOOK = "https://discord.com/api/webhooks/123456789012345678/secret-token"
+
+
+class RecordingNotifier:
+    """Stands in for the Discord notifier: records what it is asked to send."""
+
+    sent: ClassVar[list[Alert]] = []
+    failure: ClassVar[str | None] = None
+
+    def __init__(self, webhook_url: SecretStr, *, code_version: str) -> None:
+        assert webhook_url.get_secret_value() == WEBHOOK
+        assert code_version == tyche.__version__
+
+    def send(self, alert: Alert) -> None:
+        if RecordingNotifier.failure is not None:
+            raise NotifierError(RecordingNotifier.failure)
+        RecordingNotifier.sent.append(alert)
+
+
+class TestAlertsAndLogs:
+    """Discord alerts from `tyche kill`, `tyche resume` and `tyche notify test`; logs (ADR-0040)."""
+
+    @pytest.fixture(autouse=True)
+    def recording(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        RecordingNotifier.sent = []
+        RecordingNotifier.failure = None
+        monkeypatch.setattr("tyche.runtime.notify.DiscordWebhookNotifier", RecordingNotifier)
+
+    def workspace(self, *, webhook: bool = True) -> Workspace:
+        runner.invoke(app, ["init"])
+        workspace = Workspace(Path.home() / "tyche-workspace")
+        if webhook:
+            text = workspace.env_file.read_text().replace(
+                "DISCORD_WEBHOOK_URL=", f"DISCORD_WEBHOOK_URL={WEBHOOK}"
+            )
+            workspace.env_file.write_text(text)
+        return workspace
+
+    def logged(self, workspace: Workspace) -> list[dict[str, Any]]:
+        lines: list[dict[str, Any]] = []
+        for path in sorted(workspace.logs_dir.glob("*.jsonl")):
+            text = path.read_text()
+            assert "secret-token" not in text
+            lines.extend(json.loads(line) for line in text.splitlines())
+        return lines
+
+    def test_kill_posts_an_alert(self, home: Path) -> None:
+        self.workspace()
+
+        result = runner.invoke(app, ["kill", "--reason", "looks wrong"])
+
+        assert result.exit_code == 0, result.output
+        assert "Discord: 1 alert sent." in result.stdout
+        [alert] = RecordingNotifier.sent
+        assert alert.kind is AlertKind.KILL_SWITCH
+        assert alert.lines[0] == "Reason: looks wrong"
+
+    def test_kill_again_unchanged_posts_nothing(self, home: Path) -> None:
+        self.workspace()
+        runner.invoke(app, ["kill"])
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert len(RecordingNotifier.sent) == 1
+        assert "Discord" not in result.stdout
+
+    def test_kill_without_a_webhook_says_so(self, home: Path) -> None:
+        self.workspace(webhook=False)
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert "Discord: not set up (DISCORD_WEBHOOK_URL is empty)" in result.stdout
+
+    def test_a_discord_failure_never_fails_the_kill(self, home: Path) -> None:
+        workspace = self.workspace()
+        RecordingNotifier.failure = "cannot reach Discord: timed out"
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert "1 not sent: cannot reach Discord: timed out" in result.stderr
+        assert FlagFileKillSwitch(workspace.kill_file).read() is not None
+
+    def test_a_broken_env_never_fails_the_kill(self, home: Path) -> None:
+        workspace = self.workspace()
+        workspace.env_file.write_text("NOT_A_KEY=1\n")
+
+        result = runner.invoke(app, ["kill"])
+
+        assert result.exit_code == 0, result.output
+        assert "unknown key NOT_A_KEY" in result.stderr
+        assert workspace.kill_file.exists()
+
+    def test_resume_posts_an_alert(self, home: Path) -> None:
+        self.workspace()
+        runner.invoke(app, ["kill"])
+
+        result = runner.invoke(app, ["resume", "--reason", "checked", "--yes"])
+
+        assert result.exit_code == 0, result.output
+        assert [a.kind for a in RecordingNotifier.sent] == [
+            AlertKind.KILL_SWITCH,
+            AlertKind.RESUMED,
+        ]
+        assert RecordingNotifier.sent[1].lines[0] == "Reason: checked"
+
+    def test_notify_test_sends_a_check(self, home: Path) -> None:
+        self.workspace()
+
+        result = runner.invoke(app, ["notify", "test"])
+
+        assert result.exit_code == 0, result.output
+        assert "test message sent" in result.stdout
+        assert [a.kind for a in RecordingNotifier.sent] == [AlertKind.TEST]
+
+    def test_notify_test_without_a_webhook_fails(self, home: Path) -> None:
+        self.workspace(webhook=False)
+
+        result = runner.invoke(app, ["notify", "test"])
+
+        assert result.exit_code == 1
+        assert "DISCORD_WEBHOOK_URL is not set" in result.stderr
+
+    def test_notify_test_reports_a_failure(self, home: Path) -> None:
+        self.workspace()
+        RecordingNotifier.failure = "Discord refused the webhook (HTTP 404)"
+
+        result = runner.invoke(app, ["notify", "test"])
+
+        assert result.exit_code == 1
+        assert "HTTP 404" in result.stderr
+
+    def test_config_check_reports_the_webhook(self, home: Path) -> None:
+        self.workspace(webhook=False)
+        result = runner.invoke(app, ["config", "check"])
+        assert "Secrets:        Discord webhook not set: alerts are not sent" in result.stdout
+
+    def test_config_check_refuses_a_broken_env(self, home: Path) -> None:
+        workspace = self.workspace()
+        workspace.env_file.write_text("DISCORD_WEBHOOK_URL=https://example.com/hook\n")
+
+        result = runner.invoke(app, ["config", "check"])
+
+        assert result.exit_code == 1
+        assert "not a Discord webhook URL" in result.stderr
+        assert "example.com" not in result.stderr
+
+    def test_config_check_warns_when_env_is_not_private(self, home: Path) -> None:
+        workspace = self.workspace()
+        workspace.env_file.chmod(0o644)
+
+        result = runner.invoke(app, ["config", "check"])
+
+        assert result.exit_code == 0, result.output
+        assert "Discord webhook set" in result.stdout
+        assert "other users can read .env" in result.stdout
+
+    def test_commands_log_to_the_workspace_without_secrets(self, home: Path) -> None:
+        workspace = self.workspace()
+
+        runner.invoke(app, ["kill", "--reason", "looks wrong"])
+        runner.invoke(app, ["notify", "test"])
+
+        entries = self.logged(workspace)
+        started = [e["command"] for e in entries if e["message"] == "command started"]
+        assert started == ["kill", "notify test"]
+        assert any(e["message"] == "kill switch engaged" for e in entries)
+        assert [e["alert"] for e in entries if e["message"] == "alert sent"] == [
+            "kill_switch",
+            "test",
+        ]
+
+    def test_a_failing_command_logs_why(self, home: Path) -> None:
+        workspace = self.workspace(webhook=False)
+
+        runner.invoke(app, ["notify", "test"])
+
+        failed = [e for e in self.logged(workspace) if e["level"] == "ERROR"]
+        assert failed[0]["message"].startswith("command failed: DISCORD_WEBHOOK_URL is not set")
+
+    def test_no_logs_folder_for_a_folder_that_is_not_a_workspace(self, home: Path) -> None:
+        runner.invoke(app, ["config", "check", "--home", str(home / "nowhere")])
+        assert not (home / "nowhere").exists()
