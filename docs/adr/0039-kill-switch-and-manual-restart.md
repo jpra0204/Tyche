@@ -1,6 +1,6 @@
 # ADR-0039: The kill switch and the manual restart
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context

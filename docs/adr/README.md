@@ -49,7 +49,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0036](0036-risk-profiles-side-by-side.md) | Risk profiles side by side, with no trials added and no pick, and one small-account profile per live stage | Accepted (Pablo, 2026-11-23) |
 | [0037](0037-state-database-migrations-and-stored-journal.md) | The state database, numbered SQL migrations, and a journal stored as tagged JSON | Accepted (Pablo, 2026-11-23) |
 | [0038](0038-checkpoints-across-restarts.md) | State across restarts: a checkpoint at the end of every run | Accepted (Pablo, 2026-11-23) |
-| [0039](0039-kill-switch-and-manual-restart.md) | The kill switch and the manual restart | Proposed |
+| [0039](0039-kill-switch-and-manual-restart.md) | The kill switch and the manual restart | Accepted (Pablo, 2026-11-23) |
 
 ## Template
 
