@@ -343,6 +343,47 @@ class TestDataFetch:
         assert "Error: ZZZQX@XNAS: Yahoo Finance does not know the symbol 'ZZZQX'" in result.stderr
         assert "SPY@XNAS: 10 bars" in result.stdout
 
+    def test_all_fetches_every_candidate_and_the_benchmark_once(
+        self, home: Path, offline: list[tuple[str, date, date]]
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(
+            app, ["data", "fetch", "--all", "--from", "2024-01-02", "--to", "2024-01-16"]
+        )
+
+        assert result.exit_code == 0, result.output
+        # The template's nine candidates; its benchmark, SPY, is one of them.
+        assert [ticker for ticker, _, _ in offline] == [
+            "SPY", "QQQ", "IWM", "EFA", "EEM", "TLT", "IEF", "GLD", "VNQ"
+        ]  # fmt: skip
+        assert "VNQ@ARCX: 10 bars" in result.stdout
+
+    @pytest.mark.parametrize(
+        ("arguments", "message"),
+        [
+            (["--all", "SPY"], "give no symbols, --exchange or --asset-class with it"),
+            (["--all", "--exchange", "ARCX"], "give no symbols, --exchange or --asset-class"),
+            (["--all", "--asset-class", "stock"], "give no symbols, --exchange or --asset-class"),
+            ([], "name the symbols to fetch, or give --all"),
+            (["SPY"], "--exchange is needed with symbols"),
+        ],
+    )
+    def test_symbols_or_all_but_not_both(
+        self,
+        home: Path,
+        offline: list[tuple[str, date, date]],
+        arguments: list[str],
+        message: str,
+    ) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(app, ["data", "fetch", *arguments])
+
+        assert result.exit_code == 1
+        assert message in plain(result.stderr)
+        assert offline == []
+
     def test_an_unknown_exchange_fails_before_fetching(
         self, home: Path, offline: list[tuple[str, date, date]]
     ) -> None:

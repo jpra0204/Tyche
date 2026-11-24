@@ -189,6 +189,42 @@ class TestTheClockDecidesWhatShouldExist:
 
         assert source.requests == [(date(2024, 1, 16), date(2024, 1, 16))]
 
+    def test_a_session_is_not_final_until_the_wait_after_its_close(
+        self, cache: ParquetBarCache, nyse: Calendar
+    ) -> None:
+        # ADR-0043: a bar fetched too soon after the close may be provisional, and a
+        # cached bar is never fetched again, so the session waits two hours.
+        wait = timedelta(hours=2)
+        just_before = SimClock(close_of(date(2024, 1, 16)) + wait - timedelta(seconds=1))
+        source = FakeSource(every_session())
+        data = CachedDataProvider(source, cache, {"XNYS": nyse}, just_before, after_close=wait)
+
+        history = data.daily_bars(SPY, date(2024, 1, 12), date(2024, 1, 16))
+
+        assert source.requests == [(date(2024, 1, 12), date(2024, 1, 12))]
+        assert history.bars[-1].timestamp == close_of(date(2024, 1, 12))
+        assert not history.has_issues  # the waiting session is not expected yet
+
+    def test_a_session_is_final_exactly_when_the_wait_ends(
+        self, cache: ParquetBarCache, nyse: Calendar
+    ) -> None:
+        wait = timedelta(hours=2)
+        at_the_end = SimClock(close_of(date(2024, 1, 16)) + wait)
+        source = FakeSource(every_session())
+        data = CachedDataProvider(source, cache, {"XNYS": nyse}, at_the_end, after_close=wait)
+
+        data.daily_bars(SPY, date(2024, 1, 16), date(2024, 1, 16))
+
+        assert source.requests == [(date(2024, 1, 16), date(2024, 1, 16))]
+
+    def test_a_negative_wait_is_refused(
+        self, cache: ParquetBarCache, nyse: Calendar, clock: SimClock
+    ) -> None:
+        with pytest.raises(ValueError, match="after_close"):
+            CachedDataProvider(
+                FakeSource({}), cache, {"XNYS": nyse}, clock, after_close=timedelta(minutes=-1)
+            )
+
 
 class TestCoverage:
     def test_sessions_the_source_has_not_published_yet_are_asked_for_again(

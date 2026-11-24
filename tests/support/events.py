@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from tests.support.costs import usd
-from tests.support.market import SPY
+from tests.support.market import QQQ, SPY
 from tyche.core.domain import (
     AccountTrigger,
     CashDistribution,
@@ -17,14 +17,17 @@ from tyche.core.domain import (
     RiskRule,
     Sleeve,
     SleeveStatus,
+    Timeframe,
 )
 from tyche.core.events import (
     ApprovedPortfolioEvent,
+    CycleSkippedEvent,
     DataQualityEvent,
     DistributionEvent,
     Event,
     ResumeEvent,
     RiskEvent,
+    SkipReason,
 )
 
 CLOSE = datetime(2024, 3, 18, 20, 0, tzinfo=UTC)
@@ -84,4 +87,12 @@ def rare_events() -> tuple[Event, ...]:
             kill=FLATTEN,
         ),
         ResumeEvent("looked at it, carrying on", kill=FLATTEN, halt=DRAWDOWN, after_run="paper-1"),
+        CycleSkippedEvent(
+            timeframe=Timeframe.D1,
+            as_of=CLOSE,
+            reason=SkipReason.INCOMPLETE,
+            trade_until=datetime(2024, 3, 19, 13, 0, tzinfo=UTC),
+            delivered=(SPY,),
+            missing=(QQQ,),
+        ),
     )

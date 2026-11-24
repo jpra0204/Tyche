@@ -165,4 +165,42 @@ def test_a_feed_that_goes_back_in_time_stops_the_run(bus: EventBus, clock: SimCl
     assert not result.completed
     assert result.inputs == 1
     assert result.failure is not None
-    assert "after the clock had reached" in result.failure
+    assert "earlier than" in result.failure
+
+
+def test_an_input_before_the_run_started_stops_the_run(bus: EventBus, clock: SimClock) -> None:
+    result = engine(bus, clock).run(ListFeed(tick(1, -5)))
+
+    assert not result.completed
+    assert result.inputs == 0
+    assert result.failure is not None
+    assert "when the run started" in result.failure
+
+
+class WallClock:
+    """A real clock in miniature: it has moved on before the engine asks to wait."""
+
+    def __init__(self, start: datetime) -> None:
+        self.current = start
+        self.waits: list[datetime] = []
+
+    def now(self) -> datetime:
+        return self.current
+
+    def wait_until(self, moment: datetime) -> None:
+        self.waits.append(moment)
+        self.current = max(self.current, moment) + timedelta(milliseconds=1)
+
+
+def test_on_a_wall_clock_an_input_known_a_moment_ago_is_published_at_once() -> None:
+    # The daily feed stamps each input when it became known (ADR-0043). The wall clock
+    # has moved on by the time the engine handles it; that is not an ordering error.
+    wall = WallClock(T0)
+    bus = EventBus(wall.now)
+    journal = InMemoryJournal(bus)
+    feed = ListFeed(tick(1, 1), tick(2, 1), tick(3, 2))
+    run = Engine(bus, wall, run_id="run-1", mode=RunMode.PAPER, code_version="0.1.0").run(feed)
+
+    assert run.completed
+    assert [e.event.n for e in journal.of_type(TickEvent)] == [1, 2, 3]
+    assert all(e.occurred_at >= T0 + timedelta(minutes=1) for e in journal.of_type(TickEvent))

@@ -27,6 +27,8 @@ The portfolio types (ADR-0022): ``Sleeve`` with its ``SleeveStatus``,
 The execution types (ADR-0023): ``ExecutionRules`` and the ``PlanLine`` with its
 ``PlanNote``.
 
+The daily cycle's timing (ADR-0043): ``DailyCycleRules``.
+
 The risk types (ADR-0033, ADR-0034, ADR-0035, ADR-0039): ``RiskAdjustment`` with its
 ``RiskRule``, ``RiskScope`` and ``RiskAction``; ``MoneyLimits`` and
 ``OrderAdjustment``; ``AccountTrigger``; ``Kill``.
@@ -64,6 +66,7 @@ from tyche.core.domain.costs import (
     whole_shares,
 )
 from tyche.core.domain.currency import Currency
+from tyche.core.domain.daily_cycle import DailyCycleRules
 from tyche.core.domain.execution import ExecutionRules, PlanLine, PlanNote
 from tyche.core.domain.fill import Fill
 from tyche.core.domain.instrument import AssetClass, Instrument
@@ -134,6 +137,7 @@ __all__ = [
     "Contribution",
     "Currency",
     "CurrencyMismatchError",
+    "DailyCycleRules",
     "DataIssue",
     "DataIssueKind",
     "DistributionKind",

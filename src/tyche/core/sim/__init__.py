@@ -16,11 +16,12 @@ from tyche.core.sim.broker import (
     SimBrokerState,
 )
 from tyche.core.sim.clock import SimClock
-from tyche.core.sim.replay import HistoricalReplay, cycle_id
+from tyche.core.sim.replay import SOURCE_REPLAY, HistoricalReplay, cycle_id
 from tyche.core.sim.settlement import settlement_date
 
 __all__ = [
     "DEFAULT_MAX_VOLUME_PARTICIPATION",
+    "SOURCE_REPLAY",
     "FreeRidingViolation",
     "HistoricalReplay",
     "SimBroker",

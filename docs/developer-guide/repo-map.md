@@ -43,6 +43,7 @@ src/tyche/
 │   ├── risk/               stage 5: risk limits in three layers (ADR-0032), the gate's position rules (ADR-0033), the account rules and the drawdown halt (ADR-0035), the kill switch (ADR-0039)
 │   ├── engine/             the run loop shared by all three modes
 │   ├── sim/                SimClock, SimBroker, replay feed, settlement and fill models
+│   ├── feeds/              DailyFeed for paper and live: the replay re-stamped, stale cycles skipped (ADR-0043)
 │   ├── backtest/           runner, holdout, metrics, cost drag, walk-forward, sweeps, capital
 │   ├── improvement/        proposals, gate, approvals, strategy lifecycle
 │   └── agents/             offline LLM-agent workflows
@@ -117,7 +118,7 @@ Defined in `pyproject.toml` under `[tool.importlinter]`, run with `make imports`
 | Outer layers depend inward | The core importing an adapter, the runtime or the CLI |
 | Inside the core, dependencies point toward the domain | Low-level packages reaching up, and cycles |
 | The core never imports a vendor or I/O library | `ib_async`, `yfinance`, `httpx`, `sqlite3`, `subprocess`, `matplotlib` and others leaking into pure code |
-| No LLM code in the trading path | Pipeline, risk, engine, simulator or strategies importing agent or LLM code |
+| No LLM code in the trading path | Pipeline, risk, engine, simulator, the daily feed or strategies importing agent or LLM code |
 | Strategies cannot reach risk, execution, the engine or any port | A strategy adjusting its own limits or talking to a broker |
 | Tyche never imports the reference backtester | backtesting.py (AGPL-3.0, a test-only dependency) becoming part of Tyche ([ADR-0026](../adr/0026-reference-validation-against-backtesting-py.md)) |
 

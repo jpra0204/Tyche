@@ -23,10 +23,12 @@ from tyche.core.domain import (
 )
 from tyche.core.events import (
     BarEvent,
+    CycleSkippedEvent,
     DataQualityEvent,
     DataReadyEvent,
     EventBus,
     HandlerError,
+    SkipReason,
     UniverseEvent,
 )
 from tyche.core.pipeline.universe import UniverseError, UniverseStage
@@ -59,14 +61,21 @@ class Harness:
         *,
         missing: tuple[Instrument, ...] = (),
         issues: tuple[DataIssue, ...] = (),
+        skip: bool = False,
     ) -> UniverseEvent:
         for b in bars:
             self.bus.publish(BarEvent(b), source="replay")
         for issue in issues:
             self.bus.publish(DataQualityEvent(issue), source="replay")
         delivered = tuple(b.instrument for b in bars)
-        ready = DataReadyEvent(Timeframe.D1, close_of(day), delivered, missing)
-        self.bus.publish(ready, source="replay", cycle_id=f"XNYS:{day}:1d")
+        if skip:
+            stale = CycleSkippedEvent(
+                Timeframe.D1, close_of(day), SkipReason.STALE, close_of(day), delivered, missing
+            )
+            self.bus.publish(stale, source="daily_feed")
+        else:
+            ready = DataReadyEvent(Timeframe.D1, close_of(day), delivered, missing)
+            self.bus.publish(ready, source="replay", cycle_id=f"XNYS:{day}:1d")
         self.bus.drain()
         return self.latest
 
@@ -218,6 +227,27 @@ class TestDataQuality:
         assert "2 cycle(s) including this one" in on_d4.excluded[0].detail
         assert "1 cycle(s) including this one" in on_d5.excluded[0].detail
         assert f"{kind} on {D4.isoformat()}" in on_d4.excluded[0].detail
+
+    def test_a_skipped_cycle_counts_as_a_session_out(self) -> None:
+        # ADR-0043: a catch-up publishes missed sessions with their cycles skipped. The
+        # count goes on, so the stage ends as it would have if every cycle had run.
+        h = Harness()
+        h.warm_up(SPY)
+
+        h.session(D4, [bar(D4)], issues=(issue(DataIssueKind.SUSPECT_MOVE, D4),), skip=True)
+        h.session(D5, [bar(D5)], skip=True)
+        on_d6 = h.session(D6, [bar(D6)])
+
+        assert eligible(on_d6) == ["SPY"]
+
+    def test_a_skipped_cycle_publishes_no_universe(self) -> None:
+        h = Harness()
+        h.warm_up(SPY)
+        before = len(h.recorder.events)
+
+        h.session(D4, [bar(D4)], skip=True)
+
+        assert not [e for e in h.recorder.events[before:] if isinstance(e, UniverseEvent)]
 
     def test_a_duplicate_bar_is_not_held_against_an_instrument(self) -> None:
         h = Harness()

@@ -136,7 +136,7 @@ type = "layers"
 layers = [
     "tyche.core.agents",
     "tyche.core.improvement",
-    "tyche.core.backtest",
+    "tyche.core.backtest | tyche.core.feeds",
     "tyche.core.engine | tyche.core.sim",
     "tyche.core.pipeline | tyche.core.risk",
     "tyche.core.ports",
@@ -179,6 +179,7 @@ source_modules = [
     "tyche.core.risk",
     "tyche.core.engine",
     "tyche.core.sim",
+    "tyche.core.feeds",
     "tyche.strategies",
 ]
 forbidden_modules = ["tyche.core.agents", "tyche.adapters.llm"]

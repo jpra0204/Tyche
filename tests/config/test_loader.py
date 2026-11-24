@@ -1,6 +1,6 @@
 """Loading the workspace configuration: all valid, or a clear error naming file and key."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from importlib.resources import files
 from pathlib import Path
@@ -64,11 +64,17 @@ symbol = "SPY"
 exchange = "ARCX"
 asset_class = "etf"
 """
+DAILY_CYCLE_TOML = """
+[daily_cycle]
+after_close_minutes = 120
+before_next_open_minutes = 30
+"""
 US_TOML = (
     'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
     + UNIVERSE_TOML
     + EXECUTION_TOML
     + BENCHMARK_TOML
+    + DAILY_CYCLE_TOML
 )
 US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
@@ -139,7 +145,8 @@ class TestValidConfig:
             'name = "CA+US"\ncash_currencies = ["CAD", "USD"]\ncalendars = ["XTSE", "XNYS"]\n'
             + UNIVERSE_TOML
             + EXECUTION_TOML
-            + BENCHMARK_TOML,
+            + BENCHMARK_TOML
+            + DAILY_CYCLE_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
         # Without currency conversion, each cash currency needs caps of its own.
@@ -667,6 +674,45 @@ class TestExecutionRules:
         write(workspace, "config/markets/US.toml", US_TOML)
         before = load_config(workspace).config_hash
         write(workspace, "config/markets/US.toml", US_TOML.replace('"0.10"', '"0.05"'))
+
+        assert load_config(workspace).config_hash != before
+
+
+class TestDailyCycle:
+    def test_the_packaged_profile_waits_two_hours_and_trades_until_half_an_hour_before_the_open(
+        self, workspace: Workspace
+    ) -> None:
+        daily_cycle = load_config(workspace).market_profile.daily_cycle
+
+        assert daily_cycle == US_PROFILE.daily_cycle
+        assert daily_cycle.after_close == timedelta(hours=2)
+        assert daily_cycle.before_next_open == timedelta(minutes=30)
+
+    def test_a_profile_without_the_table_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace(DAILY_CYCLE_TOML, ""))
+
+        with pytest.raises(ConfigError, match=r"US.toml: .*\n  daily_cycle: Field required"):
+            load_config(workspace)
+
+    def test_minutes_must_be_whole_numbers(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace("= 120", '= "120"'))
+
+        with pytest.raises(ConfigError, match=r"daily_cycle.after_close_minutes"):
+            load_config(workspace)
+
+    def test_a_negative_wait_names_the_file(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace("= 30", "= -30"))
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/markets/US.toml: daily_cycle.before_next_open_minutes must not",
+        ):
+            load_config(workspace)
+
+    def test_changing_the_wait_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(workspace, "config/markets/US.toml", US_TOML.replace("= 120", "= 90"))
 
         assert load_config(workspace).config_hash != before
 

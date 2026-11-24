@@ -1,12 +1,13 @@
 """The fetch wiring: instruments from symbols, and a fetch that never stops at one failure."""
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
 from tests.adapters.data.test_yfinance_source import FakeFetch, row
-from tests.support.market import JANUARY_2024
+from tests.support.market import JANUARY_2024, QQQ, SPY
 from tests.support.profiles import CA_PROFILE, US_PROFILE
 from tyche.adapters.data import YFinanceSource
 from tyche.adapters.data.yfinance_source import UnknownSymbolError
@@ -18,6 +19,7 @@ from tyche.runtime.data import (
     CALENDAR_START,
     FetchRequestError,
     fetch_daily_histories,
+    followed_instruments,
     instrument_for,
 )
 
@@ -85,6 +87,27 @@ class TestFetch:
         cached = config.workspace.data_dir / "bars" / "yfinance" / "1d" / "ARCX" / "SPY.parquet"
         assert cached.is_file()
 
+    def test_a_session_is_not_fetched_until_two_hours_after_its_close(
+        self, config: TycheConfig
+    ) -> None:
+        # The template's [daily_cycle] waits 120 minutes (ADR-0043). At 22:30 UTC on
+        # 16 January, ninety minutes after the close, that session is not yet asked for.
+        fetch = FakeFetch([row(day) for day in JANUARY_2024 if day < date(2024, 1, 16)])
+        ninety_minutes_after = SimClock(datetime(2024, 1, 16, 22, 30, tzinfo=UTC))
+
+        [outcome] = fetch_daily_histories(
+            config,
+            [self.spy()],
+            date(2024, 1, 2),
+            date(2024, 1, 16),
+            source=self.source(fetch),
+            clock=ninety_minutes_after,
+        )
+
+        assert fetch.calls == [("SPY", date(2024, 1, 2), date(2024, 1, 13))]
+        assert outcome.history is not None
+        assert not outcome.history.has_issues
+
     def test_one_failure_does_not_stop_the_others(self, config: TycheConfig) -> None:
         qqq = instrument_for("QQQ", "XNAS", AssetClass.ETF, US)
         fetch = FakeFetch(
@@ -127,3 +150,13 @@ class TestFetch:
     def test_an_empty_range_is_refused(self, config: TycheConfig) -> None:
         with pytest.raises(FetchRequestError, match="empty date range"):
             fetch_daily_histories(config, [self.spy()], date(2024, 1, 5), date(2024, 1, 2))
+
+
+class TestFollowedInstruments:
+    def test_the_candidates_in_order_with_the_benchmark_once(self) -> None:
+        assert followed_instruments(US_PROFILE) == (SPY, QQQ)  # SPY is the benchmark
+
+    def test_a_benchmark_outside_the_candidates_comes_last(self) -> None:
+        only_qqq = replace(US_PROFILE.universe, instruments=(QQQ,))
+
+        assert followed_instruments(replace(US_PROFILE, universe=only_qqq)) == (QQQ, SPY)

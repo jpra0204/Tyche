@@ -36,6 +36,18 @@ Several symbols on the same exchange can be fetched at once:
 uv run tyche data fetch QQQ AAPL --exchange XNAS --from 2015-01-01
 ```
 
+### Everything the market profile follows
+
+`--all` fetches every candidate listed under `[universe]` in `config/markets/US.toml`, then the benchmark if it is not one of them: exactly what a backtest reads and a paper run trades from. Each instrument already carries its exchange and asset class, so no symbols, `--exchange` or `--asset-class` go with it:
+
+```bash
+uv run tyche data fetch --all --from 2004-01-01
+```
+
+### Not before two hours after the close
+
+A session's bars are fetched only once `after_close_minutes` (120, under `[daily_cycle]` in `config/markets/US.toml`) have passed since its close: 18:00 New York on a normal day, 15:00 after an early close. Yahoo does not say when its daily bar becomes final, and a cached session is never fetched again, so a bar taken too early would stay in every later backtest. Run straight after the close, a fetch stops at the previous session; run it again later for today's.
+
 ## Reading the result
 
 ```text

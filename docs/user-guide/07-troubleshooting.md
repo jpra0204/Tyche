@@ -29,6 +29,7 @@ uv run tyche init --home /tmp/tyche-fresh
 | `config/sweeps/trend_rotation.toml` | PR 21 | The file, if you want the example sweep |
 | `[tiered]` in `config/costs/US.toml` | PR 22 | The table, if you want `tyche capital` to compare Tiered. Optional: without it, Fixed only |
 | `config/guardrails.toml` and `config/risk/default.toml` | Phase 2, PR 1 | Both files. Tyche refuses to start without its hard limits. The guardrail values are an example: set your own ([risk profiles](08-risk-profiles.md)) |
+| `[daily_cycle]` in `config/markets/US.toml` | Phase 2, PR 12 | The table: when a session's bars count as final (two hours after the close) and until when a decision may trade (30 minutes before the next open) |
 
 Copying changes your config hash, as any change of setting does: runs before and after the copy are told apart in their records. That is intended.
 

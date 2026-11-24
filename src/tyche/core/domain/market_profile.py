@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from tyche.core.domain.currency import Currency
+from tyche.core.domain.daily_cycle import DailyCycleRules
 from tyche.core.domain.execution import ExecutionRules
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.universe import UniverseRules
@@ -49,6 +50,8 @@ class MarketProfile:
         execution: How approved weights become orders: the rebalance band (ADR-0023).
         benchmark: The index ETF every strategy is measured against, by its total
             return with dividends reinvested (ADR-0025). It need not be a candidate.
+        daily_cycle: When a session's bars count as final, and until when its decision
+            may trade (ADR-0043). Used by paper and live, and by every fetch.
     """
 
     name: str
@@ -57,6 +60,7 @@ class MarketProfile:
     universe: UniverseRules
     execution: ExecutionRules
     benchmark: Instrument
+    daily_cycle: DailyCycleRules
 
     def __post_init__(self) -> None:
         require_profile_name(self.name)

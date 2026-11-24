@@ -60,6 +60,18 @@ def instrument_for(
         raise FetchRequestError(str(error)) from None
 
 
+def followed_instruments(profile: MarketProfile) -> tuple[Instrument, ...]:
+    """Every instrument the profile follows: its candidates, then its benchmark.
+
+    Exactly what a backtest reads and a paper run fetches (ADR-0024): the candidates in
+    the order listed, and the benchmark once, at the end, if it is not one of them.
+    """
+    candidates = profile.universe.instruments
+    if profile.benchmark in candidates:
+        return candidates
+    return (*candidates, profile.benchmark)
+
+
 def fetch_daily_histories(
     config: TycheConfig,
     instruments: Sequence[Instrument],
@@ -91,7 +103,13 @@ def fetch_daily_histories(
     if source is None:
         source = YFinanceSource(calendars, fetch=yfinance_fetcher(data_dir / "yfinance-cache"))
     cache = ParquetBarCache(data_dir / "bars", source=source.name)
-    provider = CachedDataProvider(source, cache, calendars, clock)
+    provider = CachedDataProvider(
+        source,
+        cache,
+        calendars,
+        clock,
+        after_close=config.market_profile.daily_cycle.after_close,
+    )
 
     outcomes: list[FetchOutcome] = []
     for instrument in instruments:

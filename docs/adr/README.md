@@ -53,6 +53,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0040](0040-logs-secrets-and-alerts.md) | Logs, secrets and Discord alerts | Accepted (Pablo, 2026-11-23) |
 | [0041](0041-orders-and-identity-at-ibkr.md) | Orders and account identity at IBKR | Accepted (Pablo, 2026-11-24) |
 | [0042](0042-ibkr-paper-adapter-at-most-once-orders.md) | The IBKR paper adapter: orders sent at most once | Accepted (Pablo, 2026-11-24) |
+| [0043](0043-daily-feed-and-the-catch-up-rule.md) | The daily feed and the catch-up rule | Accepted (Pablo, 2026-11-24) |
 
 ## Template
 
