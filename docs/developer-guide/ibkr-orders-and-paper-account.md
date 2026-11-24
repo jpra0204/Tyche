@@ -155,7 +155,7 @@ The cap binds only on a sale of more than about 50,000 shares (9.79 ÷ 0.000195)
 
 ## 10. To confirm on the paper account
 
-Each item is something IBKR's pages leave open and that PR 11 builds on. **They wait for Pablo's paper account**: his live account was funded on 2026-11-23, the deposit had not arrived on 2026-11-24, and the paper account opens only once it has. They are run when he says it is active. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
+Each item is something IBKR's pages leave open and that PR 11 builds on. Pablo's paper account opened on 2026-11-24, once his deposit arrived; what has been run so far is under the table. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
 
 | # | Check | Why |
 |---|---|---|
@@ -172,6 +172,20 @@ Each item is something IBKR's pages leave open and that PR 11 builds on. **They 
 | 11 | What status an order IBKR refuses ends in (`Inactive` or `Cancelled`), and its error message | Section 12. IBKR's page describes `Inactive` only as an order not yet transmitted |
 
 **Not confirmable on paper:** unsettled proceeds in a cash account (section 8), real opening-auction fills, and exchange fees.
+
+### First results, 2026-11-24
+
+The four opt-in tests (`-m ibkr_paper`) against IB Gateway 10.50 logged in to the paper account, run by Pablo after the close (16:47 New York). All four pass. Two setup steps were needed first: "Read-Only API" off in the gateway's API settings, and a test-only filter for a Python 3.14 warning inside `ib_async` (section 1).
+
+| # | Result | Still open |
+|---|---|---|
+| 1 | **The paper account has its own username**, separate from the live login. Its account number goes in `IBKR_ACCOUNT_ID` | The number's format was not recorded |
+| 2 | A market-on-open buy of one share of SPY, **sent after the close, was accepted**: Tyche saw `submitted`, then `accepted`, then `cancelled` when the test cancelled it two seconds later | The fill at the open, its time and price |
+| 6 | The order was found again by `sync` on the same connection | After a disconnect and reconnect |
+| 8 | **Every candidate resolves to exactly one contract**, the three `XNAS` ones (QQQ, TLT, IEF) included. Contract ids: SPY 756733, QQQ 320227571, IWM 9579970, EFA 13002510, EEM 6604766, TLT 15547841, IEF 15547844, GLD 51529211, VNQ 31230302 | The listing-exchange code IBKR gives the `XNAS` ones; the test prints only the contract id |
+| 9 | **Paper reports `SettledCashByDate`**, so `IBKRBroker.account()` works on it | What it holds after a trade |
+
+**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run.
 
 ## 11. Cancelling an order in IBKR's own apps
 
