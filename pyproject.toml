@@ -108,6 +108,12 @@ filterwarnings = [
     # DatetimeIndex.dayofweek) under pandas 3.1, in the reference comparison only
     # (tests/reference). Remove once a backtesting.py release uses day_of_week.
     "ignore:DatetimeIndex.dayofweek is deprecated:pandas.errors.Pandas4Warning",
+    # Raised inside ib_async 2.1.0 (util.getLoop calls asyncio.get_event_loop_policy,
+    # deprecated in Python 3.14) on every synchronous call, so the opt-in paper tests
+    # (-m ibkr_paper) failed before connecting. Outside tests Python hides it. Fixed
+    # upstream for ib_async 3.0 (ib-api-reloaded/ib_async#238); remove when we move to
+    # it, and before Python 3.16, which removes the function.
+    "ignore:'asyncio.get_event_loop_policy' is deprecated:DeprecationWarning:ib_async.util",
 ]
 
 [tool.coverage.run]
