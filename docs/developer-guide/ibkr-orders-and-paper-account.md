@@ -12,6 +12,7 @@ Section 12 adds what PR 11 read on 2026-11-24, section 13 what PR 13 read the sa
 | Licence **BSD 2-Clause** (the `LICENSE` file's first line: "BSD 2-Clause License"). PyPI's metadata says only "BSD", with the classifier "Other/Proprietary License" | GitHub `LICENSE`; PyPI |
 | Requires Python 3.10 or later. PyPI's classifiers list 3.14; the repository's own `pyproject.toml` lists 3.10 to 3.13 | PyPI; GitHub `pyproject.toml` |
 | Its CI runs Python 3.10 to 3.14, but **only mypy and ruff**, not the tests. That 2.1.0 works on 3.14 is not shown by its CI | GitHub workflow `test.yml` |
+| **On Python 3.14, every synchronous call warns**: `util.getLoop` calls `asyncio.get_event_loop_policy()`, deprecated in 3.14 and removed in 3.16. Our tests turn warnings into errors, so the opt-in paper tests failed before connecting (first run, 2026-11-24); `pyproject.toml` now ignores this one warning from `ib_async.util` only. Outside tests Python hides it. Fixed for ib_async 3.0, not released on 2026-11-24 | ib_async issue #238; run on 2026-11-24 |
 | Runtime dependencies: `aeventkit` (>=2.1.0, <3.0.0; BSD), `nest_asyncio` (any; BSD-2-Clause), **`tzdata` (>=2025.2, <2026.0)** | PyPI metadata; `pyproject.toml` |
 | `nest_asyncio`'s repository is **archived**; its last release, 1.6.0, is from 2024-01-21 | GitHub API; PyPI |
 | Maintained by Matt Stancliff under the `ib-api-reloaded` organisation. It is the renamed `ib_insync`: its author, Ewald de Wit, died in early 2024, and the project moved because the original repositories could no longer be changed | README, History section |
@@ -154,7 +155,7 @@ The cap binds only on a sale of more than about 50,000 shares (9.79 ÷ 0.000195)
 
 ## 10. To confirm on the paper account
 
-Each item is something IBKR's pages leave open and that PR 11 builds on. **They wait for Pablo's paper account**: his live account was funded on 2026-11-23, the deposit had not arrived on 2026-11-24, and the paper account opens only once it has. They are run when he says it is active. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
+Each item is something IBKR's pages leave open and that PR 11 builds on. Pablo's paper account opened on 2026-11-24, once his deposit arrived; what has been run so far is under the table. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
 
 | # | Check | Why |
 |---|---|---|
@@ -173,6 +174,20 @@ Each item is something IBKR's pages leave open and that PR 11 builds on. **They 
 | 13 | Whether `AccruedDividend` is gross or net of withholding, and what the cash rises by on the pay date | Section 13. Decides how much of a dividend reconciliation adopts as noise |
 
 **Not confirmable on paper:** unsettled proceeds in a cash account (section 8), real opening-auction fills, and exchange fees.
+
+### First results, 2026-11-24
+
+The four opt-in tests (`-m ibkr_paper`) against IB Gateway 10.50 logged in to the paper account, run by Pablo after the close (16:47 New York). All four pass. Two setup steps were needed first: "Read-Only API" off in the gateway's API settings, and a test-only filter for a Python 3.14 warning inside `ib_async` (section 1).
+
+| # | Result | Still open |
+|---|---|---|
+| 1 | **The paper account has its own username**, separate from the live login. Its account number goes in `IBKR_ACCOUNT_ID` | The number's format was not recorded |
+| 2 | A market-on-open buy of one share of SPY, **sent after the close, was accepted**: Tyche saw `submitted`, then `accepted`, then `cancelled` when the test cancelled it two seconds later | The fill at the open, its time and price |
+| 6 | The order was found again by `sync` on the same connection | After a disconnect and reconnect |
+| 8 | **Every candidate resolves to exactly one contract**, the three `XNAS` ones (QQQ, TLT, IEF) included. Contract ids: SPY 756733, QQQ 320227571, IWM 9579970, EFA 13002510, EEM 6604766, TLT 15547841, IEF 15547844, GLD 51529211, VNQ 31230302 | The listing-exchange code IBKR gives the `XNAS` ones; the test prints only the contract id |
+| 9 | **Paper reports `SettledCashByDate`**, so `IBKRBroker.account()` works on it | What it holds after a trade |
+
+**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run.
 
 ## 11. Cancelling an order in IBKR's own apps
 
