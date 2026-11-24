@@ -5,11 +5,14 @@ decision of a paper or live run: from the next decision on, nothing new is bough
 with flatten every holding is sold. It never reaches the broker itself: orders the last
 run left working are listed, for Pablo to cancel in IBKR's own app if he wants them gone.
 
-``tyche resume`` is the manual restart. It lifts both things that stop trading: the
-kill switch (the flag file) and the drawdown halt (in the latest checkpoint, ADR-0038).
-A halt is lifted by a short run of its own in the state database: one ``ResumeEvent`` in
-the journal, then a checkpoint with the latest one's state, the halt lifted and the peak
-forgotten, so the drawdown kill counts from the first close after the restart.
+``tyche resume`` is the manual restart. It lifts everything that stops trading: the
+kill switch (the flag file), the drawdown halt and the reconciliation halt (both in the
+latest checkpoint, ADR-0038, ADR-0044). A halt is lifted by a short run of its own in
+the state database: one ``ResumeEvent`` in the journal, then a checkpoint with the
+latest one's state and the halts lifted. Lifting the drawdown halt forgets the peak, so
+the drawdown kill counts from the first close after the restart. Lifting the
+reconciliation halt applies what it explained (``resolve``), unless a check agreed
+after it.
 
 Neither command may run while a paper run is running; nothing enforces that yet (the
 scheduler, Phase 2 PR 15, will).
@@ -28,8 +31,9 @@ from tyche.adapters.storage import (
     open_database,
 )
 from tyche.config.workspace import Workspace
-from tyche.core.domain import AccountTrigger, Checkpoint, Kill, WorkingOrder
+from tyche.core.domain import AccountTrigger, Checkpoint, Kill, Reconciliation, WorkingOrder
 from tyche.core.events import Envelope, ResumeEvent
+from tyche.core.pipeline.reconciliation import ReconciliationError, resolve
 from tyche.core.ports import CheckpointStoreError, Clock, JournalStoreError
 
 SOURCE = "cli"
@@ -64,6 +68,21 @@ class TradingStatus:
         return self.checkpoint.rules.halt if self.checkpoint is not None else None
 
     @property
+    def unreconciled(self) -> Reconciliation | None:
+        """The reconciliation mismatch that halts trading, or ``None`` (ADR-0044)."""
+        return self.checkpoint.reconciliation.halt if self.checkpoint is not None else None
+
+    @property
+    def applies(self) -> bool:
+        """True when lifting the reconciliation halt would apply what it explained."""
+        return self.checkpoint is not None and self.checkpoint.reconciliation.halt_is_current
+
+    @property
+    def stopped(self) -> bool:
+        """True when anything stops trading."""
+        return self.kill is not None or self.halt is not None or self.unreconciled is not None
+
+    @property
     def working(self) -> tuple[WorkingOrder, ...]:
         """The orders the last run left working at the broker, stops included."""
         return self.checkpoint.execution.orders if self.checkpoint is not None else ()
@@ -92,11 +111,15 @@ class ResumeOutcome:
         lifted: The drawdown halt lifted, or ``None``.
         run_id: The resume's own run in the state database, or ``None`` when there is
             no state database to record it in.
+        unreconciled: The reconciliation halt lifted, or ``None``.
+        applied: True when what that halt explained was applied.
     """
 
     released: Kill | None
     lifted: AccountTrigger | None
     run_id: str | None
+    unreconciled: Reconciliation | None = None
+    applied: bool = False
 
 
 def status(workspace: Workspace) -> TradingStatus:
@@ -154,7 +177,7 @@ def resume(
     expected: TradingStatus,
     clock: Clock | None = None,
 ) -> ResumeOutcome:
-    """Lift the kill switch and the drawdown halt: the manual restart (ADR-0039).
+    """Lift the kill switch and the halts: the manual restart (ADR-0039, ADR-0044).
 
     ``expected`` is the status Pablo confirmed. If the kill switch or the latest
     checkpoint has changed since, nothing is lifted: he must see what he is lifting.
@@ -174,10 +197,10 @@ def resume(
         )
     if current.unreadable is not None:
         raise KillSwitchError(
-            f"the state database cannot be read, so a drawdown halt cannot be ruled out: "
+            f"the state database cannot be read, so a halt cannot be ruled out: "
             f"{current.unreadable}"
         )
-    if current.kill is None and current.halt is None:
+    if not current.stopped:
         raise KillSwitchError("nothing to resume: the kill switch is off and trading is not halted")
 
     run_id = None
@@ -186,7 +209,13 @@ def resume(
         run_id = f"resume-{now:%Y%m%dT%H%M%SZ}"
         _record(workspace, run_id, reason, current, now, code_version)
     release(workspace.kill_file)
-    return ResumeOutcome(current.kill, current.halt, run_id)
+    return ResumeOutcome(
+        current.kill,
+        current.halt,
+        run_id,
+        unreconciled=current.unreconciled,
+        applied=current.unreconciled is not None and current.applies,
+    )
 
 
 def _record(
@@ -203,16 +232,36 @@ def _record(
     would refuse is checked first: a journaled resume always took effect.
     """
     latest = current.checkpoint
-    if latest is not None and current.halt is not None and now <= latest.saved_at:
+    halted = current.halt is not None or current.unreconciled is not None
+    if latest is not None and halted and now <= latest.saved_at:
         raise KillSwitchError(
             f"the latest checkpoint was taken at {latest.saved_at.isoformat()}, not before "
             f"now ({now.isoformat()}); check this machine's clock"
+        )
+    lifted = None
+    if latest is not None and halted:
+        lifted = latest
+        if current.unreconciled is not None:
+            try:
+                lifted = resolve(lifted, now)
+            except (ReconciliationError, ValueError) as error:
+                raise KillSwitchError(
+                    f"the reconciliation halt cannot be applied to the latest checkpoint: {error}"
+                ) from error
+        lifted = replace(
+            lifted,
+            run_id=run_id,
+            saved_at=now,
+            code_version=code_version,
+            rules=lifted.rules.resumed() if current.halt is not None else lifted.rules,
         )
     event = ResumeEvent(
         reason,
         kill=current.kill,
         halt=current.halt,
-        after_run=latest.run_id if latest is not None and current.halt is not None else None,
+        after_run=latest.run_id if latest is not None and halted else None,
+        reconciliation=current.unreconciled,
+        applied=current.unreconciled is not None and current.applies,
     )
     try:
         connection = open_database(workspace.state_database)
@@ -220,14 +269,7 @@ def _record(
         raise KillSwitchError(f"the state database cannot be opened: {error}") from error
     try:
         SqliteJournalStore(connection).append(run_id, Envelope(1, now, SOURCE, event))
-        if latest is not None and current.halt is not None:
-            lifted = replace(
-                latest,
-                run_id=run_id,
-                saved_at=now,
-                code_version=code_version,
-                rules=latest.rules.resumed(),
-            )
+        if lifted is not None:
             SqliteCheckpointStore(connection).save(lifted)
     except (JournalStoreError, CheckpointStoreError, sqlite3.Error) as error:
         raise KillSwitchError(f"the state database refused the resume: {error}") from error

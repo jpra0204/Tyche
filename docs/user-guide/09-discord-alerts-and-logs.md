@@ -48,17 +48,19 @@ A variable set in your shell wins over the file. `DISCORD_WEBHOOK_URL=… uv run
 | Alert | When | Sent by |
 |---|---|---|
 | Kill switch engaged | `tyche kill`, when it engages the switch or adds flatten | the command, at once |
-| Trading resumed | `tyche resume` lifts the switch, the drawdown halt, or both | the command, at once |
+| Trading resumed | `tyche resume` lifts the switch, the drawdown halt or the reconciliation halt; lists any fill it applied | the command, at once |
 | Drawdown kill: trading is halted | the drawdown kill triggers at a close | paper and live runs, from Phase 2 PR 14 |
 | Daily loss limit reached | a session loses at least the profile's limit | paper and live runs, from PR 14 |
 | Kill switch engaged at a decision | a run finds the switch engaged (once per run) | paper and live runs, from PR 14 |
 | Market data problems | the audit found problems in the data a run used (one message, the first ten listed) | paper and live runs, from PR 14 |
+| Reconciliation mismatch: trading is halted | Tyche's records and IBKR's differ in a way it will not guess about ([runbook](../runbooks/reconciliation-mismatch.md)) | paper and live runs, from PR 14 |
+| Reconciliation: N order(s) ended at the broker | IBKR no longer lists an order and no shares moved, such as a stop it cancelled at a quarter's end; trading carries on | paper and live runs, from PR 14 |
 | A run failed | a run stopped with an error | paper and live runs, from PR 14 |
 | Test | `tyche notify test` | the command |
 
-**Never sent:** backtests, walk-forwards, sweeps, `tyche capital` and `tyche compare-profiles` post nothing. Routine risk cuts (a position shrunk to its size limit, an entry blocked by the position count, a purchase cut to the money caps) are not alerts; they happen at almost every close and belong in the daily summary, which comes later in Phase 2.
+**Never sent:** backtests, walk-forwards, sweeps, `tyche capital` and `tyche compare-profiles` post nothing. Routine risk cuts (a position shrunk to its size limit, an entry blocked by the position count, a purchase cut to the money caps) and cash taken from IBKR within the reconciliation tolerance are not alerts; they happen at almost every close and belong in the daily summary, which comes later in Phase 2.
 
-Times in alerts are in UTC. Reconciliation, the scheduler and the gateway add their own alerts when they are built.
+Times in alerts are in UTC. The scheduler and the gateway add their own alerts when they are built.
 
 **A failure to notify never stops anything.** If Discord cannot be reached, or the webhook was deleted, the command still does its job, prints why the alert was not sent, and logs it. After Discord refuses a webhook (HTTP 401, 403 or 404), Tyche stops using it until it restarts, as Discord asks; make a new webhook and update `.env`.
 

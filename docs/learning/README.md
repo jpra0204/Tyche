@@ -39,11 +39,11 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Notifications outside the trading path](notifications-outside-the-trading-path.md) | Decide what to tell a person as plain values inside the system, send it at the edge after the work, and never let a failed message stop the work; secrets as types, redacted at the last moment |
 | [Orders sent at most once](at-most-once-orders.md) | Write down what you send before sending it, look for it after a failure, and never send it twice; keep the vendor's model behind a small translating layer |
 | [Catching up without acting on stale signals](freshness-and-catch-up.md) | Replay every missed input so measurements stay right, but act only before the deadline the action must meet; judge freshness by that deadline, not by age |
+| [Reconciliation: trusting the broker over yourself](reconciliation.md) | Compare your record with the counterparty's; decide per field what is noise to adopt, what to repair, and what halts; explain a difference, but let a human turn the explanation into a fact |
 
 ## Planned
 
 | Note | Written in |
 |---|---|
 | Idempotent orders | Phase 2 |
-| Reconciliation: trusting the broker over yourself | Phase 2 |
 | Schemas as contracts between agents and code | Phase 3 |

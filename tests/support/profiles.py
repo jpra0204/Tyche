@@ -19,6 +19,7 @@ from tyche.core.domain import (
     Instrument,
     MarketProfile,
     Money,
+    ReconciliationRules,
     UniverseRules,
 )
 
@@ -47,8 +48,16 @@ US_DAILY_CYCLE = DailyCycleRules(
     after_close=timedelta(minutes=120), before_next_open=timedelta(minutes=30)
 )
 
+US_RECONCILIATION = ReconciliationRules(cash_tolerance=Decimal("1.00"))
 US_PROFILE = MarketProfile(
-    "US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION, US_BENCHMARK, US_DAILY_CYCLE
+    "US",
+    (Currency.USD,),
+    ("XNYS",),
+    US_RULES,
+    US_EXECUTION,
+    US_BENCHMARK,
+    US_DAILY_CYCLE,
+    US_RECONCILIATION,
 )
 
 
@@ -84,5 +93,12 @@ CA_RULES = replace(
 CA_BENCHMARK = Instrument("XIC", "XTSE", Currency.CAD, "XTSE", AssetClass.ETF)
 
 CA_PROFILE = MarketProfile(
-    "CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION, CA_BENCHMARK, US_DAILY_CYCLE
+    "CA",
+    (Currency.CAD,),
+    ("XTSE",),
+    CA_RULES,
+    US_EXECUTION,
+    CA_BENCHMARK,
+    US_DAILY_CYCLE,
+    US_RECONCILIATION,
 )

@@ -9,16 +9,17 @@ is the record of what Tyche did, not of what the market did:
   resting for them (ADR-0022, ADR-0023);
 * execution's working orders, with the shares each still owes to each sleeve, the
   stop each sleeve wants once a purchase fills, and the last decision handled;
-* the account rules: the previous close, the peak and the drawdown halt (ADR-0035).
+* the account rules: the previous close, the peak and the drawdown halt (ADR-0035);
+* reconciliation's memory: the last check, and any halt it left (ADR-0044).
 
-A ``Checkpoint`` holds all four, as they were when a run ended. Each part is a value
+A ``Checkpoint`` holds all five, as they were when a run ended. Each part is a value
 object, so the state database can store it with the journal's codec (ADR-0037), and it
 checks on construction that the parts agree with each other: a checkpoint that does not
 add up is refused, never loaded.
 """
 
 from collections.abc import Hashable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -26,6 +27,7 @@ from tyche.core.domain.account import Account
 from tyche.core.domain.instrument import Instrument
 from tyche.core.domain.money import Money
 from tyche.core.domain.order import OrderState, OrderType
+from tyche.core.domain.reconciliation import ReconciliationState
 from tyche.core.domain.risk import AccountTrigger, RiskRule
 from tyche.core.domain.signals import require_strategy_id
 
@@ -279,11 +281,13 @@ class Checkpoint:
         sleeves: The sleeve book.
         execution: Execution's working orders and wanted stops.
         rules: The account rules' memory.
+        reconciliation: Reconciliation's memory: the last check and any halt. Empty
+            in a checkpoint saved before PR 13, and in a backtest's.
 
     Raises:
         ValueError: the parts disagree: the sleeves do not add up to the account's
             positions, or a sleeve's resting stop is not a working stop order of that
-            sleeve and instrument.
+            sleeve and instrument; or a reconciliation is dated after the checkpoint.
     """
 
     run_id: str
@@ -294,11 +298,19 @@ class Checkpoint:
     sleeves: SleeveState
     execution: ExecutionState
     rules: AccountRulesState
+    reconciliation: ReconciliationState = field(default_factory=ReconciliationState)
 
     def __post_init__(self) -> None:
         if not self.run_id.strip():
             raise ValueError("a checkpoint needs a run id")
         _require_aware(self.saved_at, "saved_at")
+        memory = self.reconciliation
+        for moment in (memory.last_at, memory.halt.at if memory.halt else None):
+            if moment is not None and moment > self.saved_at:
+                raise ValueError(
+                    f"checkpoint of {self.run_id}: a reconciliation at {moment.isoformat()} "
+                    "comes after it was saved"
+                )
         held = {p.instrument: p.quantity for p in self.account.positions}
         for instrument in sorted(
             set(held) | {h.instrument for h in self.sleeves.holdings}, key=str

@@ -16,6 +16,8 @@ from tyche.core.domain import (
     InstrumentTarget,
     Kill,
     OrderAdjustment,
+    Reconciliation,
+    ReconciliationStatus,
     RiskAdjustment,
     RiskRule,
     ScoredInstrument,
@@ -333,6 +335,12 @@ class ApprovedPortfolioEvent(Event):
     and every instrument, whatever the sleeve decided and even under the halt: execution
     sells every holding.
 
+    While reconciliation has halted trading, every approval carries the mismatch as
+    ``unreconciled``, with no targets and no adjustments (ADR-0044). ``wanted`` keeps
+    everything, **even when the kill switch asks to flatten**: Tyche's holdings are
+    what is in doubt, so a sale sized on them could sell shares the account does not
+    hold. Pablo flattens in IBKR's own apps instead.
+
     Attributes:
         as_of: The decision time.
         sleeves: One per strategy with a budget, ordered by strategy id.
@@ -343,6 +351,7 @@ class ApprovedPortfolioEvent(Event):
             it approved the proposal as it was.
         halt: The drawdown kill that halted trading, or ``None``.
         kill: The kill switch, if it was engaged at this decision, or ``None``.
+        unreconciled: The reconciliation mismatch that halted trading, or ``None``.
     """
 
     as_of: datetime
@@ -352,6 +361,7 @@ class ApprovedPortfolioEvent(Event):
     adjustments: tuple[RiskAdjustment, ...] = ()
     halt: AccountTrigger | None = None
     kill: Kill | None = None
+    unreconciled: Reconciliation | None = None
 
     def __post_init__(self) -> None:
         _require_portfolio("ApprovedPortfolioEvent", self.as_of, self.sleeves, self.targets)
@@ -365,18 +375,32 @@ class ApprovedPortfolioEvent(Event):
                 )
             if self.halt.at > self.as_of:
                 raise ValueError("ApprovedPortfolioEvent: halted by a trigger after it")
-        if (self.halt is not None or self.kill is not None) and (self.targets or self.adjustments):
+        if self.unreconciled is not None:
+            if self.unreconciled.status is not ReconciliationStatus.MISMATCH:
+                raise ValueError(
+                    f"ApprovedPortfolioEvent: a reconciliation {self.unreconciled.status} "
+                    "does not halt"
+                )
+            if self.unreconciled.at > self.as_of:
+                raise ValueError("ApprovedPortfolioEvent: halted by a reconciliation after it")
+        stopped = self.halt is not None or self.kill is not None or self.unreconciled is not None
+        if stopped and (self.targets or self.adjustments):
             raise ValueError("ApprovedPortfolioEvent: a halted or killed approval approves nothing")
 
     @property
     def flattens(self) -> bool:
-        """True when the kill switch asks for every holding to be sold (ADR-0039)."""
-        return self.kill is not None and self.kill.flatten
+        """True when the kill switch asks for every holding to be sold (ADR-0039).
+
+        Never under a reconciliation halt (ADR-0044): what Tyche holds is in doubt.
+        """
+        return self.kill is not None and self.kill.flatten and self.unreconciled is None
 
     @property
     def keeps_everything(self) -> bool:
-        """True when nothing may be traded: halted or killed, and not flattening."""
-        return (self.halt is not None or self.kill is not None) and not self.flattens
+        """True when nothing may be traded: halted, unreconciled or killed, and not
+        flattening."""
+        stopped = self.halt is not None or self.kill is not None or self.unreconciled is not None
+        return stopped and not self.flattens
 
     def sleeve(self, strategy_id: str) -> Sleeve:
         return _sleeve(self.sleeves, strategy_id)
@@ -387,8 +411,8 @@ class ApprovedPortfolioEvent(Event):
         Returns ``None`` (a target of zero) for every sleeve, listed or not, and every
         instrument when the kill switch flattens. Otherwise the sleeve's contribution if
         it has one; ``None`` if it decided on the instrument and did not target it;
-        ``KEEP`` otherwise (not offered this cycle, the sleeve failed, trading is halted
-        or killed): keep what it holds.
+        ``KEEP`` otherwise (not offered this cycle, the sleeve failed, trading is halted,
+        unreconciled or killed): keep what it holds.
         """
         if self.flattens:
             return None

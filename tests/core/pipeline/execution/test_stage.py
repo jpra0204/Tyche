@@ -16,6 +16,7 @@ from tests.support.costs import NO_FEES, US_COSTS, usd
 from tests.support.kill import kill
 from tests.support.ledger import fill
 from tests.support.market import QQQ, SPY, close_of, session
+from tests.support.reconciliation import mismatch
 from tests.support.recording import Recorder, TickingClock
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
 from tyche.core.domain import (
@@ -34,6 +35,7 @@ from tyche.core.domain import (
     PlanLine,
     PlanNote,
     PriceAdjustment,
+    Reconciliation,
     RiskRule,
     Side,
     Sleeve,
@@ -151,11 +153,18 @@ class Desk:
         *targets: InstrumentTarget,
         halt: AccountTrigger | None = None,
         kill: Kill | None = None,
+        unreconciled: Reconciliation | None = None,
     ) -> list[Event]:
         """Publish the approved portfolio for ``day``'s close; return what it caused."""
         before = len(self.recorder)
         approved = ApprovedPortfolioEvent(
-            close_of(day), sleeves, targets, "pass-through", halt=halt, kill=kill
+            close_of(day),
+            sleeves,
+            targets,
+            "pass-through",
+            halt=halt,
+            kill=kill,
+            unreconciled=unreconciled,
         )
         self.bus.publish(approved, source="risk", cycle_id=f"XNYS:{day.isoformat()}:1d")
         self.bus.drain()
@@ -615,6 +624,24 @@ class TestKilled:
         assert desk.state.account.positions == ()
         sold = [f.fill for f in desk.fills() if f.fill.side is Side.SELL]
         assert sorted(f.quantity for f in sold) == [D(30), D(40)]  # the stop never fired
+
+    def test_under_a_reconciliation_halt_a_flatten_waits(self) -> None:
+        desk = self.two_sleeves_one_with_a_stop()
+
+        caused = desk.decide(
+            WED,
+            (decided("a", "0.5", SPY), decided("b", "0.5", QQQ)),
+            kill=kill(flatten=True),
+            unreconciled=mismatch(close_of(TUE)),
+        )
+
+        assert desk.submitted(caused) == []
+        assert not any(isinstance(e, CancelRequestEvent) for e in caused)
+        assert desk.plan(caused) == (
+            PlanLine("a", SPY, D(30), D(30), note=PlanNote.UNRECONCILED),
+            PlanLine("b", QQQ, D(40), D(40), note=PlanNote.UNRECONCILED),
+        )
+        assert len(desk.book.stops) == 1
 
     def test_a_flatten_sells_a_sleeve_no_longer_listed(self) -> None:
         desk = self.two_sleeves_one_with_a_stop()

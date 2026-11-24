@@ -9,6 +9,9 @@ What is an alert, and what is not:
   entry blocked by the position count, a purchase cut to the money caps. A capped
   position is cut at every close, so they belong in the daily summary (PR 16).
 * **The kill switch**, once per run, at the first approval that carries it.
+* **Reconciliation** (ADR-0044): every mismatch, which halts trading, and every check
+  that dropped orders the broker no longer lists. Taking the broker's cash within the
+  tolerance is routine, for the daily summary.
 * **Data problems**: every ``DataQualityEvent`` of the run, in one alert, so a bad
   download cannot flood the channel.
 * **A failed run**, built by the runtime with ``run_failed_alert``, because a run that
@@ -19,12 +22,20 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
-from tyche.core.domain import AccountTrigger, DataIssue, Kill, RiskRule
+from tyche.core.domain import (
+    AccountTrigger,
+    DataIssue,
+    Kill,
+    Reconciliation,
+    ReconciliationStatus,
+    RiskRule,
+)
 from tyche.core.events import (
     ApprovedPortfolioEvent,
     DataQualityEvent,
     Envelope,
     EventBus,
+    ReconciliationEvent,
     RiskEvent,
     RunMode,
 )
@@ -36,6 +47,7 @@ MAX_ISSUES_LISTED = 10
 """Data issues listed one by one in an alert; the rest are counted."""
 
 KILL_SWITCH_RUNBOOK = "docs/runbooks/kill-switch.md"
+RECONCILIATION_RUNBOOK = "docs/runbooks/reconciliation-mismatch.md"
 
 
 class AlertCollector:
@@ -54,6 +66,7 @@ class AlertCollector:
         bus.subscribe(RiskEvent, self._on_risk, name=SUBSCRIBER)
         bus.subscribe(ApprovedPortfolioEvent, self._on_approval, name=SUBSCRIBER)
         bus.subscribe(DataQualityEvent, self._on_data_quality, name=SUBSCRIBER)
+        bus.subscribe(ReconciliationEvent, self._on_reconciliation, name=SUBSCRIBER)
 
     def alerts(self) -> tuple[Alert, ...]:
         """Every alert so far, the run's data problems last, as one alert."""
@@ -73,6 +86,11 @@ class AlertCollector:
             return
         self._kill_seen = True
         self._alerts.append(kill_alert(kill, envelope.occurred_at, decision=envelope.event.as_of))
+
+    def _on_reconciliation(self, envelope: Envelope[ReconciliationEvent]) -> None:
+        alert = reconciliation_alert(envelope.event.reconciliation)
+        if alert is not None:
+            self._alerts.append(alert)
 
     def _on_data_quality(self, envelope: Envelope[DataQualityEvent]) -> None:
         self._issues.append(envelope.event.issue)
@@ -101,6 +119,37 @@ def risk_limit_alert(event: RiskEvent, at: datetime) -> Alert | None:
             "No new entries or additions at this close. Exits and reductions still go through."
         )
     return Alert(AlertKind.RISK_LIMIT, title, at, tuple(lines))
+
+
+def reconciliation_alert(reconciliation: Reconciliation) -> Alert | None:
+    """A mismatch, or orders dropped as ended; ``None`` for a match or adopted cash."""
+    if reconciliation.status is ReconciliationStatus.MISMATCH:
+        lines = [str(d) for d in reconciliation.differences[:MAX_ISSUES_LISTED]]
+        hidden = len(reconciliation.differences) - MAX_ISSUES_LISTED
+        if hidden > 0:
+            lines.append(f"… and {hidden} more in the journal.")
+        lines.extend(
+            f"Explained: {fill}. `tyche resume` applies it." for fill in reconciliation.inferred
+        )
+        lines.extend(f"Ended: {ended}." for ended in reconciliation.ended)
+        lines.append(
+            "No orders until you run `tyche resume`. Holdings are kept; resting stops stay. "
+            "A kill-switch flatten waits: flatten in IBKR's own apps if you must."
+        )
+        lines.append(f"Runbook: {RECONCILIATION_RUNBOOK}")
+        title = "Reconciliation mismatch: trading is halted"
+        return Alert(AlertKind.RECONCILIATION, title, reconciliation.at, tuple(lines))
+    if not reconciliation.ended:
+        return None
+    count = len(reconciliation.ended)
+    noun = "order" if count == 1 else "orders"
+    lines = [f"{ended}." for ended in reconciliation.ended]
+    lines.append(
+        "No shares moved. Tyche dropped them from its records; the next decision places a "
+        "stop again if its sleeve still wants one."
+    )
+    title = f"Reconciliation: {count} {noun} ended at the broker"
+    return Alert(AlertKind.RECONCILIATION, title, reconciliation.at, tuple(lines))
 
 
 def kill_alert(kill: Kill, at: datetime, *, decision: datetime | None = None) -> Alert:
@@ -136,16 +185,26 @@ def resumed_alert(
     *,
     released: Kill | None,
     lifted: AccountTrigger | None,
+    reconciliation: Reconciliation | None = None,
+    applied: bool = False,
 ) -> Alert:
-    """``tyche resume`` lifted the kill switch, the drawdown halt, or both."""
+    """``tyche resume`` lifted the kill switch, the drawdown halt, a reconciliation halt."""
     what = [
         "the kill switch" if released is not None else "",
         "the drawdown halt" if lifted is not None else "",
+        "the reconciliation halt" if reconciliation is not None else "",
     ]
-    title = f"Trading resumed: lifted {' and '.join(w for w in what if w)}"
+    named = [w for w in what if w]
+    listed = ", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 else named[0]
+    title = f"Trading resumed: lifted {listed}"
     lines = [f"Reason: {reason}", "The next decision trades normally."]
     if lifted is not None:
         lines.append("The peak is forgotten: the drawdown kill counts from the next close.")
+    if reconciliation is not None:
+        if applied:
+            lines.extend(f"Applied: {fill}." for fill in reconciliation.inferred)
+            lines.append("Tyche took the broker's cash as the halt recorded it.")
+        lines.append("The next run reconciles again first: a difference still there halts again.")
     return Alert(AlertKind.RESUMED, title, at, tuple(lines))
 
 

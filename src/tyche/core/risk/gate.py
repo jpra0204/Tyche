@@ -17,6 +17,11 @@ every decision is approved with nothing in it and the switch attached: execution
 every holding, or with ``flatten`` sells every holding, and buys nothing. The halt and
 the switch can both be on; a flatten then still sells, because Pablo asked for it.
 
+A **reconciliation halt** (ADR-0044) is handed in when the gate is built, from the
+checkpoint: the run's startup check found Tyche's records and the broker's apart.
+Every decision is then approved with nothing in it and the mismatch attached, and a
+flatten waits: Tyche's holdings are what is in doubt.
+
 Otherwise the rules, in the order they apply (``review``):
 
 0. **The daily loss limit**, if it triggered at this close: every contribution above
@@ -55,6 +60,8 @@ from tyche.core.domain import (
     Kill,
     Money,
     MoneyLimits,
+    Reconciliation,
+    ReconciliationStatus,
     RiskAction,
     RiskAdjustment,
     RiskRule,
@@ -408,6 +415,8 @@ class RiskGate:
             the last close, the peak and any halt. ``None`` to start fresh.
         kill_switch: Read at every decision (ADR-0039). ``None`` for a run nobody can
             stop by hand, such as a backtest.
+        unreconciled: The reconciliation mismatch that halts trading, from the
+            checkpoint (ADR-0044), or ``None``.
     """
 
     def __init__(
@@ -418,9 +427,13 @@ class RiskGate:
         money: Mapping[Currency, MoneyLimits] | None = None,
         rules: AccountRulesState | None = None,
         kill_switch: KillSwitch | None = None,
+        unreconciled: Reconciliation | None = None,
     ) -> None:
+        if unreconciled is not None and unreconciled.status is not ReconciliationStatus.MISMATCH:
+            raise RiskGateError(f"a reconciliation {unreconciled.status} does not halt trading")
         self._bus = bus
         self._kill_switch = kill_switch
+        self._unreconciled = unreconciled
         self._limits = limits
         self._holdings = holdings
         self._money = dict(money) if money is not None else {}
@@ -457,10 +470,17 @@ class RiskGate:
         name = self._limits.profile.name
         halt = self._rules.halt
         kill = self._kill()
-        if halt is not None or kill is not None:
+        unreconciled = self._unreconciled
+        if halt is not None or kill is not None or unreconciled is not None:
             self._bus.publish(
                 ApprovedPortfolioEvent(
-                    proposed.as_of, proposed.sleeves, (), name, halt=halt, kill=kill
+                    proposed.as_of,
+                    proposed.sleeves,
+                    (),
+                    name,
+                    halt=halt,
+                    kill=kill,
+                    unreconciled=unreconciled,
                 )
             )
             return

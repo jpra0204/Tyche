@@ -5,7 +5,13 @@ from typing import Any
 
 import pytest
 
-from tests.support.profiles import US_BENCHMARK, US_DAILY_CYCLE, US_EXECUTION, US_RULES
+from tests.support.profiles import (
+    US_BENCHMARK,
+    US_DAILY_CYCLE,
+    US_EXECUTION,
+    US_RECONCILIATION,
+    US_RULES,
+)
 from tyche.core.domain import (
     AssetClass,
     Currency,
@@ -23,6 +29,7 @@ US = MarketProfile(
     execution=US_EXECUTION,
     benchmark=US_BENCHMARK,
     daily_cycle=US_DAILY_CYCLE,
+    reconciliation=US_RECONCILIATION,
 )
 
 
@@ -48,6 +55,7 @@ def test_a_combined_profile_holds_both_currencies_and_calendars() -> None:
         US_EXECUTION,
         US_BENCHMARK,
         US_DAILY_CYCLE,
+        US_RECONCILIATION,
     )
 
     assert both.cash_currencies == (Currency.CAD, Currency.USD)

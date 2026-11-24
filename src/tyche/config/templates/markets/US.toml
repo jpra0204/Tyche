@@ -91,6 +91,17 @@ after_close_minutes = 120
 # so the account rules see every close.
 before_next_open_minutes = 30
 
+[reconciliation]
+# How paper and live compare Tyche's records with the broker's (ADR-0044). Positions
+# and orders must match exactly; any difference halts trading until `tyche resume`.
+# Cash cannot match exactly: IBKR charges fees and pays interest Tyche does not model,
+# and holds a dividend as accrued until it pays it, perhaps net of withholding.
+
+# The cash gap, in each cash currency, that Tyche accepts and takes the broker's figure
+# for, beyond dividends on their way (those credited since the last check, and those
+# the broker had accrued then). A larger gap halts trading. A choice, made 2026-11-24.
+cash_tolerance = "1.00"
+
 [benchmark]
 # What every strategy is measured against: this ETF's total return, dividends
 # reinvested at the ex-date close, with no costs and no cash (ADR-0025). It is the

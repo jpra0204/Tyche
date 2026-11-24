@@ -21,6 +21,7 @@ from tests.adapters.data.test_yfinance_source import row
 from tests.runtime.test_kill_switch import save
 from tests.support import checkpoints
 from tests.support.market import JANUARY_2024
+from tests.support.reconciliation import unreconciled
 from tests.support.workspace import BACKTEST, keep_candidates
 from tyche import cli
 from tyche.adapters.calendars import ExchangeCalendarsCalendar
@@ -974,6 +975,21 @@ class TestKillAndResume:
         assert "Lifted the kill switch and the drawdown halt." in result.stdout
         assert "Recorded as run resume-" in result.stdout
         assert not workspace.kill_file.exists()
+
+    def test_resume_shows_and_applies_a_reconciliation_halt(self, home: Path) -> None:
+        workspace = self.workspace()
+        save(workspace, unreconciled())
+
+        killed = runner.invoke(app, ["kill", "--reason", "look first"])
+        assert "Trading is also halted by reconciliation since 2024-01-04" in killed.stdout
+
+        result = runner.invoke(app, ["resume", "--reason", "stop hit overnight", "--yes"])
+
+        assert result.exit_code == 0, result.output
+        assert "Reconciliation halt since 2024-01-04 00:15 UTC:" in result.stdout
+        assert "Resuming applies: order sim-000001-stop-alpha sold 6 SPY" in result.stdout
+        assert "Lifted the kill switch and the reconciliation halt." in result.stdout
+        assert "Applied: order sim-000001-stop-alpha sold 6" in result.stdout
 
     def test_resume_with_nothing_to_lift(self, home: Path) -> None:
         self.workspace()

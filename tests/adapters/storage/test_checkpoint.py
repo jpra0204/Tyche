@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from tests.support.checkpoints import SAVED_AT, checkpoint
+from tests.support.reconciliation import unreconciled
 from tyche.adapters.storage import SqliteCheckpointStore, SqliteJournalStore, codec, open_database
+from tyche.core.domain import ReconciliationState
 from tyche.core.events import Envelope, RunEvent, RunMode, RunStage
 from tyche.core.ports import CheckpointStore, CheckpointStoreError
 
@@ -181,3 +183,26 @@ def test_the_codec_refuses_anything_but_a_checkpoint() -> None:
     started = RunEvent("r", RunMode.PAPER, RunStage.STARTED, "0.1.0")
     with pytest.raises(codec.CodecError, match="not a checkpoint"):
         codec.loads_checkpoint(codec.dumps(started))
+
+
+def test_reads_back_a_reconciliation_halt(
+    connection: sqlite3.Connection, store: SqliteCheckpointStore
+) -> None:
+    journal_run(connection, "paper-halted")
+    halted = unreconciled()
+
+    store.save(halted)
+
+    assert store.read("paper-halted") == halted
+    assert halted.reconciliation.halt is not None
+    assert halted.reconciliation.halt.inferred
+
+
+def test_a_checkpoint_stored_before_reconciliation_reads_back_with_an_empty_memory() -> None:
+    raw = json.loads(codec.dumps_checkpoint(checkpoint()))
+    del raw["fields"]["reconciliation"]
+
+    loaded = codec.loads_checkpoint(json.dumps(raw))
+
+    assert loaded == checkpoint()
+    assert loaded.reconciliation == ReconciliationState()

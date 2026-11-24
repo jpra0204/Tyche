@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from tyche.adapters.clocks import SystemClock
 from tyche.adapters.notifiers import DiscordWebhookNotifier
 from tyche.config import DISCORD_WEBHOOK_URL, EnvFileError, Secrets, Workspace, load_secrets
-from tyche.core.domain import AccountTrigger, Kill
+from tyche.core.domain import AccountTrigger, Kill, Reconciliation
 from tyche.core.pipeline.alerts import channel_check_alert, kill_alert, resumed_alert
 from tyche.core.ports import Alert, Clock, Notifier, NotifierError
 
@@ -117,11 +117,20 @@ def notify_resume(
     lifted: AccountTrigger | None,
     environ: Mapping[str, str],
     code_version: str,
+    unreconciled: Reconciliation | None = None,
+    applied: bool = False,
     clock: Clock | None = None,
 ) -> Delivery:
-    """``tyche resume`` lifted the kill switch, the drawdown halt, or both."""
+    """``tyche resume`` lifted the kill switch or a halt."""
     at = (clock or SystemClock()).now()
-    alert = resumed_alert(reason, at, released=released, lifted=lifted)
+    alert = resumed_alert(
+        reason,
+        at,
+        released=released,
+        lifted=lifted,
+        reconciliation=unreconciled,
+        applied=applied,
+    )
     return notify(workspace, [alert], environ=environ, code_version=code_version)
 
 

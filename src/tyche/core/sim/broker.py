@@ -69,6 +69,8 @@ from decimal import ROUND_FLOOR, Decimal
 from tyche.core.domain import (
     Account,
     Bar,
+    BrokerOrder,
+    BrokerRecord,
     Fill,
     Instrument,
     Money,
@@ -272,6 +274,18 @@ class SimBroker:
 
     def account(self) -> Account:
         return self._account
+
+    def record(self) -> BrokerRecord:
+        """The simulator's record: its account and its working orders (ADR-0044). It
+        accrues no dividend: it credits each at the ex-date, as Tyche does."""
+        return BrokerRecord(
+            account=self._account,
+            orders=tuple(
+                BrokerOrder(order_id, working.state.remaining)
+                for order_id, working in sorted(self._orders.items())
+                if not working.state.status.is_terminal
+            ),
+        )
 
     # --- what a report needs ----------------------------------------------------------
 

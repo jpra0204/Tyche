@@ -46,4 +46,4 @@ The journal already stores every event. Feeding them all back through the stages
 
 - **Every new piece of memory must join the checkpoint.** A stage that starts remembering something must export it and accept it back. The cut-in-two test catches a part that was forgotten, but only if the scenario exercises it.
 - **Changing a part is a stored-format change**, with the same rule as the journal: adding a field with a default is free; anything else needs a new format number and a reader for the old one ([schema migrations](schema-migrations.md)).
-- **The broker is the other half.** A checkpoint is Tyche's own record. The broker keeps its own, and the two are compared at every start (reconciliation, Phase 2, PR 13). In tests the simulator stands in for the broker and carries its own state across the cut.
+- **The broker is the other half.** A checkpoint is Tyche's own record. The broker keeps its own, and the two are compared at every start ([reconciliation](reconciliation.md), Phase 2, PR 13); the checkpoint also carries reconciliation's memory, including any halt. In tests the simulator stands in for the broker and carries its own state across the cut.

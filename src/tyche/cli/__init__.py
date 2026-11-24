@@ -982,10 +982,11 @@ def resume_trading(
     yes: Annotated[bool, typer.Option("--yes", help="Do not ask before lifting.")] = False,
     home: HomeOption = None,
 ) -> None:
-    """Lift the kill switch and the drawdown halt: the manual restart.
+    """Lift the kill switch and the halts: the manual restart.
 
     Shows what it would lift and asks first. A drawdown halt is lifted in the state
-    database, with a new peak from the next close; the KILL file is removed last.
+    database, with a new peak from the next close. A reconciliation halt is lifted there
+    too, applying the fills it explained. The KILL file is removed last.
     """
     workspace = _existing_workspace(home)
     _open_logs(workspace, "resume")
@@ -997,12 +998,15 @@ def resume_trading(
     if current.halt is not None:
         typer.echo(f"Drawdown halt since {current.halt.at:%Y-%m-%d}: {current.halt.reason}")
         typer.echo("  Resuming forgets the peak: the next close becomes the new peak.")
+    if current.unreconciled is not None:
+        for line in _describe_unreconciled(current):
+            typer.echo(line)
     if current.unreadable is not None:
         _fail(
-            f"the state database cannot be read, so a drawdown halt cannot be ruled out: "
+            "the state database cannot be read, so a halt cannot be ruled out: "
             f"{current.unreadable}"
         )
-    if current.kill is None and current.halt is None:
+    if not current.stopped:
         typer.echo("Nothing to resume: the kill switch is off and trading is not halted.")
         return
     if not yes:
@@ -1019,8 +1023,13 @@ def resume_trading(
     lifted = [
         "the kill switch" if outcome.released else "",
         "the drawdown halt" if outcome.lifted else "",
+        "the reconciliation halt" if outcome.unreconciled else "",
     ]
     typer.echo(f"Lifted {' and '.join(x for x in lifted if x)}.")
+    if outcome.applied and outcome.unreconciled is not None:
+        for fill in outcome.unreconciled.inferred:
+            typer.echo(f"Applied: {fill}.")
+        typer.echo("Took the broker's cash as the halt recorded it.")
     if outcome.run_id is not None:
         typer.echo(f"Recorded as run {outcome.run_id} in the state database.")
     typer.echo("The next decision trades normally.")
@@ -1031,6 +1040,8 @@ def resume_trading(
                 "reason": reason,
                 "kill_released": outcome.released is not None,
                 "halt_lifted": outcome.lifted is not None,
+                "reconciliation_lifted": outcome.unreconciled is not None,
+                "reconciliation_applied": outcome.applied,
                 "run_id": outcome.run_id,
             }
         },
@@ -1040,6 +1051,8 @@ def resume_trading(
         reason,
         released=outcome.released,
         lifted=outcome.lifted,
+        unreconciled=outcome.unreconciled,
+        applied=outcome.applied,
         environ=os.environ,
         code_version=__version__,
     )
@@ -1097,6 +1110,23 @@ def _describe_kill(kill: Kill) -> list[str]:
     return [f"Engaged at: {when}", f"Reason: {kill.reason}", f"Flatten: {effect}"]
 
 
+def _describe_unreconciled(current: TradingStatus) -> list[str]:
+    halt = current.unreconciled
+    if halt is None:
+        return []
+    lines = [f"Reconciliation halt since {halt.at:%Y-%m-%d %H:%M} UTC:"]
+    lines.extend(f"  {difference}" for difference in halt.differences)
+    if not current.applies:
+        lines.append("  A later check agreed with the broker: resuming applies nothing.")
+        return lines
+    lines.extend(f"  Resuming applies: {fill}." for fill in halt.inferred)
+    lines.extend(f"  Resuming drops: {ended}." for ended in halt.ended)
+    lines.append("  Resuming takes the broker's cash as this check recorded it.")
+    if halt.differences:
+        lines.append("  Fix the differences above in the account first; the next run checks again.")
+    return lines
+
+
 def _describe_status(current: TradingStatus, database: str) -> list[str]:
     if current.unreadable is not None:
         return [f"Could not read {database}, so working orders are unknown: {current.unreadable}"]
@@ -1106,6 +1136,11 @@ def _describe_status(current: TradingStatus, database: str) -> list[str]:
     if current.halt is not None:
         lines.append(
             f"Trading is also halted by the drawdown kill since {current.halt.at:%Y-%m-%d}."
+        )
+    if current.unreconciled is not None:
+        lines.append(
+            f"Trading is also halted by reconciliation since {current.unreconciled.at:%Y-%m-%d}: "
+            "a flatten waits until it is lifted; flatten in IBKR's own apps if you must."
         )
     working = current.working
     if not working:

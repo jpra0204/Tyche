@@ -30,6 +30,7 @@ uv run tyche init --home /tmp/tyche-fresh
 | `[tiered]` in `config/costs/US.toml` | PR 22 | The table, if you want `tyche capital` to compare Tiered. Optional: without it, Fixed only |
 | `config/guardrails.toml` and `config/risk/default.toml` | Phase 2, PR 1 | Both files. Tyche refuses to start without its hard limits. The guardrail values are an example: set your own ([risk profiles](08-risk-profiles.md)) |
 | `[daily_cycle]` in `config/markets/US.toml` | Phase 2, PR 12 | The table: when a session's bars count as final (two hours after the close) and until when a decision may trade (30 minutes before the next open) |
+| `[reconciliation]` in `config/markets/US.toml` | Phase 2, PR 13 | The table: the cash gap Tyche takes from IBKR without halting (`cash_tolerance = "1.00"`), beyond dividends on their way ([ADR-0044](../adr/0044-reconciliation-exact-positions-broker-cash.md)) |
 
 Copying changes your config hash, as any change of setting does: runs before and after the copy are told apart in their records. That is intended.
 

@@ -22,6 +22,7 @@ from tyche.adapters.brokers.ibkr import (
     IBKRError,
     OpenOrderStyle,
     ReportedHolding,
+    ReportedOrder,
     ReportedValue,
     Unaccounted,
 )
@@ -30,6 +31,7 @@ from tyche.adapters.storage import Fate, SqliteBrokerOrderStore, open_database
 from tyche.config import IbkrConnection
 from tyche.core.domain import (
     AssetClass,
+    BrokerOrder,
     Currency,
     Instrument,
     Money,
@@ -732,3 +734,85 @@ def test_order_returns_the_latest_state(paper: Paper) -> None:
     state = paper.broker.order("o-buy")
     assert state is not None
     assert state.status is OrderStatus.SUBMITTED
+
+
+# --- the record reconciliation reads (ADR-0044) -------------------------------------
+
+
+def _cash_only(paper: Paper, *extra: ReportedValue) -> None:
+    paper.gateway.values = [_value("SettledCashByDate", "20240103:5000.00"), *extra]
+
+
+def test_the_record_lists_tyches_working_orders_with_what_remains(paper: Paper) -> None:
+    _cash_only(paper)
+    paper.submit(market())
+    paper.submit(stop())
+    paper.gateway.execute("o-buy", "4", "470.12", OPEN_WED)
+    paper.gateway.set_status("o-buy", "Submitted")
+    paper.broker.sync()
+    paper.gateway.orders[paper.gateway.order_for("o-buy").order_id] = replace(
+        paper.gateway.order_for("o-buy"), filled=Decimal(4), remaining=Decimal(6)
+    )
+
+    record = paper.broker.record()
+
+    assert record.orders == (BrokerOrder("o-buy", Decimal(6)), BrokerOrder("o-stop", Decimal(10)))
+    assert (record.foreign_orders, record.unresolved, record.accrued_dividends) == (0, (), ())
+    assert record.account == paper.broker.account()
+
+
+def test_an_order_ibkr_no_longer_lists_is_not_in_the_record(paper: Paper) -> None:
+    _cash_only(paper)
+    paper.submit(stop())
+    paper.gateway.forget("o-stop")
+
+    assert paper.broker.record().orders == ()
+
+
+def test_working_orders_that_are_not_tyches_are_counted(paper: Paper) -> None:
+    _cash_only(paper)
+    theirs = ReportedOrder("", 7, 1, ACCOUNT, "Submitted", Decimal(0), Decimal(5))
+    elsewhere = ReportedOrder("", 8, 2, "TEST-OTHER", "Submitted", Decimal(0), Decimal(5))
+    paper.gateway.orders.update({7: theirs, 8: elsewhere})
+
+    assert paper.broker.record().foreign_orders == 1
+
+
+def test_an_open_order_in_a_status_tyche_does_not_know_is_unresolved(paper: Paper) -> None:
+    _cash_only(paper)
+    paper.submit(market())
+    paper.gateway.set_status("o-buy", "Mystery")
+
+    (note,) = paper.broker.record().unresolved
+    assert "o-buy" in note
+    assert "Mystery" in note
+
+
+def test_what_the_last_sync_could_not_settle_is_unresolved(paper: Paper) -> None:
+    _cash_only(paper)
+    paper.submit(market())
+    paper.gateway.execute("o-buy", "10", "470.12", OPEN_WED, exec_id="0001.01", commission=None)
+    paper.broker.sync()
+
+    assert paper.broker.record().unresolved == (
+        "execution 0001.01 awaits IBKR's commission report",
+    )
+
+
+def test_accrued_dividends_per_currency_not_the_base(paper: Paper) -> None:
+    _cash_only(
+        paper,
+        _value("AccruedDividend", "18.25"),
+        _value("AccruedDividend", "24.90", "BASE"),
+        _value("AccruedDividend", "0.00", "CAD"),
+    )
+
+    assert paper.broker.record().accrued_dividends == (usd("18.25"),)
+
+
+@pytest.mark.parametrize("text", ["x", "NaN", "-1"])
+def test_an_accrued_dividend_tyche_cannot_read_is_refused(paper: Paper, text: str) -> None:
+    _cash_only(paper, _value("AccruedDividend", text))
+
+    with pytest.raises(IBKRBrokerError):
+        paper.broker.record()

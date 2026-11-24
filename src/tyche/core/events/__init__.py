@@ -5,7 +5,8 @@ event, the synchronous, deterministic ``EventBus`` (ADR-0003), the market events
 (``SessionEvent``, ``BarEvent``, ``DataReadyEvent``, ``DataQualityEvent``,
 ``CycleSkippedEvent`` with its ``SkipReason``),
 ``RunEvent`` and ``ResumeEvent``, the trading events (``ExecutionPlanEvent``, ``OrderEvent``,
-``CancelRequestEvent``, ``FillEvent``, ``AccountEvent``, ``DistributionEvent``), and
+``CancelRequestEvent``, ``FillEvent``, ``AccountEvent``, ``DistributionEvent``,
+``ReconciliationEvent``), and
 the decision-cycle events (``UniverseEvent``, ``ScreeningEvent``, ``SignalEvent``,
 ``SignalsReadyEvent``, ``TargetPortfolioEvent``, ``RiskEvent``,
 ``ApprovedPortfolioEvent`` with its ``KEEP`` marker).
@@ -51,6 +52,7 @@ from tyche.core.events.trading import (
     ExecutionPlanEvent,
     FillEvent,
     OrderEvent,
+    ReconciliationEvent,
 )
 
 __all__ = [
@@ -74,6 +76,7 @@ __all__ = [
     "HandlerError",
     "Keep",
     "OrderEvent",
+    "ReconciliationEvent",
     "ResumeEvent",
     "RiskEvent",
     "RunEvent",

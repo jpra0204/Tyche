@@ -19,7 +19,7 @@ flowchart LR
     F & U & S & G & P & R & E & B & A -.->|every event| J[8 Journal]
 ```
 
-Stage 7, reconciliation, arrives in Phase 2.
+Stage 7, reconciliation, is not on the bus: it compares a checkpoint with the broker's record between runs (below).
 
 ## Two kinds of failure
 
@@ -105,7 +105,18 @@ There is no third kind. A stage never logs a problem and carries on with a guess
 |---|---|
 | Subscribes to | `SessionEvent`, `DistributionEvent`, `FillEvent`, `BarEvent` |
 | Publishes | One `AccountEvent` at every session close, before that close's decision cycle |
-| Promises | The same ledger rules as the broker's own record (`Account`), built only from the facts the broker reports, so that reconciliation (Phase 2) has two independent records to compare |
+| Promises | The same ledger rules as the broker's own record (`Account`), built only from the facts the broker reports, so that reconciliation has two independent records to compare |
+
+### 7. Reconciliation (`tyche.core.pipeline.reconciliation`: `reconcile`, `correct`, `resolve`)
+
+Pure functions, not a bus subscriber ([ADR-0044](../adr/0044-reconciliation-exact-positions-broker-cash.md)). The paper and live runs (PR 14) call them at startup, once the broker's fills are read, and after the run, each time on a checkpoint, and publish the result as a `ReconciliationEvent`.
+
+| | |
+|---|---|
+| Reads | A `Checkpoint` (Tyche's account, the sleeve book, execution's working orders, reconciliation's memory) and a `BrokerRecord` from `Broker.record()`, the profile's `[reconciliation]` rules and its cash currencies |
+| Returns | `reconcile`: a `Reconciliation` (differences, inferred fills, ended orders, a cash check per currency). `correct`: the checkpoint after it, corrected (broker's cash, ended orders dropped) or halted (the mismatch stored). `resolve`: the checkpoint with the halt lifted and what it explained applied, for `tyche resume` |
+| Promises | Positions and orders exact; cash within the tolerance plus dividends on their way; a fill on a missed day is only ever explained, never applied without `tyche resume`; a backtest's own records always reconcile as a match with its `SimBroker` |
+| Halts on | Nothing itself: a mismatch is stored in the checkpoint, the gate is built with it, and every approval carries it as `unreconciled`. `correct` and `resolve` raise `ReconciliationError` when a reconciliation names an order the checkpoint does not hold (a bug) |
 
 ### 8. Journal (`tyche.core.pipeline.journal`: `InMemoryJournal`, `StoredJournal`)
 
