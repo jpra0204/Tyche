@@ -14,6 +14,7 @@ from tyche.core.domain import (
     Instrument,
     LedgerError,
     Money,
+    PendingCash,
     Position,
     Side,
 )
@@ -300,3 +301,53 @@ class TestCredit:
 
         with pytest.raises(LedgerError, match="already been received"):
             once.credit(dividend(NEXT_DAY, "1"))
+
+
+class TestReported:
+    """An account as a broker reports it (Phase 2, PR 11)."""
+
+    def test_holds_what_the_broker_says(self) -> None:
+        pending = PendingCash(usd("300"), NEXT_DAY, "broker-settles")
+        account = Account.reported(
+            settled=[usd("5000")],
+            pending=[pending],
+            positions=[Position(SPY, Decimal(10), usd("4700"))],
+            marks={SPY: usd("472.5")},
+        )
+        assert account.cash(Currency.USD).settled == usd("5000")
+        assert account.cash(Currency.USD).pending == (pending,)
+        assert account.position(SPY) == Position(SPY, Decimal(10), usd("4700"))
+        assert account.equity(Currency.USD) == usd("10025")
+        assert account.realized_pnl(Currency.USD) == usd("0")
+
+    @pytest.mark.parametrize(
+        ("settled", "positions", "marks", "message"),
+        [
+            ([usd("1"), usd("2")], [], {}, "reported twice"),
+            (
+                [],
+                [Position(SPY, Decimal(1), usd("1")), Position(SPY, Decimal(2), usd("2"))],
+                {SPY: usd("1")},
+                "reported twice",
+            ),
+            ([], [Position(SPY, Decimal(1), usd("1"))], {}, "without a mark"),
+            ([], [], {SPY: usd("1")}, "not held"),
+            ([], [Position(SPY, Decimal(1), usd("1"))], {SPY: usd("0")}, "cannot mark"),
+            (
+                [],
+                [Position(SPY, Decimal(1), usd("1"))],
+                {SPY: Money.of("1", Currency.CAD)},
+                "cannot mark",
+            ),
+        ],
+        ids=["cash-twice", "position-twice", "no-mark", "mark-only", "zero-mark", "cad-mark"],
+    )
+    def test_refuses_a_report_that_does_not_add_up(
+        self,
+        settled: list[Money],
+        positions: list[Position],
+        marks: dict[Instrument, Money],
+        message: str,
+    ) -> None:
+        with pytest.raises(LedgerError, match=message):
+            Account.reported(settled=settled, pending=[], positions=positions, marks=marks)

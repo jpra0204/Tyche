@@ -28,20 +28,24 @@ from pydantic import SecretStr
 from tyche.config.loader import ConfigError
 
 DISCORD_WEBHOOK_URL = "DISCORD_WEBHOOK_URL"
+IBKR_HOST = "IBKR_HOST"
+IBKR_PORT = "IBKR_PORT"
+IBKR_CLIENT_ID = "IBKR_CLIENT_ID"
+IBKR_ACCOUNT_ID = "IBKR_ACCOUNT_ID"
 
 KNOWN_KEYS = (
     "TYCHE_HOME",
     DISCORD_WEBHOOK_URL,
-    "IBKR_HOST",
-    "IBKR_PORT",
-    "IBKR_CLIENT_ID",
-    "IBKR_ACCOUNT_ID",
+    IBKR_HOST,
+    IBKR_PORT,
+    IBKR_CLIENT_ID,
+    IBKR_ACCOUNT_ID,
 )
 """Every key ``.env`` may hold. ``TYCHE_HOME`` is read from the process environment
 before the workspace is known, so in the workspace's own file it is only a note. The
-``IBKR_`` keys are read from Phase 2, PR 11; until then they are accepted and unused."""
+``IBKR_`` keys are the connection to IB Gateway (Phase 2, PR 11)."""
 
-SECRET_KEYS = frozenset({DISCORD_WEBHOOK_URL, "IBKR_ACCOUNT_ID"})
+SECRET_KEYS = frozenset({DISCORD_WEBHOOK_URL, IBKR_ACCOUNT_ID})
 """Keys whose values must never appear in a log, a message or a report."""
 
 _KEY = re.compile(r"[A-Z][A-Z0-9_]*")
@@ -60,13 +64,23 @@ class EnvFileError(ConfigError):
 class Secrets:
     """The secrets Tyche uses, each hidden from ``repr`` and ``str``.
 
+    The IBKR host, port and client id are not secret, but they live in ``.env`` with
+    the account id, so they are read here too and checked the same way.
+
     Attributes:
         discord_webhook_url: The Discord channel's webhook, or ``None`` if not given.
-        ibkr_account_id: The IBKR account id, or ``None``; used from Phase 2, PR 11.
+        ibkr_account_id: The IBKR account Tyche may trade, or ``None``.
+        ibkr_host: Where IB Gateway runs, or ``None``.
+        ibkr_port: The port IB Gateway listens on, or ``None``. Never a default: a port
+            does not prove paper or live (ADR-0041).
+        ibkr_client_id: Tyche's API client id at the gateway, or ``None``. Never 0.
     """
 
     discord_webhook_url: SecretStr | None = None
     ibkr_account_id: SecretStr | None = None
+    ibkr_host: str | None = None
+    ibkr_port: int | None = None
+    ibkr_client_id: int | None = None
 
     def values(self) -> tuple[str, ...]:
         """Every secret given, for the log filter to hide. Longest first."""
@@ -132,11 +146,58 @@ def load_secrets(env_file: Path, environ: Mapping[str, str]) -> Secrets:
             f"{DISCORD_WEBHOOK_URL} is not a Discord webhook URL; it should look like "
             "https://discord.com/api/webhooks/<id>/<token> (value not shown)"
         )
-    account = values.get("IBKR_ACCOUNT_ID")
+    account = values.get(IBKR_ACCOUNT_ID)
     return Secrets(
         discord_webhook_url=SecretStr(webhook) if webhook is not None else None,
         ibkr_account_id=SecretStr(account) if account is not None else None,
+        ibkr_host=values.get(IBKR_HOST),
+        ibkr_port=_whole_number(values, IBKR_PORT, low=1, high=65535),
+        ibkr_client_id=_whole_number(values, IBKR_CLIENT_ID, low=1, high=2**31 - 1),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class IbkrConnection:
+    """Everything needed to reach IB Gateway and know it is the right account.
+
+    Attributes:
+        host: Where IB Gateway runs.
+        port: The port it listens on, always given explicitly.
+        client_id: Tyche's own API client id. Orders are bound to it, so Tyche never
+            sees or cancels the orders Pablo places himself (ADR-0041).
+        account_id: The only account Tyche may connect to: the paper account in
+            Phase 2 (ADR-0013).
+    """
+
+    host: str
+    port: int
+    client_id: int
+    account_id: SecretStr
+
+
+def ibkr_connection(secrets: Secrets) -> IbkrConnection:
+    """The IB Gateway connection from ``secrets``.
+
+    Raises:
+        EnvFileError: a key is missing; every missing key is named, no value is shown.
+    """
+    host, port = secrets.ibkr_host, secrets.ibkr_port
+    client_id, account_id = secrets.ibkr_client_id, secrets.ibkr_account_id
+    if host is None or port is None or client_id is None or account_id is None:
+        missing = [
+            key
+            for key, value in (
+                (IBKR_HOST, host),
+                (IBKR_PORT, port),
+                (IBKR_CLIENT_ID, client_id),
+                (IBKR_ACCOUNT_ID, account_id),
+            )
+            if value is None
+        ]
+        raise EnvFileError(
+            f"the IB Gateway connection needs {', '.join(missing)} in .env (see .env.example)"
+        )
+    return IbkrConnection(host=host, port=port, client_id=client_id, account_id=account_id)
 
 
 def readable_by_others(env_file: Path) -> bool:
@@ -150,6 +211,15 @@ def readable_by_others(env_file: Path) -> bool:
     except FileNotFoundError:
         return False
     return bool(mode & (stat.S_IRWXG | stat.S_IRWXO))
+
+
+def _whole_number(values: Mapping[str, str], key: str, *, low: int, high: int) -> int | None:
+    text = values.get(key)
+    if text is None:
+        return None
+    if not text.isascii() or not text.isdigit() or not low <= int(text) <= high:
+        raise EnvFileError(f"{key} must be a whole number from {low} to {high}, got {text!r}")
+    return int(text)
 
 
 def _unquote(value: str, where: str, key: str) -> str:

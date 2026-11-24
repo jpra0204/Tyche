@@ -13,12 +13,12 @@
     "sessions": 126,
     "years": "0.490532",
     "start_equity": "10000.00",
-    "end_equity": "10022.59",
-    "total_return": "0.002259",
-    "cagr": "0.004612",
+    "end_equity": "10022.58",
+    "total_return": "0.002258",
+    "cagr": "0.004610",
     "volatility": "0.083376",
-    "sharpe": "0.095899",
-    "sortino": "0.141983",
+    "sharpe": "0.095875",
+    "sortino": "0.141947",
     "max_drawdown": {
       "depth": "0.097331",
       "peak": "2023-11-27T21:00:00+00:00",
@@ -50,17 +50,17 @@
     "exposure": "1.000000"
   },
   "versus_benchmark": {
-    "total_return": "0.015233",
-    "cagr": "0.030881",
+    "total_return": "0.015232",
+    "cagr": "0.030879",
     "volatility": "0.009086",
-    "sharpe": "0.413401",
-    "sortino": "0.597139",
-    "max_drawdown": "-0.002484"
+    "sharpe": "0.413377",
+    "sortino": "0.597103",
+    "max_drawdown": "-0.002483"
   },
   "trading": {
-    "turnover": "14.152910",
+    "turnover": "14.152912",
     "traded": "71396.48",
-    "costs": "15.80",
+    "costs": "15.81",
     "closed_trades": 7,
     "wins": 3,
     "win_rate": "0.428571",

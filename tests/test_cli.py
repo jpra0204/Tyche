@@ -1089,6 +1089,20 @@ class TestAlertsAndLogs:
         result = runner.invoke(app, ["config", "check"])
         assert "Secrets:        Discord webhook not set: alerts are not sent" in result.stdout
 
+    def test_config_check_reports_the_gateway_without_the_account_id(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self.workspace(webhook=False)
+        result = runner.invoke(app, ["config", "check"])
+        assert "IB Gateway not set, needed from the first paper run" in result.stdout
+        assert "IBKR_PORT, IBKR_ACCOUNT_ID" in result.stdout
+
+        monkeypatch.setenv("IBKR_PORT", "4002")
+        monkeypatch.setenv("IBKR_ACCOUNT_ID", "TEST-PAPER-1")
+        result = runner.invoke(app, ["config", "check"])
+        assert "IB Gateway 127.0.0.1:4002, client id 1, account id set" in result.stdout
+        assert "TEST-PAPER-1" not in result.stdout
+
     def test_config_check_refuses_a_broken_env(self, home: Path) -> None:
         workspace = self.workspace()
         workspace.env_file.write_text("DISCORD_WEBHOOK_URL=https://example.com/hook\n")

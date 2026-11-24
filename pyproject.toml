@@ -9,6 +9,7 @@ requires-python = ">=3.14"
 # lockfile only ever contains what the code actually imports. See ADR-0002.
 dependencies = [
     "exchange-calendars>=4.13.3",
+    "ib-async>=2.1.0",
     "matplotlib>=3.11.2",
     "pyarrow>=26.0.1",
     "pydantic>=2.14.3",

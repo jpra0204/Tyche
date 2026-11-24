@@ -49,13 +49,13 @@ src/tyche/
 ├── strategies/           built-in strategy plugins (benchmark and examples)
 ├── adapters/             OUTSIDE WORLD: one folder per port
 │   ├── data/               yfinance provider, Parquet cache
-│   ├── brokers/            IBKR (later Kraken)
+│   ├── brokers/            ibkr/: IBKRBroker and its ib_async client (later Kraken)
 │   ├── calendars/          exchange calendars
 │   ├── clocks/             wall clock
 │   ├── notifiers/          Discord webhook, with urllib (ADR-0040)
 │   ├── logs/               JSON-lines logs, one file per UTC day, secrets redacted
 │   ├── llm/                claude-code (later ollama, anthropic-api)
-│   ├── storage/            the state database: migrations, codec, journal and checkpoint stores
+│   ├── storage/            the state database: migrations, codec, journal, checkpoint and broker order stores
 │   ├── kill_switch/        the KILL flag file (ADR-0039)
 │   └── reports/            report rendering
 ├── config/               the workspace, config file schemas, loading, config hash, .env secrets

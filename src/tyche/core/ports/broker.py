@@ -15,8 +15,11 @@ The protocol below is the part the rest of the core calls directly: the broker's
 record of the account, which reconciliation compares with Tyche's own view
 (``AccountState`` in execution) in Phase 2.
 
-``SimBroker`` (``tyche.core.sim``) implements it for backtests; ``IBKRBroker`` in
-``tyche.adapters`` will implement it for paper and live trading (Phase 2).
+``SimBroker`` (``tyche.core.sim``) implements it for backtests. ``IBKRBroker``
+(``tyche.adapters.brokers.ibkr``) implements it for the paper account (Phase 2, PR 11):
+it publishes a sent order's later statuses and fills only once IBKR reports them, when
+the paper cycle calls its ``sync``, so a cancellation is confirmed by IBKR, not assumed
+(ADR-0042).
 """
 
 from typing import Protocol
