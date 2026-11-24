@@ -50,7 +50,7 @@ One short record per significant decision: the context, the decision, the altern
 | [0037](0037-state-database-migrations-and-stored-journal.md) | The state database, numbered SQL migrations, and a journal stored as tagged JSON | Accepted (Pablo, 2026-11-23) |
 | [0038](0038-checkpoints-across-restarts.md) | State across restarts: a checkpoint at the end of every run | Accepted (Pablo, 2026-11-23) |
 | [0039](0039-kill-switch-and-manual-restart.md) | The kill switch and the manual restart | Accepted (Pablo, 2026-11-23) |
-| [0040](0040-logs-secrets-and-alerts.md) | Logs, secrets and Discord alerts | Proposed |
+| [0040](0040-logs-secrets-and-alerts.md) | Logs, secrets and Discord alerts | Accepted (Pablo, 2026-11-23) |
 
 ## Template
 
