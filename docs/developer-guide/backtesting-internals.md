@@ -30,7 +30,7 @@ A bar is known only at its session's close, so the broker learns the open price 
 
 ## 2. The simulated broker
 
-`SimBroker` (`tyche.core.sim.broker`) implements the `Broker` port. Like IBKR, it keeps its own record of the account; Tyche's own account view (`AccountState`, section 6) and reconciliation (Phase 2) are separate.
+`SimBroker` (`tyche.core.sim.broker`) implements the `Broker` port. Like IBKR, it keeps its own record of the account; Tyche's own account view (`AccountState`, section 6) is separate. `SimBroker.record()` gives that record as reconciliation reads it (ADR-0044): its account and its working orders, no accrued dividends (it credits them at the ex-date, as Tyche does). At the end of any backtest, the checkpoint reconciles with it as a match; `tests/integration/test_reconciliation.py` checks it at four points of a two-year run.
 
 ### Orders
 

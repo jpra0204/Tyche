@@ -709,7 +709,10 @@ class ExecutionStage:
 
 
 def _kept(approved: ApprovedPortfolioEvent) -> PlanNote:
-    """Why a holding is kept: the kill switch, the halt, or the sleeve did not decide."""
+    """Why a holding is kept: a reconciliation halt, the kill switch, the drawdown halt,
+    or the sleeve did not decide."""
+    if approved.unreconciled is not None:
+        return PlanNote.UNRECONCILED
     if approved.kill is not None:
         return PlanNote.KILLED
     if approved.halt is not None:

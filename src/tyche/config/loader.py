@@ -46,6 +46,7 @@ from tyche.core.domain import (
     Instrument,
     MarketProfile,
     Money,
+    ReconciliationRules,
     RegulatoryFees,
     TieredSchedule,
     TradingCosts,
@@ -294,6 +295,17 @@ class DailyCycleFile(_ConfigFile):
         )
 
 
+class ReconciliationFile(_ConfigFile):
+    """The ``[reconciliation]`` table of a market profile file (ADR-0044)."""
+
+    cash_tolerance: ExactDecimal
+
+    def to_domain(self) -> ReconciliationRules:
+        if self.cash_tolerance < 0:
+            raise ValueError("reconciliation.cash_tolerance must not be negative")
+        return ReconciliationRules(cash_tolerance=self.cash_tolerance)
+
+
 class MarketProfileFile(_ConfigFile):
     """``config/markets/<NAME>.toml``."""
 
@@ -304,6 +316,7 @@ class MarketProfileFile(_ConfigFile):
     execution: ExecutionFile
     benchmark: InstrumentFile
     daily_cycle: DailyCycleFile
+    reconciliation: ReconciliationFile
 
     def to_domain(self) -> MarketProfile:
         try:
@@ -318,6 +331,7 @@ class MarketProfileFile(_ConfigFile):
             execution=self.execution.to_domain(),
             benchmark=benchmark,
             daily_cycle=self.daily_cycle.to_domain(),
+            reconciliation=self.reconciliation.to_domain(),
         )
 
 

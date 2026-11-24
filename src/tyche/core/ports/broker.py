@@ -12,8 +12,9 @@ A broker talks to the rest of Tyche through events, not method calls:
 
 An implementation subscribes itself to the bus when it is created, as the journal does.
 The protocol below is the part the rest of the core calls directly: the broker's own
-record of the account, which reconciliation compares with Tyche's own view
-(``AccountState`` in execution) in Phase 2.
+record of the account, and the fuller record reconciliation compares with Tyche's own
+(ADR-0044): the account, Tyche's orders still working, other working orders, dividends
+accrued and not paid, and anything the adapter could not settle.
 
 ``SimBroker`` (``tyche.core.sim``) implements it for backtests. ``IBKRBroker``
 (``tyche.adapters.brokers.ibkr``) implements it for the paper account (Phase 2, PR 11):
@@ -24,7 +25,7 @@ the paper cycle calls its ``sync``, so a cancellation is confirmed by IBKR, not 
 
 from typing import Protocol
 
-from tyche.core.domain import Account
+from tyche.core.domain import Account, BrokerRecord
 
 
 class Broker(Protocol):
@@ -32,4 +33,8 @@ class Broker(Protocol):
 
     def account(self) -> Account:
         """The broker's own record of cash and positions, as of now."""
+        ...
+
+    def record(self) -> BrokerRecord:
+        """The broker's record for reconciliation, as of now (ADR-0044)."""
         ...

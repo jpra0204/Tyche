@@ -6,15 +6,17 @@ import pytest
 
 from tests.core.domain.test_risk import adjustment
 from tests.core.risk.test_gate import AS_OF, daily_loss, drawdown, proposal
+from tests.support.events import MISMATCH
 from tests.support.kill import kill
 from tests.support.market import QQQ, SPY
 from tests.support.recording import TickingClock
-from tyche.core.domain import DataIssue, DataIssueKind
+from tyche.core.domain import DataIssue, DataIssueKind, Reconciliation
 from tyche.core.events import (
     ApprovedPortfolioEvent,
     DataQualityEvent,
     Event,
     EventBus,
+    ReconciliationEvent,
     RiskEvent,
     RunMode,
 )
@@ -24,6 +26,7 @@ from tyche.core.pipeline.alerts import (
     channel_check_alert,
     data_failure_alert,
     kill_alert,
+    reconciliation_alert,
     resumed_alert,
     risk_limit_alert,
     run_failed_alert,
@@ -159,3 +162,61 @@ class TestCollector:
         kinds = [a.kind for a in collector.alerts()]
         assert kinds == [AlertKind.RISK_LIMIT, AlertKind.DATA_FAILURE]
         assert collector.alerts()[-1].lines == (str(issue(18)), str(issue(19)))
+
+
+class TestReconciliationAlerts:
+    def test_a_mismatch_says_trading_is_halted_and_what_resume_applies(self) -> None:
+        alert = reconciliation_alert(MISMATCH)
+
+        assert alert is not None
+        assert alert.kind is AlertKind.RECONCILIATION
+        assert alert.title == "Reconciliation mismatch: trading is halted"
+        assert alert.at == MISMATCH.at
+        assert alert.lines[0].startswith("unknown_order: paper-1-QQQ")
+        assert any(line.startswith("Explained: order paper-0-SPY") for line in alert.lines)
+        assert any("`tyche resume`" in line for line in alert.lines)
+        assert alert.lines[-1] == "Runbook: docs/runbooks/reconciliation-mismatch.md"
+
+    def test_orders_that_ended_are_an_alert_without_a_halt(self) -> None:
+        ended = Reconciliation(MISMATCH.at, ended=MISMATCH.ended)
+
+        alert = reconciliation_alert(ended)
+
+        assert alert is not None
+        assert alert.title == "Reconciliation: 1 order ended at the broker"
+        assert "halted" not in " ".join(alert.lines)
+
+    def test_a_match_or_adopted_cash_is_no_alert(self) -> None:
+        assert reconciliation_alert(Reconciliation(MISMATCH.at)) is None
+
+    def test_the_collector_keeps_them(self) -> None:
+        bus = EventBus(TickingClock().now)
+        collector = AlertCollector(bus)
+        bus.publish(ReconciliationEvent(Reconciliation(MISMATCH.at)), source="paper")
+        bus.publish(ReconciliationEvent(MISMATCH), source="paper")
+        bus.drain()
+
+        assert [a.kind for a in collector.alerts()] == [AlertKind.RECONCILIATION]
+
+    def test_a_resume_of_the_reconciliation_halt_lists_what_it_applied(self) -> None:
+        alert = resumed_alert(
+            "sold by the stop",
+            NOW,
+            released=None,
+            lifted=None,
+            reconciliation=MISMATCH,
+            applied=True,
+        )
+
+        assert alert.title == "Trading resumed: lifted the reconciliation halt"
+        assert any(line.startswith("Applied: order paper-0-SPY") for line in alert.lines)
+
+    def test_three_things_lifted_at_once_read_as_a_list(self) -> None:
+        alert = resumed_alert(
+            "all clear", NOW, released=kill(), lifted=drawdown(), reconciliation=MISMATCH
+        )
+
+        assert alert.title == (
+            "Trading resumed: lifted the kill switch, the drawdown halt and the reconciliation halt"
+        )
+        assert not any(line.startswith("Applied") for line in alert.lines)

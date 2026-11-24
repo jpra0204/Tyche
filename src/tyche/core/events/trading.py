@@ -1,4 +1,5 @@
-"""Trading events: execution's plan, orders, fills, the account and cash distributions.
+"""Trading events: execution's plan, orders, fills, the account, cash distributions and
+reconciliation.
 
 See ``docs/architecture/event-catalog.md`` for who publishes and who consumes each one.
 """
@@ -6,7 +7,15 @@ See ``docs/architecture/event-catalog.md`` for who publishes and who consumes ea
 from dataclasses import dataclass
 from datetime import datetime
 
-from tyche.core.domain import Account, CashDistribution, Fill, Money, OrderState, PlanLine
+from tyche.core.domain import (
+    Account,
+    CashDistribution,
+    Fill,
+    Money,
+    OrderState,
+    PlanLine,
+    Reconciliation,
+)
 from tyche.core.domain.validation import require_utc
 from tyche.core.events.event import Event
 
@@ -101,9 +110,8 @@ class AccountEvent(Event):
 
     Published by account state once per session close, after that session's fills,
     settlement and marks, and so before the decision cycle that starts at the same
-    close. Execution sizes orders from it; the risk layer (Phase 2) will measure the
-    daily loss from one to the next (ADR-0015); reconciliation (Phase 2) compares it
-    with the broker's own record.
+    close. Execution sizes orders from it; the risk layer measures the daily loss from
+    one to the next (ADR-0015).
 
     Attributes:
         as_of: The session's close, in UTC.
@@ -116,3 +124,19 @@ class AccountEvent(Event):
 
     def __post_init__(self) -> None:
         require_utc(self.as_of, "AccountEvent as_of")
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationEvent(Event):
+    """One comparison of Tyche's records with the broker's (ADR-0044).
+
+    Published by the paper and live runs at startup, once the broker's fills are read,
+    and after the run. Journaled; ``AlertCollector`` alerts on a mismatch, which halts
+    trading, and on orders that ended with no shares moved.
+
+    Attributes:
+        reconciliation: What the comparison found. Its ``status`` is ``match``,
+            ``corrected`` or ``mismatch``.
+    """
+
+    reconciliation: Reconciliation

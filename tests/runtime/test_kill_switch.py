@@ -3,11 +3,13 @@
 from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from tests.support import checkpoints
+from tests.support.reconciliation import unreconciled
 from tests.support.recording import TickingClock
 from tyche.adapters.kill_switch import FlagFileKillSwitch
 from tyche.adapters.storage import SqliteCheckpointStore, SqliteJournalStore, open_database
@@ -149,6 +151,49 @@ class TestResume:
             rules=replace(halted().rules, peak=(), halt=None),
         )
         assert status(workspace).halt is None
+
+    def test_lifts_a_reconciliation_halt_applying_the_fill_it_explained(
+        self, workspace: Workspace
+    ) -> None:
+        save(workspace, unreconciled())
+        seen = status(workspace)
+        assert seen.unreconciled is not None
+        assert seen.applies
+        assert seen.halt is None
+
+        outcome = resume(
+            workspace, "stop hit overnight", code_version="0.2.0", expected=seen, clock=Fixed()
+        )
+
+        assert (outcome.unreconciled, outcome.applied) == (seen.unreconciled, True)
+        with closing(open_database(workspace.state_database)) as connection:
+            [envelope] = SqliteJournalStore(connection).read(outcome.run_id or "")
+            latest = SqliteCheckpointStore(connection).latest()
+        assert envelope.event == ResumeEvent(
+            "stop hit overnight",
+            after_run=unreconciled().run_id,
+            reconciliation=seen.unreconciled,
+            applied=True,
+        )
+        assert latest is not None
+        assert latest.run_id == outcome.run_id
+        assert latest.reconciliation.halt is None
+        assert [(h.strategy_id, h.quantity) for h in latest.sleeves.holdings] == [
+            ("beta", Decimal(4))
+        ]
+        assert latest.rules == unreconciled().rules  # the drawdown memory is untouched
+        assert not status(workspace).stopped
+
+    def test_lifts_both_halts_at_once(self, workspace: Workspace) -> None:
+        both = replace(unreconciled(), rules=checkpoints.rules(halted=True))
+        save(workspace, both)
+        seen = status(workspace)
+
+        outcome = resume(workspace, "all clear", code_version="0.2.0", expected=seen, clock=Fixed())
+
+        assert outcome.lifted is not None
+        assert outcome.unreconciled is not None
+        assert not status(workspace).stopped
 
     def test_without_a_state_database_only_removes_the_flag(self, workspace: Workspace) -> None:
         engage_kill(workspace, "stop", flatten=True, clock=Fixed())

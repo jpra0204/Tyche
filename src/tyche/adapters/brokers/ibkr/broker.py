@@ -64,6 +64,8 @@ from tyche.adapters.brokers.ibkr.client import (
 from tyche.adapters.storage import Fate, SqliteBrokerOrderStore
 from tyche.core.domain import (
     Account,
+    BrokerOrder,
+    BrokerRecord,
     Currency,
     Fill,
     Instrument,
@@ -87,6 +89,11 @@ PRIMARY_EXCHANGES: Mapping[str, str] = {"ARCX": "ARCA"}
 """IBKR's code for a listing exchange, by its MIC: only the codes checked in IBKR's
 documentation (2026-11-24: the TWS API *Stocks* page gives ``ARCA`` for SPY). A listing
 not here is looked up without one, and must then match exactly one contract."""
+
+ACCRUED_DIVIDEND_TAG = "AccruedDividend"
+"""Dividends accrued and not paid (TWS API, *Account Updates*, read 2026-11-24). Which
+currencies it is reported in, and whether net of withholding, is not documented: a
+paper-account check (ADR-0044)."""
 
 SETTLED_CASH_TAG = "SettledCashByDate"
 """The account value that gives settled cash now and by settlement date, per currency
@@ -207,6 +214,7 @@ class IBKRBroker:
         self._seen: set[str] = set()
         self._unsent: set[str] = set()
         self._duplicates: list[str] = []
+        self._report = SyncReport()
 
         bus.subscribe(OrderEvent, self._on_order, name=SUBSCRIBER)
         bus.subscribe(CancelRequestEvent, self._on_cancel, name=SUBSCRIBER)
@@ -413,13 +421,77 @@ class IBKRBroker:
             elif record.cancel_requested and status in _WORKING and reported.order_id > 0:
                 self._client.cancel(reported.order_id)  # asked before; ask again
 
-        return SyncReport(
+        self._report = SyncReport(
             lost=tuple(lost),
             unaccounted=tuple(unaccounted),
             awaiting_commission=tuple(awaiting),
             corrections=tuple(corrections),
             foreign_executions=foreign,
         )
+        return self._report
+
+    def record(self) -> BrokerRecord:
+        """IBKR's record for reconciliation (ADR-0044): call it after ``sync``.
+
+        The account as ``account()`` reads it; every Tyche order IBKR lists as working,
+        with its remaining shares; the count of other working orders in the account;
+        ``AccruedDividend`` per currency; and what the last ``sync`` could not settle
+        (executions awaiting a commission, corrections).
+
+        Raises:
+            IBKRBrokerError: as ``account()``, or IBKR reports an accrued dividend
+                Tyche cannot read.
+        """
+        account = self.account()
+        known = {r.client_order_id for r in self._store.all()}
+        orders: list[BrokerOrder] = []
+        foreign = 0
+        unresolved: list[str] = []
+        for item in self._client.open_orders():
+            if item.account not in ("", self._account):
+                continue
+            if item.order_ref not in known:
+                foreign += 1
+            elif item.status not in _WAITING | _WORKING:
+                unresolved.append(
+                    f"IBKR lists order {item.order_ref} as open with status {item.status!r}"
+                )
+            elif item.remaining > 0:
+                orders.append(BrokerOrder(item.order_ref, item.remaining))
+        unresolved.extend(
+            f"execution {e} awaits IBKR's commission report"
+            for e in self._report.awaiting_commission
+        )
+        unresolved.extend(
+            f"execution {e} corrects one already applied" for e in self._report.corrections
+        )
+        try:
+            return BrokerRecord(
+                account=account,
+                orders=tuple(sorted(orders, key=lambda o: o.client_order_id)),
+                foreign_orders=foreign,
+                accrued_dividends=self._accrued(),
+                unresolved=tuple(unresolved),
+            )
+        except ValueError as error:
+            raise IBKRBrokerError(f"IBKR's record cannot be read: {error}") from error
+
+    def _accrued(self) -> tuple[Money, ...]:
+        accrued: list[Money] = []
+        for value in self._client.account_values(self._account):
+            if value.tag != ACCRUED_DIVIDEND_TAG or value.currency == "BASE":
+                continue
+            try:
+                amount = Decimal(value.value)
+            except InvalidOperation as error:
+                raise IBKRBrokerError(
+                    f"cannot read {ACCRUED_DIVIDEND_TAG} {value.value!r}"
+                ) from error
+            if not amount.is_finite():
+                raise IBKRBrokerError(f"{ACCRUED_DIVIDEND_TAG} in {value.currency} is not a number")
+            if amount != 0:
+                accrued.append(Money(amount, _currency(value.currency)))
+        return tuple(accrued)
 
     # --- handlers -------------------------------------------------------------------
 

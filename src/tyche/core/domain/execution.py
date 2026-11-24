@@ -87,6 +87,10 @@ class PlanNote(StrEnum):
     """The kill switch is engaged: what the sleeve holds is kept, and no order is sent
     (ADR-0039)."""
 
+    UNRECONCILED = "unreconciled"
+    """Reconciliation found Tyche's records and the broker's apart: what the sleeve
+    holds is kept, no order is sent, and a kill-switch flatten waits (ADR-0044)."""
+
     FLATTENED = "flattened"
     """The kill switch is engaged with flatten: the sleeve's holding is sold, its stop
     cancelled first (ADR-0039)."""

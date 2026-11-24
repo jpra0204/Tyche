@@ -302,6 +302,26 @@ class Account:
                 remaining.append(item)
         return replace(self, _settled=settled, _pending=tuple(remaining))
 
+    def with_cash(self, balance: CashBalance) -> Account:
+        """The account with one currency's cash replaced by ``balance``.
+
+        Reconciliation's correction (ADR-0044): Tyche takes the broker's cash, settled
+        and by settlement date, within a tolerance. Positions, realised profit and
+        distributions received are untouched.
+        """
+        currency = balance.settled.currency
+        for item in balance.pending:
+            if item.amount.currency is not currency:
+                raise LedgerError(f"{currency} cash cannot hold {item.amount} pending")
+        return replace(
+            self,
+            _settled={**self._settled, currency: balance.settled},
+            _pending=(
+                *(p for p in self._pending if p.amount.currency is not currency),
+                *balance.pending,
+            ),
+        )
+
     def mark(self, instrument: Instrument, price: Money) -> Account:
         """Record the latest price of a held instrument, for valuation."""
         if instrument not in self._positions:

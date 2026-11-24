@@ -7,6 +7,7 @@ from tyche.core.domain.currency import Currency
 from tyche.core.domain.daily_cycle import DailyCycleRules
 from tyche.core.domain.execution import ExecutionRules
 from tyche.core.domain.instrument import Instrument
+from tyche.core.domain.reconciliation import ReconciliationRules
 from tyche.core.domain.universe import UniverseRules
 from tyche.core.domain.validation import require_mic
 
@@ -52,6 +53,8 @@ class MarketProfile:
             return with dividends reinvested (ADR-0025). It need not be a candidate.
         daily_cycle: When a session's bars count as final, and until when its decision
             may trade (ADR-0043). Used by paper and live, and by every fetch.
+        reconciliation: How far Tyche's cash may differ from the broker's before
+            trading halts (ADR-0044). Used by paper and live.
     """
 
     name: str
@@ -61,6 +64,7 @@ class MarketProfile:
     execution: ExecutionRules
     benchmark: Instrument
     daily_cycle: DailyCycleRules
+    reconciliation: ReconciliationRules
 
     def __post_init__(self) -> None:
         require_profile_name(self.name)

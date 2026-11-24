@@ -7,6 +7,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 - **From the next decision on, Tyche buys nothing.** Decisions run after each session's close, so the switch takes effect at the next cycle, not at once.
 - **Without flatten,** every holding is kept and its protective stop stays at the broker, still able to sell.
 - **With flatten,** the next cycle cancels every stop, then sells every holding at the next open with market orders.
+- **Under a reconciliation halt, a flatten waits** ([ADR-0044](../adr/0044-reconciliation-exact-positions-broker-cash.md)): Tyche's holdings are what is in doubt. Sell in IBKR's own app instead (step 3 shows where).
 - **Orders already at the broker are not cancelled.** Market orders sent by the last run, for the next open, still fill. `tyche kill` lists them, and step 3 below is how you cancel one.
 
 > **Today** (Phase 2, PR 8) nothing trades yet: the paper cycle arrives in PR 14. The commands work, and the paper cycle will read the switch at every decision.
@@ -51,7 +52,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
    uv run tyche resume --reason "why it is safe now"
    ```
 
-   It shows the kill switch, if engaged, and the drawdown halt, if the last run's state carries one, with when and why. **Lifting a halt forgets the peak:** the next close becomes the new peak, and the drawdown kill counts from there. Answer `y` only if you mean it.
+   It shows the kill switch, if engaged, and the drawdown halt, if the last run's state carries one, with when and why. A **reconciliation halt** shows here too: follow [its own runbook](reconciliation-mismatch.md) first. **Lifting the drawdown halt forgets the peak:** the next close becomes the new peak, and the drawdown kill counts from there. Answer `y` only if you mean it.
 
 2. **Expected result:** `Lifted the kill switch` (and/or `the drawdown halt`), then `Recorded as run resume-<time> in the state database` once paper has run, and `The next decision trades normally`. The `KILL` file is gone. With a webhook set, the channel gets *Trading resumed*.
 

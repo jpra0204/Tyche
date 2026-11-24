@@ -26,8 +26,12 @@ class AlertKind(StrEnum):
     KILL_SWITCH = "kill_switch"
     """The kill switch was engaged, or a run found it engaged."""
 
+    RECONCILIATION = "reconciliation"
+    """Tyche's records and the broker's disagree (trading halts), or Tyche dropped an
+    order the broker no longer lists (ADR-0044)."""
+
     RESUMED = "resumed"
-    """``tyche resume`` lifted the kill switch, the drawdown halt, or both."""
+    """``tyche resume`` lifted the kill switch or a halt."""
 
     DATA_FAILURE = "data_failure"
     """Market data had problems the audit found."""

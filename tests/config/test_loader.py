@@ -69,12 +69,17 @@ DAILY_CYCLE_TOML = """
 after_close_minutes = 120
 before_next_open_minutes = 30
 """
+RECONCILIATION_TOML = """
+[reconciliation]
+cash_tolerance = "1.00"
+"""
 US_TOML = (
     'name = "US"\ncash_currencies = ["USD"]\ncalendars = ["XNYS"]\n'
     + UNIVERSE_TOML
     + EXECUTION_TOML
     + BENCHMARK_TOML
     + DAILY_CYCLE_TOML
+    + RECONCILIATION_TOML
 )
 US_COSTS_TOML = (files("tyche.config") / "templates" / "costs" / "US.toml").read_text()
 
@@ -146,7 +151,8 @@ class TestValidConfig:
             + UNIVERSE_TOML
             + EXECUTION_TOML
             + BENCHMARK_TOML
-            + DAILY_CYCLE_TOML,
+            + DAILY_CYCLE_TOML
+            + RECONCILIATION_TOML,
         )
         write(workspace, "config/costs/CA+US.toml", US_COSTS_TOML)
         # Without currency conversion, each cash currency needs caps of its own.
@@ -810,5 +816,41 @@ class TestBenchmark:
             "config/markets/US.toml",
             US_TOML.replace(BENCHMARK_TOML, BENCHMARK_TOML.replace("SPY", "QQQ")),
         )
+
+        assert load_config(workspace).config_hash != before
+
+
+class TestReconciliation:
+    def test_the_packaged_profile_accepts_a_dollar_of_cash_gap(self, workspace: Workspace) -> None:
+        rules = load_config(workspace).market_profile.reconciliation
+
+        assert rules == US_PROFILE.reconciliation
+        assert rules.tolerance(Currency.USD) == Money(Decimal("1.00"), Currency.USD)
+
+    def test_a_profile_without_the_table_is_refused(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace(RECONCILIATION_TOML, ""))
+
+        with pytest.raises(ConfigError, match=r"US.toml: .*\n  reconciliation: Field required"):
+            load_config(workspace)
+
+    def test_the_tolerance_is_exact_text(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('= "1.00"', "= 1.0"))
+
+        with pytest.raises(ConfigError, match=r"reconciliation.cash_tolerance"):
+            load_config(workspace)
+
+    def test_a_negative_tolerance_names_the_file(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML.replace('= "1.00"', '= "-1"'))
+
+        with pytest.raises(
+            ConfigError,
+            match=r"config/markets/US.toml: reconciliation.cash_tolerance must not be negative",
+        ):
+            load_config(workspace)
+
+    def test_changing_the_tolerance_changes_the_hash(self, workspace: Workspace) -> None:
+        write(workspace, "config/markets/US.toml", US_TOML)
+        before = load_config(workspace).config_hash
+        write(workspace, "config/markets/US.toml", US_TOML.replace('= "1.00"', '= "2.00"'))
 
         assert load_config(workspace).config_hash != before

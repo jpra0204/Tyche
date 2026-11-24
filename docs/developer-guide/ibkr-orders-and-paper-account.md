@@ -2,7 +2,7 @@
 
 **Checked on 2026-11-23** against the pages listed under [Sources](#sources), for Phase 2, PR 10. Nothing here is from memory. Where IBKR's own pages disagree, or say nothing, the page says so, and [section 10](#10-to-confirm-on-the-paper-account) lists what to confirm on the paper account. Re-check before PR 11 if a month has passed, and before going live.
 
-Section 12 adds what PR 11 read on 2026-11-24. This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md), accepted on 2026-11-24, and [ADR-0042](../adr/0042-ibkr-paper-adapter-at-most-once-orders.md), the adapter itself. Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
+Section 12 adds what PR 11 read on 2026-11-24, section 13 what PR 13 read the same day. This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md), accepted on 2026-11-24, and [ADR-0042](../adr/0042-ibkr-paper-adapter-at-most-once-orders.md), the adapter itself. Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
 
 ## 1. The client library: `ib_async`
 
@@ -170,6 +170,8 @@ Each item is something IBKR's pages leave open and that PR 11 builds on. Pablo's
 | 9 | Whether the paper account reports `SettledCashByDate`, and what it holds after a trade, since paper never settles | Section 12. `IBKRBroker.account()` refuses an account without it |
 | 10 | The currency of the commission report on a US trade in a CAD-based account | Section 12. A fill's commission must be in the trade's currency; another currency stops the run |
 | 11 | What status an order IBKR refuses ends in (`Inactive` or `Cancelled`), and its error message | Section 12. IBKR's page describes `Inactive` only as an order not yet transmitted |
+| 12 | In which currencies the paper account reports `AccruedDividend` (per currency, or only `BASE`), from a dividend's ex-date to its pay date | Section 13. `IBKRBroker.record()` reads it per currency and ignores `BASE`; reported only in `BASE`, a dividend's payment may exceed reconciliation's allowance and halt once ([ADR-0044](../adr/0044-reconciliation-exact-positions-broker-cash.md)) |
+| 13 | Whether `AccruedDividend` is gross or net of withholding, and what the cash rises by on the pay date | Section 13. Decides how much of a dividend reconciliation adopts as noise |
 
 **Not confirmable on paper:** unsettled proceeds in a cash account (section 8), real opening-auction fills, and exchange fees.
 
@@ -185,7 +187,7 @@ The four opt-in tests (`-m ibkr_paper`) against IB Gateway 10.50 logged in to th
 | 8 | **Every candidate resolves to exactly one contract**, the three `XNAS` ones (QQQ, TLT, IEF) included. Contract ids: SPY 756733, QQQ 320227571, IWM 9579970, EFA 13002510, EEM 6604766, TLT 15547841, IEF 15547844, GLD 51529211, VNQ 31230302 | The listing-exchange code IBKR gives the `XNAS` ones; the test prints only the contract id |
 | 9 | **Paper reports `SettledCashByDate`**, so `IBKRBroker.account()` works on it | What it holds after a trade |
 
-**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run.
+**Also seen:** the paper account holds **CAD only**, no USD, and no positions. IBKR still accepted a USD order, presumably because paper simulates margin (section 3). Tyche trades US ETFs in USD and must not borrow, so how USD reaches the account is an open decision in `STATUS.md`. Checks 3, 4, 5, 7, 10 and 11 have not been run, nor 12 and 13 (added by PR 13), which need a dividend on a held position.
 
 ## 11. Cancelling an order in IBKR's own apps
 
@@ -236,6 +238,20 @@ A page for cancelling a *single* order in IBKR Mobile was not found. Orders Tych
 | `tzdata` 2025.3 was uploaded on 2025-12-13, after IANA release 2025c (2025-12-10); 2026.6 on 2026-10-28 | PyPI, *tzdata* release history |
 | Releases 2026a to 2026f change no rule for `America/New_York` or `America/Toronto`. 2026d changes the old `EST5EDT`-style names before 1966 only; the Canadian changes are in British Columbia, Alberta, the Northwest Territories and Manitoba | IANA, tzdb `NEWS` |
 
+## 13. Read for PR 13
+
+**Read on 2026-11-24** in a browser, for reconciliation ([ADR-0044](../adr/0044-reconciliation-exact-positions-broker-cash.md)). TWS API, *Account Updates*: the account value tags.
+
+| Tag | IBKR's description |
+|---|---|
+| `AccruedDividend` | "Total portfolio value of dividends accrued"; `AccruedDividend-S`: dividends "accrued but not paid in security segment" |
+| `NetDividend` | "The sum of the Dividend Payable/Receivable Values for the securities and commodities segments of the account" |
+| `AccruedCash` | "Total accrued cash value of stock, commodities and securities"; `AccruedCash-S` "reflects the current month's accrued debit and credit interest to date, updated daily" |
+| `TotalCashValue` | "Total cash value of stock, commodities and securities" |
+| `SettledCashByDate` | Returned for each currency held, plus `BASE`; dates and values joined by semicolons (section 12) |
+
+**Not stated:** whether `AccruedDividend` is reported per currency or only in the base currency, and whether it is gross or net of withholding. Paper checks 12 and 13.
+
 ## Sources
 
 All read on 2026-11-23. IBKR's pages were read in a browser; their FAQs carry no publication date.
@@ -264,6 +280,8 @@ All read on 2026-11-23. IBKR's pages were read in a browser; their FAQs carry no
 - FAQs: [Buying power less than available cash](https://www.interactivebrokers.com/support/faq/content/699740704), [Free riding rule](https://www.interactivebrokers.com/support/faq/content/1163245617), [Free riding violation](https://www.interactivebrokers.com/support/faq/content/699745149), [Unable to use cash after selling](https://www.interactivebrokers.com/support/faq/content/29079698), [Cash available for withdrawal](https://www.interactivebrokers.com/support/faq/content/32647712).
 - FAQ: [Market and stop orders outside RTH](https://www.interactivebrokers.com/support/faq/content/did-market-stop-order-u-35803691).
 - FAQs: [Orders & Trades in Client Portal](https://www.interactivebrokers.com/support/faq/content/38453132), [Cancel all open orders in IBKR Mobile](https://www.interactivebrokers.com/support/faq/content/cancel-all-open-orders-ibkr-181474102).
+
+**Read for PR 13** (2026-11-24): TWS API [Account Updates](https://www.interactivebrokers.com/docs/tws-api/doc/accounts/updates).
 
 **Read for PR 11** (2026-11-24): TWS API [Account Summary](https://www.interactivebrokers.com/docs/tws-api/doc/accounts/summary), [Account Updates](https://www.interactivebrokers.com/docs/tws-api/doc/accounts/updates), [Order Status](https://www.interactivebrokers.com/docs/tws-api/doc/order-management/order-status), [Commission And Fees Report](https://www.interactivebrokers.com/docs/tws-api/doc/order-management/commission-and-fees-report), [The Contract Object](https://www.interactivebrokers.com/docs/tws-api/doc/contracts/object), [Stocks](https://www.interactivebrokers.com/docs/tws-api/contracts/stocks) and the [Order reference](https://www.interactivebrokers.com/docs/tws-api/ref/order); IANA [tzdb NEWS](https://data.iana.org/time-zones/tzdb/NEWS); PyPI [tzdata](https://pypi.org/project/tzdata/#history); the installed `ib_async` 2.1.0 source.
 
