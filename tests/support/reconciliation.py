@@ -13,6 +13,7 @@ from decimal import Decimal
 from tests.support import checkpoints
 from tests.support.costs import usd
 from tests.support.market import SPY
+from tests.support.walks import NYSE
 from tyche.core.domain import (
     Account,
     BrokerOrder,
@@ -30,6 +31,7 @@ from tyche.core.domain import (
 from tyche.core.pipeline.reconciliation import correct, reconcile
 
 RULES = ReconciliationRules(cash_tolerance=Decimal("1.00"))
+CALENDARS = {"XNYS": NYSE}
 USD = (Currency.USD,)
 AT = datetime(2024, 1, 4, 0, 15, tzinfo=UTC)
 """When the checks are made: after the checkpoint was saved."""
@@ -104,4 +106,7 @@ def unreconciled() -> Checkpoint:
     """Alpha's stop sold 6 SPY on a day no run read, and reconciliation halted."""
     mine = agreeing()
     theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
-    return replace(correct(mine, reconcile(mine, theirs, RULES, USD, AT)), run_id="paper-halted")
+    return replace(
+        correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)),
+        run_id="paper-halted",
+    )

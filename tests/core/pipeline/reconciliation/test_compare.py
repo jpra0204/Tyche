@@ -13,7 +13,16 @@ from tests.support.checkpoints import market_order
 from tests.support.costs import usd
 from tests.support.ledger import order
 from tests.support.market import QQQ, SPY
-from tests.support.reconciliation import AT, BUY, RULES, STOP, USD, agreeing, broker_record
+from tests.support.reconciliation import (
+    AT,
+    BUY,
+    CALENDARS,
+    RULES,
+    STOP,
+    USD,
+    agreeing,
+    broker_record,
+)
 from tyche.core.domain import (
     Account,
     CashOutcome,
@@ -45,7 +54,7 @@ class TestAgreement:
     def test_the_same_records_match(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine), RULES, USD, AT)
+        found = reconcile(mine, broker_record(mine), RULES, USD, AT, calendars=CALENDARS)
 
         assert found.status is ReconciliationStatus.MATCH
         assert (found.differences, found.inferred, found.ended) == ((), (), ())
@@ -57,7 +66,9 @@ class TestAgreement:
         mine = tyche()
 
         # The broker has settled the purchase already: same total, different schedule.
-        found = reconcile(mine, broker_record(mine, cash=usd("5299")), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, cash=usd("5299")), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.MATCH
 
@@ -71,7 +82,7 @@ class TestAgreement:
             marks={p.instrument: usd("475") for p in theirs.account.positions},
         )
 
-        found = reconcile(mine, replace(theirs, account=cad), RULES, USD, AT)
+        found = reconcile(mine, replace(theirs, account=cad), RULES, USD, AT, calendars=CALENDARS)
 
         assert found.status is ReconciliationStatus.MATCH
         assert [c.currency for c in found.cash] == [Currency.USD]
@@ -81,7 +92,9 @@ class TestPositions:
     def test_a_difference_nothing_explains_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.MISMATCH
         assert kinds(found) == [DifferenceKind.POSITION]
@@ -90,7 +103,9 @@ class TestPositions:
     def test_an_instrument_only_the_broker_holds_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, shares={QQQ: "1"}), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, shares={QQQ: "1"}), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert kinds(found) == [DifferenceKind.POSITION]
         assert found.differences[0].subject == str(QQQ)
@@ -100,7 +115,14 @@ class TestOrders:
     def test_an_order_tyche_does_not_expect_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, orders={"failed-run-1": "5"}), RULES, USD, AT)
+        found = reconcile(
+            mine,
+            broker_record(mine, orders={"failed-run-1": "5"}),
+            RULES,
+            USD,
+            AT,
+            calendars=CALENDARS,
+        )
 
         assert kinds(found) == [DifferenceKind.UNKNOWN_ORDER]
         assert found.differences[0].subject == "failed-run-1"
@@ -108,14 +130,16 @@ class TestOrders:
     def test_someone_elses_working_order_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, foreign=2), RULES, USD, AT)
+        found = reconcile(mine, broker_record(mine, foreign=2), RULES, USD, AT, calendars=CALENDARS)
 
         assert kinds(found) == [DifferenceKind.FOREIGN_ORDER]
 
     def test_different_shares_remaining_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, orders={BUY: "1"}), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, orders={BUY: "1"}), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert kinds(found) == [DifferenceKind.ORDER]
         assert found.differences[0].detail == "Tyche expects 3 shares to fill, the broker 1"
@@ -124,16 +148,93 @@ class TestOrders:
         mine = tyche()
         theirs = broker_record(mine, unresolved=("execution 0001.01 awaits a commission",))
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         assert kinds(found) == [DifferenceKind.UNRESOLVED]
+
+
+class TestStaleOrders:
+    """A market order still working after its session's close halts (ADR-0045).
+
+    The support market order was decided at the close of 3 January, for 4 January.
+    """
+
+    def test_working_until_its_sessions_close_is_not_stale(self) -> None:
+        mine = tyche()
+        close = datetime(2024, 1, 4, 21, 0, tzinfo=UTC)
+
+        found = reconcile(mine, broker_record(mine), RULES, USD, close, calendars=CALENDARS)
+
+        assert found.status is ReconciliationStatus.MATCH
+
+    def test_still_working_after_its_sessions_close_halts(self) -> None:
+        mine = tyche()
+        evening = datetime(2024, 1, 4, 23, 30, tzinfo=UTC)
+
+        found = reconcile(mine, broker_record(mine), RULES, USD, evening, calendars=CALENDARS)
+
+        assert found.status is ReconciliationStatus.MISMATCH
+        assert kinds(found) == [DifferenceKind.STALE_ORDER]
+        assert found.differences[0].subject == BUY
+        assert "sent for the open of 2024-01-04" in found.differences[0].detail
+
+    def test_a_decision_stamped_after_midnight_utc_is_for_the_next_open(self) -> None:
+        # The wall clock stamps a paper decision when it runs: 20:30 in New York on
+        # 3 January is already 4 January in UTC. Its order is still for 4 January's open.
+        mine = tyche()
+        (buy,) = [o for o in mine.execution.orders if o.state.order.client_order_id == BUY]
+        (stop,) = [o for o in mine.execution.orders if o.state.order.client_order_id == STOP]
+        late = replace(buy.state.order, created_at=datetime(2024, 1, 4, 1, 30, tzinfo=UTC))
+        mine = replace(
+            mine,
+            execution=replace(
+                mine.execution, orders=(stop, replace(buy, state=OrderState(late).submit()))
+            ),
+        )
+
+        before = reconcile(
+            mine,
+            broker_record(mine),
+            RULES,
+            USD,
+            datetime(2024, 1, 4, 20, 0, tzinfo=UTC),
+            calendars=CALENDARS,
+        )
+        after = reconcile(
+            mine,
+            broker_record(mine),
+            RULES,
+            USD,
+            datetime(2024, 1, 4, 22, 0, tzinfo=UTC),
+            calendars=CALENDARS,
+        )
+
+        assert before.status is ReconciliationStatus.MATCH
+        assert kinds(after) == [DifferenceKind.STALE_ORDER]
+
+    def test_a_resting_stop_is_never_stale(self) -> None:
+        mine = tyche()
+        months_later = datetime(2024, 3, 1, 23, 0, tzinfo=UTC)
+
+        found = reconcile(
+            mine,
+            broker_record(mine, without=(BUY,), shares={SPY: "13"}, cash=usd("4999")),
+            RULES,
+            USD,
+            months_later,
+            calendars=CALENDARS,
+        )
+
+        assert DifferenceKind.STALE_ORDER not in kinds(found)
 
 
 class TestEndedOrders:
     def test_a_stop_gone_with_no_shares_moved_is_corrected_not_halted(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, without=(STOP,)), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, without=(STOP,)), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.CORRECTED
         assert found.ended == (EndedOrder(STOP, SPY, OrderType.STOP),)
@@ -141,7 +242,9 @@ class TestEndedOrders:
     def test_a_market_order_that_did_not_trade_ended_too(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, without=(BUY, STOP)), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, without=(BUY, STOP)), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert [e.client_order_id for e in found.ended] == [BUY, STOP]
         assert found.status is ReconciliationStatus.CORRECTED
@@ -153,7 +256,7 @@ class TestMissedFills:
         # Sold 6 at 439.50 less USD 1 of commission: 2,636 more cash.
         theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         assert found.status is ReconciliationStatus.MISMATCH
         assert found.differences == ()
@@ -165,7 +268,7 @@ class TestMissedFills:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "13"}, cash=usd("3878"), without=(BUY,))
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         (fill,) = found.inferred
         assert (fill.side, fill.quantity, fill.price) == (Side.BUY, Decimal(3), usd("473.666667"))
@@ -174,7 +277,7 @@ class TestMissedFills:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "5"}, cash=usd("7935"), without=(STOP,))
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         assert found.inferred == ()
         assert kinds(found) == [DifferenceKind.POSITION, DifferenceKind.CASH]
@@ -184,7 +287,7 @@ class TestMissedFills:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("5000"), without=(STOP,))
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         assert found.inferred == ()
         assert "no positive price" in found.differences[0].detail
@@ -205,7 +308,7 @@ class TestMissedFills:
             mine, shares={SPY: "4", QQQ: "2"}, cash=usd("7000"), without=(STOP, "qqq-buy")
         )
 
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         assert found.inferred == ()
         assert all("several missed fills" in d.detail for d in found.differences[:2])
@@ -216,7 +319,9 @@ class TestCash:
     def test_a_gap_within_the_tolerance_is_adopted(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, cash=usd("5298.40")), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, cash=usd("5298.40")), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.CORRECTED
         (cash,) = found.cash
@@ -229,7 +334,9 @@ class TestCash:
     def test_a_gap_beyond_it_halts(self) -> None:
         mine = tyche()
 
-        found = reconcile(mine, broker_record(mine, cash=usd("5297.99")), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, cash=usd("5297.99")), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert kinds(found) == [DifferenceKind.CASH]
         assert found.cash[0].outcome is CashOutcome.EXCEEDED
@@ -238,7 +345,7 @@ class TestCash:
         base = tyche()
         mine = replace(base, account=base.account.receive_distribution("SPY:div", usd("18.00")))
 
-        found = reconcile(mine, broker_record(base), RULES, USD, AT)
+        found = reconcile(mine, broker_record(base), RULES, USD, AT, calendars=CALENDARS)
 
         assert found.cash[0].allowed == usd("19.00")
         assert found.cash[0].outcome is CashOutcome.ADOPTED
@@ -247,7 +354,9 @@ class TestCash:
         base = tyche()
         mine = replace(base, account=base.account.receive_distribution("SPY:div", usd("18.00")))
 
-        found = reconcile(mine, broker_record(base, accrued=(usd("18.00"),)), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(base, accrued=(usd("18.00"),)), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.MATCH
 
@@ -262,7 +371,9 @@ class TestCash:
         mine = replace(base, account=credited, reconciliation=memory)
 
         # Paid today, 15% withheld: 15.30 arrives, nothing accrued any more.
-        found = reconcile(mine, broker_record(base, cash=usd("5314.30")), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(base, cash=usd("5314.30")), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.cash[0].gap == usd("-2.70")
         assert found.cash[0].allowed == usd("19.00")
@@ -276,7 +387,7 @@ class TestCash:
         )
         mine = replace(base, account=credited, reconciliation=memory)
 
-        found = reconcile(mine, broker_record(base), RULES, USD, AT)
+        found = reconcile(mine, broker_record(base), RULES, USD, AT, calendars=CALENDARS)
 
         assert found.cash[0].allowed == usd("1.00")
         assert kinds(found) == [DifferenceKind.CASH]
@@ -291,7 +402,9 @@ class TestCash:
             marks={p.instrument: usd("475") for p in theirs.account.positions},
         )
 
-        found = reconcile(mine, replace(theirs, account=pending), RULES, USD, AT)
+        found = reconcile(
+            mine, replace(theirs, account=pending), RULES, USD, AT, calendars=CALENDARS
+        )
 
         assert found.status is ReconciliationStatus.MATCH
 
@@ -307,14 +420,19 @@ class TestNothingHeld:
         )
         theirs = broker_record(empty)
 
-        assert reconcile(empty, theirs, RULES, USD, AT).status is ReconciliationStatus.MATCH
+        assert (
+            reconcile(empty, theirs, RULES, USD, AT, calendars=CALENDARS).status
+            is ReconciliationStatus.MATCH
+        )
 
 
 def test_a_working_order_still_listed_is_never_ended() -> None:
     mine = tyche()
     assert market_order().state.order.client_order_id == BUY
 
-    found = reconcile(mine, broker_record(mine, shares={SPY: "10"}), RULES, USD, AT)
+    found = reconcile(
+        mine, broker_record(mine, shares={SPY: "10"}), RULES, USD, AT, calendars=CALENDARS
+    )
 
     assert found.ended == ()
 
@@ -324,7 +442,9 @@ def test_the_tolerance_is_the_profiles(tolerance: str) -> None:
     mine = tyche()
     rules_ = replace(RULES, cash_tolerance=Decimal(tolerance))
 
-    found = reconcile(mine, broker_record(mine, cash=usd("5298")), rules_, USD, AT)
+    found = reconcile(
+        mine, broker_record(mine, cash=usd("5298")), rules_, USD, AT, calendars=CALENDARS
+    )
 
     expected = CashOutcome.ADOPTED if tolerance == "2.50" else CashOutcome.EXCEEDED
     assert found.cash[0].outcome is expected

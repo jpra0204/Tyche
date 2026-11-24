@@ -9,7 +9,9 @@ The rules, in the order they are applied:
 
 1. **Orders.** Every order the broker lists as working must be one Tyche expects,
    with the same shares remaining; no working order in the account may be anyone
-   else's. An expected order the broker no longer lists is *missing*.
+   else's. A market order still working after the close of the session it was sent
+   for is *stale* (ADR-0045): it should have filled or ended at the open. An expected
+   order the broker no longer lists is *missing*.
 2. **Positions, exact.** For each instrument, the broker's shares less Tyche's:
    * no difference: its missing orders *ended* with no shares moved;
    * a difference that exactly one missing order explains (its side and remaining
@@ -23,7 +25,7 @@ The rules, in the order they are applied:
 """
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from decimal import Decimal
 
@@ -40,12 +42,14 @@ from tyche.core.domain import (
     InferredFill,
     Instrument,
     Money,
+    OrderType,
     Reconciliation,
     ReconciliationRules,
     ReconciliationState,
     Side,
     WorkingOrder,
 )
+from tyche.core.ports import Calendar
 
 PRICE_PLACES = 6
 """Decimal places of an inferred price: finer than any real price, so the cash it
@@ -58,6 +62,8 @@ def reconcile(
     rules: ReconciliationRules,
     currencies: Iterable[Currency],
     at: datetime,
+    *,
+    calendars: Mapping[str, Calendar],
 ) -> Reconciliation:
     """Compare Tyche's records in ``checkpoint`` with ``broker``'s, as of ``at``.
 
@@ -68,6 +74,8 @@ def reconcile(
         currencies: The currencies Tyche trades in: the profile's cash currencies.
             Cash in any other currency is not compared (Phase 4 adds them).
         at: When the comparison is made.
+        calendars: A calendar for every calendar code Tyche's orders use, to tell
+            which session a market order was sent for.
     """
     account = checkpoint.account
     traded = tuple(currencies)
@@ -98,15 +106,19 @@ def reconcile(
                     "not expect it",
                 )
             )
-        elif working.state.remaining != remaining:
-            differences.append(
-                Difference(
-                    DifferenceKind.ORDER,
-                    order_id,
-                    f"Tyche expects {working.state.remaining} shares to fill, the broker "
-                    f"{remaining}",
+        else:
+            if working.state.remaining != remaining:
+                differences.append(
+                    Difference(
+                        DifferenceKind.ORDER,
+                        order_id,
+                        f"Tyche expects {working.state.remaining} shares to fill, the broker "
+                        f"{remaining}",
+                    )
                 )
-            )
+            stale = _stale(working, calendars, at)
+            if stale is not None:
+                differences.append(stale)
     for order_id in sorted(expected):
         if order_id not in listed:
             working = expected[order_id]
@@ -163,6 +175,37 @@ def reconcile(
         inferred=tuple(inferred),
         ended=tuple(ended),
         cash=tuple(checks),
+    )
+
+
+def _stale(
+    working: WorkingOrder, calendars: Mapping[str, Calendar], at: datetime
+) -> Difference | None:
+    """A market order still working after the close of the session it was sent for.
+
+    A market order is sent after a close for the next open (ADR-0041): the first
+    session to open after it was created. By that session's close it has filled or
+    ended; still working then, something happened that Tyche does not understand, and
+    Pablo looks before anything else trades (ADR-0045).
+    """
+    order = working.state.order
+    if order.order_type is not OrderType.MARKET:
+        return None
+    calendar = calendars.get(order.instrument.calendar)
+    if calendar is None:
+        raise ValueError(f"no calendar given for {order.instrument.calendar}")
+    created = order.created_at
+    session = calendar.session_on(created.date())
+    if session is None or session.opens_at <= created:
+        session = calendar.next_session(created.date())
+    if at <= session.closes_at:
+        return None
+    return Difference(
+        DifferenceKind.STALE_ORDER,
+        order.client_order_id,
+        f"the broker still has this market order working; it was sent for the open of "
+        f"{session.day} and should have filled or ended by that session's close; cancel it "
+        "in IBKR's app, then run tyche resume",
     )
 
 

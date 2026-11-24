@@ -692,6 +692,19 @@ class TestFailClosed:
             desk.decide(WED, (decided("a", "1", SPY),), wants(SPY, ("a", "0.5", None)))
         assert "market orders still open" in str(raised.value.__cause__)
 
+    def test_under_a_reconciliation_halt_an_open_market_order_is_kept(self) -> None:
+        # The stale order is what the halt is about (ADR-0045): nothing is sent.
+        desk = Desk()
+        desk.trade(TUE, ohlc(TUE, "100"))
+        desk.decide(TUE, (decided("a", "1", SPY),), wants(SPY, ("a", "0.5", None)))
+        desk.bus.publish(AccountEvent(close_of(WED), desk.state.account), source="test")
+        desk.bus.drain()
+
+        caused = desk.decide(WED, (decided("a", "1", SPY),), unreconciled=mismatch(close_of(WED)))
+
+        assert desk.submitted(caused) == []
+        assert not any(isinstance(e, CancelRequestEvent) for e in caused)
+
     def test_sleeves_that_do_not_add_up_to_the_account_halt(self) -> None:
         # Shares bought outside Tyche: the account holds them, no sleeve does.
         start = (

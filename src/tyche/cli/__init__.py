@@ -58,6 +58,7 @@ from tyche.runtime.backtest import (
     BacktestOutcome,
     BacktestRequestError,
     adjustments_record,
+    current_code_version,
     run_configured_backtest,
 )
 from tyche.runtime.capital import (
@@ -94,6 +95,7 @@ from tyche.runtime.notify import (
     notify_kill,
     notify_resume,
 )
+from tyche.runtime.paper import PaperOutcome, PaperRunError, run_paper
 from tyche.runtime.profiles import (
     PROFILES_FILE,
     ProfileRun,
@@ -141,6 +143,12 @@ data_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(data_app, name="data")
+
+paper_app = typer.Typer(
+    help="Trade on the IBKR paper account.",
+    no_args_is_help=True,
+)
+app.add_typer(paper_app, name="paper")
 
 MAX_ISSUES_SHOWN = 10
 
@@ -1057,6 +1065,66 @@ def resume_trading(
         code_version=__version__,
     )
     _said(delivery)
+
+
+@paper_app.command("run")
+def paper_run(
+    home: HomeOption = None,
+    risk_profile: RiskProfileOption = DEFAULT_RISK_PROFILE,
+) -> None:
+    """Run one decision cycle on the IBKR paper account, after a session's close.
+
+    Reads IBKR's fills, reconciles, decides on every session closed since the last
+    decision, sends the orders for the next open, reconciles again, saves the state
+    and sends the alerts. Needs IB Gateway logged in to the paper account named in
+    .env. A run with no new session still reads and reconciles the account.
+    """
+    try:
+        workspace = Workspace(resolve_home(home, os.environ))
+        _open_logs(workspace, "paper run", risk_profile=risk_profile)
+        config = load_config(workspace, risk_profile)
+        outcome = run_paper(config, environ=os.environ, code_version=str(current_code_version()))
+    except (WorkspaceError, ConfigError, PaperRunError) as error:
+        _fail(str(error))
+    for line in _describe_paper(outcome):
+        typer.echo(line)
+    _said(outcome.delivery)
+    if not outcome.completed:
+        typer.echo(f"Error: the paper run failed: {outcome.failure}", err=True)
+        raise typer.Exit(code=1)
+
+
+def _describe_paper(outcome: PaperOutcome) -> list[str]:
+    lines = []
+    if outcome.first_run:
+        lines.append("First paper run: Tyche started from IBKR's cash.")
+    if outcome.startup is not None:
+        lines.append(f"Check {outcome.check_run}: reconciliation {outcome.startup.status}.")
+    if outcome.decision_run is None:
+        if outcome.completed:
+            lines.append("No session has closed since the last decision: nothing to decide.")
+    else:
+        lines.append(f"Decision {outcome.decision_run}:")
+        if outcome.sessions:
+            first, last = outcome.sessions[0].day, outcome.sessions[-1].day
+            span = f"{first}" if first == last else f"{first} to {last}"
+            lines.append(f"  Sessions read: {span}")
+        if outcome.traded is not None:
+            lines.append(f"  Decided at the close of {outcome.traded.day}")
+        for skipped in outcome.skipped:
+            lines.append(f"  Skipped {skipped.as_of:%Y-%m-%d}: {skipped.reason}")
+        if outcome.after is not None:
+            lines.append(f"  Reconciliation after the run: {outcome.after.status}")
+    for order_id in outcome.lost:
+        lines.append(f"Lost while sending, never resent: {order_id}")
+    for order_id in outcome.not_sent:
+        lines.append(f"Not sent (stop cancellation not confirmed): {order_id}")
+    for found in (outcome.startup, outcome.after):
+        if found is not None:
+            lines.extend(f"  {difference}" for difference in found.differences)
+    if outcome.checkpoint is not None:
+        lines.append(f"Saved: checkpoint of run {outcome.checkpoint.run_id}.")
+    return lines
 
 
 @notify_app.command("test")

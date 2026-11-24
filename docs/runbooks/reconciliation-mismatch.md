@@ -13,7 +13,7 @@ What does **not** halt, and needs nothing from you:
 - **Cash within the tolerance.** IBKR charges fees and pays interest Tyche does not model, and holds a dividend as accrued until it pays it, perhaps net of withholding. A gap up to `cash_tolerance` (USD 1.00 in the template) plus the dividends on their way is taken from IBKR without a word.
 - **An order IBKR no longer lists, with no shares moved.** IBKR cancels resting stops by itself (at the end of the quarter after the one they were placed in, after 90 days without a login, after some corporate actions). Tyche drops the order from its records, Discord says *Reconciliation: N order(s) ended at the broker*, and the next decision places the stop again.
 
-> **Today** (Phase 2, PR 13) nothing runs a reconciliation yet: the paper cycle does, from PR 14. `tyche resume` already lifts the halt.
+Every `tyche paper run` reconciles twice: at startup, once IBKR's fills are read, and after its decision ([ADR-0045](../adr/0045-the-paper-cycle.md)). While the halt stands, each run says so in Discord (*Trading is still halted*), unless its own check is a mismatch again.
 
 ## Before you start
 
@@ -38,6 +38,7 @@ What does **not** halt, and needs nothing from you:
    | `position` | IBKR holds a different number of shares than Tyche | An order filled on a day no run read (see *Explained*); a trade you made by hand in the account |
    | `unknown_order` | IBKR has one of Tyche's orders working that Tyche does not expect | A run that failed after sending it: its state was never saved |
    | `foreign_order` | The account has working orders that are not Tyche's | An order you placed by hand, in the account Tyche trades |
+   | `stale_order` | One of Tyche's market-on-open orders is still working after the close of the session it was sent for | Something IBKR did that Tyche has not seen on paper yet (an order held over, a trading halt in the ETF). It should have filled or been cancelled at the open |
    | `order` | IBKR and Tyche disagree on how many shares an order has left | A partial fill on a day no run read |
    | `cash` | The cash gap is larger than the tolerance and dividends on their way | A fee or interest larger than the tolerance; a deposit or withdrawal; a currency conversion |
    | `unresolved` | The IBKR adapter could not settle something it read | An execution still waiting for IBKR's commission report; a corrected execution |
@@ -50,6 +51,7 @@ What does **not** halt, and needs nothing from you:
 
 4. **If anything is not explained, make the account match Tyche's records by hand,** or decide to start again from cash:
 
+   - **A `stale_order`:** cancel it in Client Portal, as below, and note what IBKR's order history says about it (status, any message). The next run finds it gone with no shares moved and drops it. If it filled before you cancelled, it shows as a `position` difference at the next run.
    - **An `unknown_order`:** cancel it in Client Portal (**Trade** → **Orders & Trades**, the order's **pencil icon**, **Cancel Order**). Do **not** use **Cancel Orders** in IBKR Mobile's menu: it cancels every working order, Tyche's stops included. If it already filled, its shares show as a `position` difference: sell them by hand.
    - **A `foreign_order` or a `position` from your own trade:** undo it in IBKR's app. Tyche trades this account alone.
    - **A `cash` difference you understand** (a deposit, a fee): resuming takes IBKR's cash as the check recorded it.

@@ -50,7 +50,10 @@ def stop_order() -> WorkingOrder:
 
 
 def market_order() -> WorkingOrder:
-    buy = order(Side.BUY, "3", client_order_id="20240103T210000Z-SPY.ARCX-buy")
+    buy = replace(
+        order(Side.BUY, "3", client_order_id="20240103T210000Z-SPY.ARCX-buy"),
+        created_at=datetime(2024, 1, 3, 21, 0, tzinfo=UTC),  # the decision, for 4 January
+    )
     return WorkingOrder(OrderState(buy).submit().accept(), owed=(OwedShares("beta", Decimal(3)),))
 
 

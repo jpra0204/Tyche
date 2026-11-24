@@ -143,6 +143,10 @@ class DifferenceKind(StrEnum):
     FOREIGN_ORDER = "foreign_order"
     """The account has working orders that are not Tyche's."""
 
+    STALE_ORDER = "stale_order"
+    """One of Tyche's market orders is still working after the close of the session it
+    was sent for, when it should have filled or ended at the open (ADR-0045)."""
+
     CASH = "cash"
     """The cash gap is larger than the tolerance and the dividends on their way."""
 

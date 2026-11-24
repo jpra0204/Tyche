@@ -33,7 +33,14 @@ def test_a_backtest_reconciles_with_its_broker(last: date) -> None:
         EventBus(TickingClock().now), result.broker_state, US_COSTS, {"XNYS": NYSE}
     )
 
-    found = reconcile(result.checkpoint, broker.record(), RULES, USD, result.checkpoint.saved_at)
+    found = reconcile(
+        result.checkpoint,
+        broker.record(),
+        RULES,
+        USD,
+        result.checkpoint.saved_at,
+        calendars={"XNYS": NYSE},
+    )
 
     assert found.status is ReconciliationStatus.MATCH, found
     after = correct(result.checkpoint, found)

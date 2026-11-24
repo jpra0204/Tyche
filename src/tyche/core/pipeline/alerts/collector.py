@@ -14,8 +14,13 @@ What is an alert, and what is not:
   tolerance is routine, for the daily summary.
 * **Data problems**: every ``DataQualityEvent`` of the run, in one alert, so a bad
   download cannot flood the channel.
+* **Skipped decisions** (ADR-0043): every ``CycleSkippedEvent`` of the run, in one
+  alert, so a catch-up after a week away sends one message, not five.
 * **A failed run**, built by the runtime with ``run_failed_alert``, because a run that
   fails cannot publish anything more.
+* **What the paper cycle could not do as decided** (ADR-0045), built by the runtime:
+  orders lost while sending or not sent (``orders_alert``), and trading still halted
+  from an earlier run (``stopped_alert``).
 """
 
 from collections.abc import Sequence
@@ -32,12 +37,14 @@ from tyche.core.domain import (
 )
 from tyche.core.events import (
     ApprovedPortfolioEvent,
+    CycleSkippedEvent,
     DataQualityEvent,
     Envelope,
     EventBus,
     ReconciliationEvent,
     RiskEvent,
     RunMode,
+    SkipReason,
 )
 from tyche.core.ports import Alert, AlertKind
 
@@ -63,14 +70,20 @@ class AlertCollector:
         self._issues: list[DataIssue] = []
         self._issues_at: datetime | None = None
         self._kill_seen = False
+        self._skipped: list[CycleSkippedEvent] = []
+        self._skipped_at: datetime | None = None
         bus.subscribe(RiskEvent, self._on_risk, name=SUBSCRIBER)
         bus.subscribe(ApprovedPortfolioEvent, self._on_approval, name=SUBSCRIBER)
         bus.subscribe(DataQualityEvent, self._on_data_quality, name=SUBSCRIBER)
         bus.subscribe(ReconciliationEvent, self._on_reconciliation, name=SUBSCRIBER)
+        bus.subscribe(CycleSkippedEvent, self._on_skipped, name=SUBSCRIBER)
 
     def alerts(self) -> tuple[Alert, ...]:
-        """Every alert so far, the run's data problems last, as one alert."""
+        """Every alert so far; then the run's skipped decisions and its data problems,
+        each as one alert."""
         collected = list(self._alerts)
+        if self._skipped and self._skipped_at is not None:
+            collected.append(cycle_skipped_alert(self._skipped, self._skipped_at))
         if self._issues and self._issues_at is not None:
             collected.append(data_failure_alert(self._issues, self._issues_at))
         return tuple(collected)
@@ -91,6 +104,10 @@ class AlertCollector:
         alert = reconciliation_alert(envelope.event.reconciliation)
         if alert is not None:
             self._alerts.append(alert)
+
+    def _on_skipped(self, envelope: Envelope[CycleSkippedEvent]) -> None:
+        self._skipped.append(envelope.event)
+        self._skipped_at = envelope.occurred_at
 
     def _on_data_quality(self, envelope: Envelope[DataQualityEvent]) -> None:
         self._issues.append(envelope.event.issue)
@@ -218,6 +235,82 @@ def data_failure_alert(issues: Sequence[DataIssue], at: datetime) -> Alert:
     if count > MAX_ISSUES_LISTED:
         lines.append(f"… and {count - MAX_ISSUES_LISTED} more in the journal.")
     return Alert(AlertKind.DATA_FAILURE, f"Market data: {count} {noun} found", at, tuple(lines))
+
+
+def cycle_skipped_alert(skipped: Sequence[CycleSkippedEvent], at: datetime) -> Alert:
+    """Every decision a run skipped, in one alert (ADR-0043)."""
+    if not skipped:
+        raise ValueError("cycle_skipped_alert: needs at least one skipped cycle")
+    count = len(skipped)
+    noun = "decision" if count == 1 else "decisions"
+    lines: list[str] = []
+    for event in skipped[:MAX_ISSUES_LISTED]:
+        if event.reason is SkipReason.STALE:
+            why = f"too late to trade (it could trade until {event.trade_until:%Y-%m-%d %H:%M} UTC)"
+        else:
+            missing = ", ".join(str(i) for i in event.missing)
+            why = f"no bar for {missing}"
+        lines.append(f"{event.as_of:%Y-%m-%d}: {why}.")
+    if count > MAX_ISSUES_LISTED:
+        lines.append(f"… and {count - MAX_ISSUES_LISTED} more in the journal.")
+    lines.append(
+        "No order was sent for them. Their closes still count: the account rules and the "
+        "signals saw every one."
+    )
+    return Alert(AlertKind.CYCLE_SKIPPED, f"{count} {noun} skipped", at, tuple(lines))
+
+
+def orders_alert(
+    at: datetime,
+    *,
+    lost: Sequence[str] = (),
+    not_sent: Sequence[str] = (),
+    foreign_executions: int = 0,
+) -> Alert | None:
+    """Orders the paper cycle could not send as decided, and executions not Tyche's
+    (ADR-0042, ADR-0045); ``None`` when there are none."""
+    lines = [
+        f"Lost while sending, never resent: {order_id}. The next decision starts from what "
+        "the account really holds."
+        for order_id in lost
+    ]
+    lines.extend(
+        f"Not sent: {order_id}. IBKR did not confirm the cancellation of the stop on the "
+        "same shares in time; the stop stays, and the next decision tries again."
+        for order_id in not_sent
+    )
+    if foreign_executions:
+        lines.append(
+            f"{foreign_executions} execution(s) today in the account are not Tyche's orders."
+        )
+    if not lines:
+        return None
+    return Alert(AlertKind.ORDERS, "Orders not sent as decided", at, tuple(lines))
+
+
+def stopped_alert(
+    at: datetime,
+    *,
+    halt: AccountTrigger | None,
+    unreconciled: Reconciliation | None,
+) -> Alert:
+    """A paper run started with trading halted by an earlier run (ADR-0045)."""
+    lines: list[str] = []
+    if halt is not None:
+        lines.append(f"Drawdown halt since {halt.at:%Y-%m-%d}: {halt.reason}.")
+    if unreconciled is not None:
+        count = len(unreconciled.differences) + len(unreconciled.inferred)
+        lines.append(
+            f"Reconciliation halt since {unreconciled.at:%Y-%m-%d}: {count} difference(s); "
+            f"runbook: {RECONCILIATION_RUNBOOK}."
+        )
+    if not lines:
+        raise ValueError("stopped_alert: needs a halt")
+    lines.append(
+        "This run still reads the broker and every close, but sends no order. Only "
+        "`tyche resume` lifts it."
+    )
+    return Alert(AlertKind.STOPPED, "Trading is still halted", at, tuple(lines))
 
 
 def run_failed_alert(run_id: str, mode: RunMode, error: str, at: datetime) -> Alert:

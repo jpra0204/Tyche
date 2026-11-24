@@ -42,9 +42,10 @@ Order ids are derived from the decision (its time, the instrument, the side or t
 sleeve), or for a stop placed after a fill, from that fill: the same decision always
 gives the same ids, and a decision handled once is not handled again.
 
-A broken assumption (no account snapshot, a market order still open at a decision, the
-sleeves not adding up to the account's positions, a sale that would go short, a
-purchase the cash cannot pay for) is a bug, and halts the run.
+A broken assumption (no account snapshot, a market order still open at a decision
+outside a reconciliation halt, the sleeves not adding up to the account's positions, a
+sale that would go short, a purchase the cash cannot pay for) is a bug, and halts the
+run.
 """
 
 from collections.abc import Mapping
@@ -304,7 +305,10 @@ class ExecutionStage:
             return  # the same decision again: its orders already exist
         self._handled.add(approved.as_of)
         account = self._snapshot(approved.as_of)
-        self._require_no_open_market_orders()
+        if approved.unreconciled is None:
+            # Under a reconciliation halt a market order may still be working: that is
+            # the stale order the halt is about (ADR-0045). Nothing is sent, so it is safe.
+            self._require_no_open_market_orders()
         self._require_book_matches(account)
 
         stamp = approved.as_of.strftime("%Y%m%dT%H%M%SZ")

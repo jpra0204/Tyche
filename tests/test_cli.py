@@ -7,7 +7,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any, ClassVar
@@ -29,9 +29,11 @@ from tyche.adapters.data.yfinance_source import UnknownSymbolError, YahooRow
 from tyche.adapters.kill_switch import FlagFileKillSwitch
 from tyche.cli import app
 from tyche.config.workspace import Workspace
+from tyche.core.domain import Reconciliation
 from tyche.core.ports import Alert, AlertKind, NotifierError
 from tyche.runtime import data as runtime_data
 from tyche.runtime.backtest import BacktestOutcome, run_configured_backtest
+from tyche.runtime.paper import PaperOutcome
 from tyche.runtime.report import ReportError
 from tyche.runtime.walk_forward import WalkForwardOutcome, run_configured_walk_forward
 
@@ -1206,3 +1208,33 @@ class TestAlertsAndLogs:
     def test_no_logs_folder_for_a_folder_that_is_not_a_workspace(self, home: Path) -> None:
         runner.invoke(app, ["config", "check", "--home", str(home / "nowhere")])
         assert not (home / "nowhere").exists()
+
+
+class TestPaperRun:
+    """`tyche paper run` (ADR-0045). The cycle itself is tested in tests/runtime."""
+
+    def test_needs_the_ib_gateway_connection(self, home: Path) -> None:
+        runner.invoke(app, ["init"])
+
+        result = runner.invoke(app, ["paper", "run"])
+
+        assert result.exit_code == 1
+        assert "the IB Gateway connection needs" in result.stderr
+        assert "IBKR_ACCOUNT_ID" in result.stderr
+
+    def test_says_what_the_cycle_did(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        runner.invoke(app, ["init"])
+        outcome = PaperOutcome(
+            check_run="paper-20240206T233000Z-check",
+            first_run=True,
+            startup=Reconciliation(at=datetime(2024, 2, 6, 23, 30, tzinfo=UTC)),
+            failure="IBKRConnectionError: cannot connect to IB Gateway at 127.0.0.1:4002",
+        )
+        monkeypatch.setattr(cli, "run_paper", lambda config, **_: outcome)
+
+        result = runner.invoke(app, ["paper", "run"])
+
+        assert result.exit_code == 1
+        assert "First paper run: Tyche started from IBKR's cash." in result.stdout
+        assert "reconciliation match" in result.stdout
+        assert "cannot connect to IB Gateway" in result.stderr
