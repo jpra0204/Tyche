@@ -42,7 +42,16 @@ from tyche.core.backtest import (
     WalkForwardError,
     WalkForwardMetrics,
 )
-from tyche.core.domain import ORDER_RULES, AssetClass, Kill, Money, RiskRule, WorkingOrder
+from tyche.core.domain import (
+    ORDER_RULES,
+    AssetClass,
+    Instrument,
+    Kill,
+    MarketProfile,
+    Money,
+    RiskRule,
+    WorkingOrder,
+)
 from tyche.core.ports import DataError
 from tyche.core.risk import DEFAULT_RISK_PROFILE
 from tyche.runtime.backtest import (
@@ -67,6 +76,7 @@ from tyche.runtime.data import (
     FetchOutcome,
     FetchRequestError,
     fetch_daily_histories,
+    followed_instruments,
     instrument_for,
 )
 from tyche.runtime.kill_switch import (
@@ -293,22 +303,41 @@ def config_check(
 @data_app.command("fetch")
 def data_fetch(
     symbols: Annotated[
-        list[str],
+        list[str] | None,
         typer.Argument(
-            help="Symbols as the exchange lists them, e.g. SPY or BRK.B.", show_default=False
-        ),
-    ],
-    exchange: Annotated[
-        str,
-        typer.Option(
-            "--exchange",
-            help="Listing exchange, as a market identifier code: ARCX, XNAS, XNYS, BATS or XASE.",
+            help="Symbols as the exchange lists them, e.g. SPY or BRK.B. Not with --all.",
             show_default=False,
         ),
-    ],
+    ] = None,
+    exchange: Annotated[
+        str | None,
+        typer.Option(
+            "--exchange",
+            help=(
+                "Listing exchange of the symbols, as a market identifier code: ARCX, XNAS, "
+                "XNYS, BATS or XASE."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    every_candidate: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help=(
+                "Every candidate in the market profile, and its benchmark: exactly what a "
+                "backtest replays and a paper run trades from."
+            ),
+        ),
+    ] = False,
     asset_class: Annotated[
-        AssetClass, typer.Option("--asset-class", help="Stock or ETF.")
-    ] = AssetClass.ETF,
+        AssetClass | None,
+        typer.Option(
+            "--asset-class",
+            help="Stock or ETF, for the symbols. Defaults to ETF.",
+            show_default=False,
+        ),
+    ] = None,
     first: Annotated[
         datetime | None,
         typer.Option(
@@ -331,7 +360,9 @@ def data_fetch(
 ) -> None:
     """Fetch daily bars, dividends and splits from Yahoo Finance into the workspace cache.
 
-    Only sessions not already cached are downloaded. Every answer is checked against
+    Name symbols with their --exchange, or give --all for the market profile's whole
+    list. Only sessions not already cached are downloaded, and a session only once the
+    market profile's wait after its close has passed. Every answer is checked against
     the trading calendar, and any problem found is listed. Yahoo's data is for personal
     use only.
     """
@@ -339,10 +370,9 @@ def data_fetch(
         workspace = Workspace(resolve_home(home, os.environ))
         _open_logs(workspace, "data fetch")
         config = load_config(workspace)
-        instruments = [
-            instrument_for(symbol, exchange, asset_class, config.market_profile)
-            for symbol in symbols
-        ]
+        instruments = _instruments_to_fetch(
+            config.market_profile, symbols or [], exchange, asset_class, every=every_candidate
+        )
         outcomes = fetch_daily_histories(
             config,
             instruments,
@@ -361,6 +391,32 @@ def data_fetch(
             typer.echo(_describe_fetch(outcome))
     if failed:
         raise typer.Exit(code=1)
+
+
+def _instruments_to_fetch(
+    profile: MarketProfile,
+    symbols: list[str],
+    exchange: str | None,
+    asset_class: AssetClass | None,
+    *,
+    every: bool,
+) -> list[Instrument]:
+    """The symbols asked for on ``exchange``, or with ``every`` the profile's whole list."""
+    if every:
+        if symbols or exchange is not None or asset_class is not None:
+            raise FetchRequestError(
+                "--all fetches the market profile's own list; give no symbols, --exchange "
+                "or --asset-class with it"
+            )
+        return list(followed_instruments(profile))
+    if not symbols:
+        raise FetchRequestError("name the symbols to fetch, or give --all")
+    if exchange is None:
+        raise FetchRequestError("--exchange is needed with symbols")
+    return [
+        instrument_for(symbol, exchange, asset_class or AssetClass.ETF, profile)
+        for symbol in symbols
+    ]
 
 
 def _describe_fetch(outcome: FetchOutcome) -> str:

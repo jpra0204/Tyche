@@ -1,6 +1,6 @@
 # Event catalog
 
-*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent`, `RunEvent`, `UniverseEvent`, `ScreeningEvent`, `SignalEvent`, `SignalsReadyEvent`, `TargetPortfolioEvent`, `ApprovedPortfolioEvent`, `ExecutionPlanEvent`, `OrderEvent`, `CancelRequestEvent`, `FillEvent`, `AccountEvent`, `DistributionEvent` and `ResumeEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
+*Status: Phase 0 design, accepted by Pablo on 2026-11-16. Field lists show the important fields, not final signatures; those are fixed when each event is implemented and this page is updated in the same PR. Implemented so far: the envelope, the bus, `SessionEvent`, `BarEvent`, `DataReadyEvent`, `DataQualityEvent`, `CycleSkippedEvent`, `RunEvent`, `UniverseEvent`, `ScreeningEvent`, `SignalEvent`, `SignalsReadyEvent`, `TargetPortfolioEvent`, `ApprovedPortfolioEvent`, `ExecutionPlanEvent`, `OrderEvent`, `CancelRequestEvent`, `FillEvent`, `AccountEvent`, `DistributionEvent` and `ResumeEvent` (marked **implemented** below). Each other event is added by the PR that first publishes it.*
 
 Every component in the trading path communicates through the events on this page. The bus and its ordering rules are described in [ADR-0003](../adr/0003-synchronous-event-bus.md).
 
@@ -50,13 +50,14 @@ From [ADR-0003](../adr/0003-synchronous-event-bus.md), implemented in `tyche.cor
 
 ### Market data and time
 
-Within one moment, the feed's inputs come in a fixed order: session open, then any `DistributionEvent` going ex (at the open), then each instrument's `BarEvent`, then any `DataQualityEvent` for the day, then session close, then `DataReadyEvent`. The bus finishes everything each input causes before the next one (ADR-0003), so a decision cycle always sees every bar and every fill from that moment.
+Within one moment, the feed's inputs come in a fixed order: session open, then any `DistributionEvent` going ex (at the open), then each instrument's `BarEvent`, then any `DataQualityEvent` for the day, then session close, then `DataReadyEvent` (or, from the daily feed, `CycleSkippedEvent` when the decision may not run). The paper and live `DailyFeed` publishes exactly the replay's inputs, stamped with the wall clock ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)). The bus finishes everything each input causes before the next one (ADR-0003), so a decision cycle always sees every bar and every fill from that moment.
 
 | Event | Published by | Consumed by | Key fields | Phase |
 |---|---|---|---|---|
 | `SessionEvent` | Feed (in a backtest, `HistoricalReplay` from the `Calendar`) | Broker, risk, scheduler | `session` (calendar, day, open and close times, half day), `phase` (open or close) | **implemented** (PR 7) |
 | `BarEvent` | Feed, at the bar's own timestamp | Broker (to fill waiting orders and check stops), universe (keeps the last few bars), market-data store | `bar` (instrument, timeframe, timestamp, prices, volume, `adjustment`) | **implemented** (PR 7) |
 | `DataReadyEvent` | Feed, after every bar for the decision time | Universe (starts a decision cycle: publishes one `UniverseEvent`) | `timeframe`, `as_of`, `delivered`, `missing` | **implemented** (PR 7) |
+| `CycleSkippedEvent` | `DailyFeed` (paper and live), in place of a session's `DataReadyEvent` when its decision may not run ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)). The session's other inputs are still published, so every close is measured | Universe (counts the session towards a data problem's time out, publishes nothing), journal | `timeframe`, `as_of`, `reason` (`SkipReason`: `stale`, the next open is too close or past; `incomplete`, a candidate has no bar), `trade_until`, `delivered`, `missing` | **implemented** (Phase 2, PR 12) |
 | `DataQualityEvent` | Feed (from each `DataIssue` in a `BarHistory`: at its session's close, or before the first session if it has none) | Journal, notifier, universe (excludes the instrument for a few cycles after a disqualifying issue) | `issue` (instrument, `DataIssueKind`, session day, detail) | **implemented** (PR 7) |
 
 ### Decision cycle (pipeline stages 1 to 5)

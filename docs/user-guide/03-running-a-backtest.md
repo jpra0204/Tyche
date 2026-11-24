@@ -49,14 +49,10 @@ The benchmark is not a strategy that trades. It is what simply holding SPY paid 
 
 ## Fetch the history first
 
-A backtest reads only what is already cached. It also needs some history **before** its first day, to warm up: the universe's liquidity average needs 20 sessions, and each strategy needs its own lookback (200 sessions, about ten months, for the example strategies). Fetch from a year before you plan to start. The nine candidates are listed on two exchanges, so two commands fetch them all:
+A backtest reads only what is already cached. It also needs some history **before** its first day, to warm up: the universe's liquidity average needs 20 sessions, and each strategy needs its own lookback (200 sessions, about ten months, for the example strategies). Fetch from a year before you plan to start. One command fetches the nine candidates and the benchmark:
 
 ```bash
-uv run tyche data fetch SPY IWM EFA EEM GLD VNQ --exchange ARCX --from 2004-01-01 --to 2023-12-29
-```
-
-```bash
-uv run tyche data fetch QQQ TLT IEF --exchange XNAS --from 2004-01-01 --to 2023-12-29
+uv run tyche data fetch --all --from 2004-01-01 --to 2023-12-29
 ```
 
 GLD and VNQ started trading in late 2004, so `tyche data fetch` reports the sessions before that as missing. That is expected: until a fund has enough history it is "warming up", and strategies are not offered it.

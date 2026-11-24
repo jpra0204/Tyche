@@ -8,11 +8,13 @@ test replaying it needs made-up data for two instruments, not nine.
 """
 
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 
 from tyche.core.domain import (
     AssetClass,
     Currency,
+    DailyCycleRules,
     ExecutionRules,
     Instrument,
     MarketProfile,
@@ -41,7 +43,13 @@ US_EXECUTION = ExecutionRules(rebalance_band=Decimal("0.10"), price_buffer=Decim
 
 US_BENCHMARK = Instrument("SPY", "ARCX", Currency.USD, "XNYS", AssetClass.ETF)
 
-US_PROFILE = MarketProfile("US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION, US_BENCHMARK)
+US_DAILY_CYCLE = DailyCycleRules(
+    after_close=timedelta(minutes=120), before_next_open=timedelta(minutes=30)
+)
+
+US_PROFILE = MarketProfile(
+    "US", (Currency.USD,), ("XNYS",), US_RULES, US_EXECUTION, US_BENCHMARK, US_DAILY_CYCLE
+)
 
 
 def _etf(symbol: str, exchange: str) -> Instrument:
@@ -75,4 +83,6 @@ CA_RULES = replace(
 
 CA_BENCHMARK = Instrument("XIC", "XTSE", Currency.CAD, "XTSE", AssetClass.ETF)
 
-CA_PROFILE = MarketProfile("CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION, CA_BENCHMARK)
+CA_PROFILE = MarketProfile(
+    "CA", (Currency.CAD,), ("XTSE",), CA_RULES, US_EXECUTION, CA_BENCHMARK, US_DAILY_CYCLE
+)

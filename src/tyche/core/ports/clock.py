@@ -25,10 +25,16 @@ class PacedClock(Clock, Protocol):
     """A clock the engine can wait on.
 
     The engine never sleeps or jumps time itself: it asks the clock to reach the moment
-    of the next input. A simulated clock jumps there; a real clock (Phase 2) sleeps
-    until then. Either way the engine's loop is the same (ADR-0005).
+    of the next input. A simulated clock jumps there; the wall clock sleeps until then,
+    or returns at once when the moment has already passed, as it has for an input
+    stamped when it became known (ADR-0043). Either way the engine's loop is the same
+    (ADR-0005).
     """
 
     def wait_until(self, moment: datetime) -> None:
-        """Return once the clock reads ``moment``. ``moment`` is never in the past."""
+        """Return once the clock reads ``moment`` or later.
+
+        The engine never asks for a moment earlier than one it asked for before. A
+        simulated clock refuses a moment earlier than its own time.
+        """
         ...

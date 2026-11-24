@@ -18,7 +18,10 @@ SOURCE = "engine"
 
 
 class FeedOrderError(Exception):
-    """The feed produced an input earlier than the clock. The feed has a bug."""
+    """The feed produced an input earlier than the one before it, or than the run's start.
+
+    The feed has a bug.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,17 +71,27 @@ class Engine:
         self._config_hash = config_hash
 
     def run(self, feed: Feed) -> RunResult:
+        """Take every input in order, waiting for its moment, and handle it fully.
+
+        Inputs must come in time order, none earlier than the run's start. In a
+        backtest the clock then jumps to each one. With the wall clock an input is
+        stamped when it became known, a moment that has usually just passed, and is
+        published at once (ADR-0043): never before it was known, which is what rules
+        out lookahead in every mode.
+        """
         inputs = 0
         events = 0
         try:
+            latest = self._clock.now()
+            latest_is = "the run started"
             events += self._announce(RunStage.STARTED)
             for item in feed.inputs():
-                now = self._clock.now()
-                if item.at < now:
+                if item.at < latest:
                     raise FeedOrderError(
-                        f"the feed produced an input at {item.at.isoformat()} after the clock "
-                        f"had reached {now.isoformat()}"
+                        f"the feed produced an input at {item.at.isoformat()}, earlier than "
+                        f"{latest.isoformat()}, when {latest_is}"
                     )
+                latest, latest_is = item.at, "the input before it became known"
                 self._clock.wait_until(item.at)
                 self._bus.publish(item.event, source=item.source, cycle_id=item.cycle_id)
                 events += self._bus.drain()

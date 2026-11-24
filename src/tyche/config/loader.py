@@ -18,7 +18,7 @@ import json
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -41,6 +41,7 @@ from tyche.core.domain import (
     Commission,
     CommissionSchedule,
     Currency,
+    DailyCycleRules,
     ExecutionRules,
     Instrument,
     MarketProfile,
@@ -277,6 +278,22 @@ class ExecutionFile(_ConfigFile):
         return ExecutionRules(rebalance_band=self.rebalance_band, price_buffer=self.price_buffer)
 
 
+class DailyCycleFile(_ConfigFile):
+    """The ``[daily_cycle]`` table of a market profile file (ADR-0043)."""
+
+    after_close_minutes: StrictInt
+    before_next_open_minutes: StrictInt
+
+    def to_domain(self) -> DailyCycleRules:
+        for name in ("after_close_minutes", "before_next_open_minutes"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"daily_cycle.{name} must not be negative")
+        return DailyCycleRules(
+            after_close=timedelta(minutes=self.after_close_minutes),
+            before_next_open=timedelta(minutes=self.before_next_open_minutes),
+        )
+
+
 class MarketProfileFile(_ConfigFile):
     """``config/markets/<NAME>.toml``."""
 
@@ -286,6 +303,7 @@ class MarketProfileFile(_ConfigFile):
     universe: UniverseFile
     execution: ExecutionFile
     benchmark: InstrumentFile
+    daily_cycle: DailyCycleFile
 
     def to_domain(self) -> MarketProfile:
         try:
@@ -299,6 +317,7 @@ class MarketProfileFile(_ConfigFile):
             universe=self.universe.to_domain(),
             execution=self.execution.to_domain(),
             benchmark=benchmark,
+            daily_cycle=self.daily_cycle.to_domain(),
         )
 
 

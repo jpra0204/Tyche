@@ -55,6 +55,7 @@ uv run tyche --version
 uv run tyche init --home <scratch-folder>   # creates a workspace; never run it on Pablo's real one
 uv run tyche config check                  # validates the workspace config, prints its hash
 uv run tyche data fetch SPY --exchange ARCX  # downloads from Yahoo (network; personal-use data)
+uv run tyche data fetch --all              # every candidate and the benchmark; a session only 2 h after its close
 uv run tyche backtest --from 2005-01-03    # cache only; refuses the holdout; writes reports/backtests/<run id>/
 uv run tyche backtest --from 2005-01-03 --risk-profile default  # every backtest command takes it; default is `default`
 uv run tyche walk-forward --from 2005-01-03  # folds of backtests; writes reports/walk_forward/<id>/
@@ -86,6 +87,7 @@ src/tyche/
 │   ├── risk/         profiles, guardrails, the risk gate
 │   ├── engine/       the run loop, identical in backtest, paper and live
 │   ├── sim/          SimClock, SimBroker, replay feed, cost models
+│   ├── feeds/        DailyFeed: each session after its close, for paper and live
 │   ├── backtest/     runner, holdout, metrics, walk-forward, sweeps, minimum viable capital
 │   ├── improvement/  proposals, automated gate, approvals, strategy lifecycle (no LLM)
 │   └── agents/       offline LLM-agent workflows

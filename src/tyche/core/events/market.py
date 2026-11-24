@@ -56,6 +56,48 @@ class DataReadyEvent(Event):
         require_utc(self.as_of, "DataReadyEvent as_of")
 
 
+class SkipReason(StrEnum):
+    """Why a session's decision cycle did not run (ADR-0043)."""
+
+    STALE = "stale"
+    """The decision could no longer trade: the moment to send orders for the next open
+    had passed when the session was published."""
+    INCOMPLETE = "incomplete"
+    """A candidate had no bar for the session once its bars counted as final."""
+
+
+@dataclass(frozen=True, slots=True)
+class CycleSkippedEvent(Event):
+    """A session's bars were delivered, but its decision cycle does not run.
+
+    Published by the daily feed in place of the ``DataReadyEvent`` that would have
+    started the cycle (ADR-0043). The session's bars, data problems and closes are
+    still published, so the signals windows, Tyche's account view and the account
+    rules see every close; only the decision is skipped, and no order is sent.
+
+    Attributes:
+        timeframe: The bars' timeframe.
+        as_of: The close of the session whose cycle is skipped.
+        reason: Why it is skipped.
+        trade_until: The last moment its decision could have traded.
+        delivered: Instruments with a bar for ``as_of``.
+        missing: Candidates with no bar for ``as_of``.
+    """
+
+    timeframe: Timeframe
+    as_of: datetime
+    reason: SkipReason
+    trade_until: datetime
+    delivered: tuple[Instrument, ...]
+    missing: tuple[Instrument, ...] = ()
+
+    def __post_init__(self) -> None:
+        require_utc(self.as_of, "CycleSkippedEvent as_of")
+        require_utc(self.trade_until, "CycleSkippedEvent trade_until")
+        if self.reason is SkipReason.INCOMPLETE and not self.missing:
+            raise ValueError("an incomplete cycle must name the candidates with no bar")
+
+
 @dataclass(frozen=True, slots=True)
 class DataQualityEvent(Event):
     """A problem was found in market data (ADR-0018)."""

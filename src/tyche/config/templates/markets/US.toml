@@ -74,6 +74,23 @@ rebalance_band = "0.10"
 # about this fraction in cash. Reports state the value.
 price_buffer = "0.02"
 
+[daily_cycle]
+# When paper and live decide, and until when a decision may trade (ADR-0043). Whole
+# minutes. Choices, not market facts; both chosen on 2026-11-24.
+
+# Minutes after a session's close before its bars count as final, are fetched and are
+# decided on. Yahoo documents no time at which its daily bar becomes final, and a bar
+# cached too early is never fetched again, so it would stay in every later backtest.
+# Applies to every fetch, `tyche data fetch` included. Waiting costs nothing: orders
+# are for the next open.
+after_close_minutes = 120
+
+# A decision at a session's close may trade until this many minutes before the next
+# session opens (09:00 New York for a 09:30 open). Later, it is stale: the cycle is
+# skipped and reported, never traded. Missed sessions are still fetched and published,
+# so the account rules see every close.
+before_next_open_minutes = 30
+
 [benchmark]
 # What every strategy is measured against: this ETF's total return, dividends
 # reinvested at the ex-date close, with no costs and no cash (ADR-0025). It is the

@@ -12,7 +12,7 @@ instrument's whole history is fetched again.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
 
 from tyche.adapters.data.parquet_cache import CacheEntry, DateRange, ParquetBarCache
@@ -100,6 +100,11 @@ class CachedDataProvider:
         calendars: Calendar for each calendar code an instrument may use.
         clock: Decides which sessions have closed, and stamps each fetch.
         max_move: Close-to-close change flagged as suspect by the audit.
+        after_close: How long after a session's close its bars count as final
+            (ADR-0043). Until then the session is treated as not closed: it is neither
+            asked for nor expected, so a provisional bar can never enter the cache,
+            where it would stay. The workspace gives the market profile's
+            ``daily_cycle.after_close``; zero treats a session as final at its close.
     """
 
     def __init__(
@@ -110,7 +115,10 @@ class CachedDataProvider:
         clock: Clock,
         *,
         max_move: float = DEFAULT_MAX_DAILY_MOVE,
+        after_close: timedelta = timedelta(0),
     ) -> None:
+        if after_close < timedelta(0):
+            raise ValueError(f"after_close must not be negative, got {after_close}")
         if cache.source != source.name:
             raise ValueError(
                 f"cache is for source {cache.source!r} but the source is {source.name!r}"
@@ -120,6 +128,7 @@ class CachedDataProvider:
         self._calendars = dict(calendars)
         self._clock = clock
         self._max_move = max_move
+        self._after_close = after_close
 
     def daily_bars(self, instrument: Instrument, first: date, last: date) -> BarHistory:
         calendar = self._calendar_for(instrument)
@@ -163,8 +172,8 @@ class CachedDataProvider:
         return calendar
 
     def _closed_sessions(self, calendar: Calendar, first: date, last: date) -> list[Session]:
-        now = self._clock.now()
-        return [s for s in calendar.sessions_between(first, last) if s.closes_at <= now]
+        final_by = self._clock.now() - self._after_close
+        return [s for s in calendar.sessions_between(first, last) if s.closes_at <= final_by]
 
     def _fetch(
         self,

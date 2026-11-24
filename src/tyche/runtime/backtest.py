@@ -229,7 +229,9 @@ def cached_market(config: TycheConfig, last: date, clock: Clock) -> CachedMarket
     }
     cache = ParquetBarCache(config.workspace.data_dir / "bars", source=SOURCE_NAME)
     source = CacheOnlySource(SOURCE_NAME, PriceAdjustment.SPLITS)
-    return CachedMarket(calendars, CachedDataProvider(source, cache, calendars, clock))
+    after_close = config.market_profile.daily_cycle.after_close
+    provider = CachedDataProvider(source, cache, calendars, clock, after_close=after_close)
+    return CachedMarket(calendars, provider)
 
 
 @dataclass(frozen=True, slots=True)

@@ -81,7 +81,7 @@ flowchart LR
     adapters -. "implement" .-> ports
 ```
 
-The simulated clock, feed and broker are pure code we write ourselves, so they live in `tyche.core.sim`, not in `tyche.adapters`.
+The simulated clock, feed and broker are pure code we write ourselves, so they live in `tyche.core.sim`, not in `tyche.adapters`. The daily feed for paper and live is pure code too, built on the replay, in `tyche.core.feeds`.
 
 Six import-linter contracts in `pyproject.toml` turn these rules into CI failures. The folder-by-folder map is in the [repo map](../developer-guide/repo-map.md).
 
@@ -92,12 +92,12 @@ Backtest, paper and live run the same engine and the same pipeline stages ([ADR-
 | Mode | Clock | Data feed | Broker |
 |---|---|---|---|
 | Backtest | `SimClock` (jumps from event to event) | Historical replay from the Parquet cache | `SimBroker` |
-| Paper | Wall clock | Live feed (fetch after the close) | `IBKRBroker` on the paper account |
-| Live | Wall clock | Live feed | `IBKRBroker` on the live account, only after the manual gate in [ADR-0013](../adr/0013-live-trading-gate.md) |
+| Paper | Wall clock (`SystemClock`) | `DailyFeed`: the replay of each session since the last run, fetched two hours after the close ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)) | `IBKRBroker` on the paper account |
+| Live | Wall clock (`SystemClock`) | `DailyFeed` | `IBKRBroker` on the live account, only after the manual gate in [ADR-0013](../adr/0013-live-trading-gate.md) |
 
 Parity means the *code path* is the same. It does not mean simulated fills match real ones; the limits are listed in section 9.
 
-The engine's loop (`tyche.core.engine`) is the same in every mode: take the next input from the `Feed`, ask the clock to `wait_until` its moment, publish it, drain the bus. A `SimClock` jumps to the moment; the wall clock (Phase 2) sleeps until it. That is the `PacedClock` port, and it is why the engine never needs to know which mode it is in.
+The engine's loop (`tyche.core.engine`) is the same in every mode: take the next input from the `Feed`, ask the clock to `wait_until` its moment, publish it, drain the bus. A `SimClock` jumps to the moment; the wall clock sleeps until it, or publishes at once an input stamped when it became known, a moment just passed ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)). That is the `PacedClock` port, and it is why the engine never needs to know which mode it is in. The daily feed is the historical replay re-stamped, so paper sees exactly the inputs a backtest would.
 
 ## 5. The event flow
 
@@ -179,7 +179,7 @@ Other safety mechanisms:
 | Drawdown kill switch | Checked at every close. A latch: once hit, the gate approves nothing and execution sends no order; resting stops stay. Only a manual restart, `tyche resume`, lifts it, with a new peak from the next close ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)); a restart from a checkpoint stays halted ([ADR-0038](../adr/0038-checkpoints-across-restarts.md)). A backtest runs on to its last day without trading ([ADR-0035](../adr/0035-account-rules-and-the-drawdown-halt.md)). | 2 (PR 4) |
 | Manual kill switch | The `KILL` flag file, written by `tyche kill` or by hand, read by the risk gate at every decision. No new orders; with flatten, every stop cancelled and every holding sold at the next open. Orders already at the broker are listed, not cancelled. `tyche resume` releases it ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)). | 2 (PR 8) |
 | Reconciliation halt | Internal state differs from the broker's: stop trading and alert. | 2 |
-| Catch-up rule | Missing data is fetched, but a signal older than the freshness window is skipped and reported, never traded. | 2 |
+| Catch-up rule | Missed sessions are fetched and published, so every close is measured, but a decision may trade only until 30 minutes before the next session's open; after that, or when a candidate has no bar, its cycle is skipped and reported (`CycleSkippedEvent`), never traded. A session's bars are fetched only two hours after its close ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)). | 2 (PR 12) |
 | Live gate | Live mode needs a manual, interactive arming step that code and agents cannot perform. | 2 (the paper adapter refuses a live account), 3 (arming, with the strategy lifecycle; moved by the Phase 2 plan, 2026-11-23) |
 
 ## 7. Where state lives

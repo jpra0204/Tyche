@@ -52,6 +52,7 @@ from tyche.core.domain import (
 )
 from tyche.core.events import (
     BarEvent,
+    CycleSkippedEvent,
     DataQualityEvent,
     DataReadyEvent,
     Envelope,
@@ -100,6 +101,7 @@ class UniverseStage:
         bus.subscribe(BarEvent, self._on_bar, name=SUBSCRIBER)
         bus.subscribe(DataQualityEvent, self._on_issue, name=SUBSCRIBER)
         bus.subscribe(DataReadyEvent, self._on_ready, name=SUBSCRIBER)
+        bus.subscribe(CycleSkippedEvent, self._on_skipped, name=SUBSCRIBER)
 
     @property
     def history_needed(self) -> int:
@@ -182,6 +184,15 @@ class UniverseStage:
         for instrument, _ in expected:
             self._count_down(instrument)
         self._bus.publish(UniverseEvent(ready.as_of, tuple(eligible), tuple(excluded)))
+
+    def _on_skipped(self, envelope: Envelope[CycleSkippedEvent]) -> None:
+        # The session passed without a decision (ADR-0043). A data problem keeps an
+        # instrument out for a number of sessions, so the count goes on, as if the
+        # cycle had run: a catch-up leaves the stage as the cycles would have.
+        skipped = envelope.event
+        _require_daily(skipped.timeframe, "a CycleSkippedEvent")
+        for instrument in (*skipped.delivered, *skipped.missing):
+            self._count_down(instrument)
 
     # --- the rules ---------------------------------------------------------------------
 

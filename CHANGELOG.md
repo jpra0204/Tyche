@@ -47,6 +47,12 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - `SqliteBrokerOrderStore` and migration `0003_broker_order.sql` (tables `broker_order` and `broker_fill`); `Account.reported`, an account as a broker reports it; `IbkrConnection` and `ibkr_connection` in `tyche.config`, and `Secrets` reads `IBKR_HOST`, `IBKR_PORT` (no default) and `IBKR_CLIENT_ID` (never 0). `tyche config check` reports the IB Gateway settings, never the account id.
 - Developer guide: the IBKR facts PR 11 needed, read 2026-11-24 (cash tags, order statuses, commission reports, contract codes, `tzdata`), and four more paper checks. Learning note: orders sent at most once.
 
+- The daily feed and the catch-up rule (Phase 2, PR 12, ADR-0043, proposed). `DailyFeed` in the new `tyche.core.feeds` publishes every session from the first one a run has not seen through the latest final one, exactly as the historical replay would, stamped with the wall clock. A session's decision cycle runs only until 30 minutes before the next session's open, and only with a bar for every candidate; otherwise a new `CycleSkippedEvent` (`SkipReason` `stale` or `incomplete`) is published in place of its `DataReadyEvent`, and the session's bars and closes are still published, so the account rules see every close. Both values chosen by Pablo on 2026-11-24. Nothing builds the feed yet; the paper run (PR 14) does.
+- `DailyCycleRules` in `tyche.core.domain`, read from a new required `[daily_cycle]` table in `config/markets/<PROFILE>.toml` (`after_close_minutes = 120`, `before_next_open_minutes = 30`) and carried as `MarketProfile.daily_cycle`.
+- `tyche data fetch --all`: every candidate in the market profile, then its benchmark if it is not one of them (`followed_instruments`).
+- `SystemClock` is a `PacedClock`: `wait_until` sleeps until a future moment and returns at once for one already passed; its readings never go backwards.
+- Learning note: catching up without acting on stale signals.
+
 ### Changed
 
 - **Backtests pay FINRA's Trading Activity Fee**: USD 0.000195 a share sold, the 2027 and 2028 rate, in the cost template and the test fixture (ADR-0041, decision 7). Every sale costs a little more; the golden backtest's costs rise by one cent. Set it in your own workspace's `config/costs/US.toml` yourself.
@@ -55,6 +61,12 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - **The daily loss limit and the drawdown kill now apply** (PR 4). Under `default`, from 2005 to 2023, the trend rotation halts on 2020-03-18 (15.11% below its peak) and, holding its three funds untouched from then on, ends at 25,915 USD instead of 23,464, with a worst fall of 20% instead of 15%. Buy-and-hold and the mean reversion never trigger either rule and are unchanged.
 - A workspace now needs `config/guardrails.toml` and `config/risk/default.toml`; Tyche refuses to start without them. Copy them from a new workspace ([troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche)).
 - The config hash now covers the guardrails and the active risk profile, so every workspace's hash changes once. Trial counts are unaffected.
+- **A session's bars are fetched only two hours after its close** (`daily_cycle.after_close_minutes`), by `tyche data fetch` and every other fetch: `CachedDataProvider(..., after_close=)` treats the session as not yet closed until then, so a provisional bar can never be cached. Run straight after the close, a fetch stops at the previous session.
+- A workspace now needs `[daily_cycle]` in `config/markets/US.toml`; Tyche refuses to start without it. Copy the table from a new workspace ([troubleshooting](docs/user-guide/07-troubleshooting.md#upgrading-a-workspace-created-by-an-older-tyche)). The config hash changes.
+- The engine accepts inputs in time order, none earlier than the run's start, and waits for each input's moment; `FeedOrderError` now means an input earlier than the one before it or than the run's start. Backtests are unaffected.
+- The universe counts a skipped cycle towards an instrument's time out after a data problem, as it counts a cycle that ran.
+- `tyche data fetch` takes its symbols or `--all`; `--exchange` is needed only with symbols.
+- `tyche.core.feeds` sits beside `tyche.core.backtest` in the import-linter layers and joins "No LLM code in the trading path".
 
 ## [0.1.0] - 2026-11-23
 
