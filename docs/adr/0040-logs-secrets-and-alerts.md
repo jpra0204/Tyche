@@ -1,6 +1,6 @@
 # ADR-0040: Logs, secrets and Discord alerts
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-23)
 - **Date:** 2026-11-23
 
 ## Context
@@ -68,6 +68,8 @@ Times in alerts are in UTC, like the CLI's. Local time (ADR-0012) comes with the
 - **Every `RiskEvent` is an alert.** Faithful, but about one message per trading day for a capped position, which teaches the reader to ignore the channel. Declined by Pablo.
 - **Embeds instead of plain text.** Colour and fields look better, but they bring a second set of limits and render poorly in notifications on a phone. They can come with the daily summary (PR 16) if it needs them.
 - **Redact with a logging `Filter`.** A filter sees the message and its arguments, but extra fields and tracebacks are rendered later, by the formatter. Redacting the formatter's finished line covers all of them.
+- **Retry a failed alert, keep undelivered ones and warn until they are sent.** Retries with growing waits for failures that may clear, undelivered alerts saved in the state database and resent at the next command or run, and a warning on every command meanwhile. Declined by Pablo on 2026-11-23 when accepting this ADR: too much machinery for a channel that is a convenience, in an end-of-day system where nothing new trades before the next run and the stops already rest at the broker. A path that does not depend on Discord (a heartbeat that emails when a run does not check in) can be weighed with the scheduler (PR 15), for runs that do not happen.
+- **Log only the commands that touch the account.** A quieter log, but research commands cost one line each, and a single timeline of everything that touched the workspace is worth that. Pablo kept every command.
 - **`TimedRotatingFileHandler`.** It renames the current file at midnight, so the newest log always has the same name and older ones get a suffix. One file per UTC day, named by the date of each record, is simpler to find and to back up, and a process that runs past midnight moves to the next file by itself.
 
 ## Consequences
