@@ -1,6 +1,6 @@
 # ADR-0041: Orders and account identity at IBKR
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-24)
 - **Date:** 2026-11-23
 
 ## Context

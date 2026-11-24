@@ -2,7 +2,7 @@
 
 **Checked on 2026-11-23** against the pages listed under [Sources](#sources), for Phase 2, PR 10. Nothing here is from memory. Where IBKR's own pages disagree, or say nothing, the page says so, and [section 10](#10-to-confirm-on-the-paper-account) lists what to confirm on the paper account. Re-check before PR 11 if a month has passed, and before going live.
 
-This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md). Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
+This page records facts. The choices built on them are in [ADR-0041](../adr/0041-orders-and-identity-at-ibkr.md), accepted on 2026-11-24. Costs, settlement and fractional shares are on the companion page, [IBKR Canada: costs and settlement](ibkr-canada-costs-and-settlement.md).
 
 ## 1. The client library: `ib_async`
 
@@ -154,7 +154,7 @@ The cap binds only on a sale of more than about 50,000 shares (9.79 ÷ 0.000195)
 
 ## 10. To confirm on the paper account
 
-Each item is something IBKR's pages leave open and that PR 11 builds on. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
+Each item is something IBKR's pages leave open and that PR 11 builds on. **They wait for Pablo's paper account**: his live account was funded on 2026-11-23, the deposit had not arrived on 2026-11-24, and the paper account opens only once it has. They are run when he says it is active. With the paper account open, each takes a few minutes in TWS or Client Portal; PR 11's opt-in integration tests repeat the API ones.
 
 | # | Check | Why |
 |---|---|---|
