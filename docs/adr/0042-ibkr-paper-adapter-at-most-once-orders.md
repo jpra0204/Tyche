@@ -1,6 +1,6 @@
 # ADR-0042: The IBKR paper adapter: orders sent at most once
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-24)
 - **Date:** 2026-11-24
 
 ## Context
