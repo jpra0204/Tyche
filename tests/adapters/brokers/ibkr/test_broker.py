@@ -112,9 +112,13 @@ class Paper:
             clock=self.clock,
         )
 
-    def submit(self, order: Order) -> None:
+    def submit(self, order: Order, *, release: bool = True) -> None:
+        """Publish ``order`` as execution would; then, as the paper cycle does after a
+        drain, send the sales held back (ADR-0045)."""
         self.bus.publish(OrderEvent(OrderState(order).submit()), source="execution")
         self.bus.drain()
+        if release and self.broker.connected:
+            self.broker.release()
 
     def cancel(self, order_id: str) -> None:
         self.bus.publish(CancelRequestEvent(order_id, "test"), source="execution")
@@ -625,6 +629,107 @@ def test_cancelling_a_placed_order_asks_ibkr(paper: Paper) -> None:
         OrderStatus.ACCEPTED,
         OrderStatus.CANCELLED,
     ]
+
+
+# --- a sale waits for its stop's cancellation (ADR-0045) --------------------------------
+
+
+def test_a_sale_is_held_until_released_and_a_purchase_is_not(paper: Paper) -> None:
+    paper.submit(market("o-sell", Side.SELL), release=False)
+    paper.submit(market("o-buy", Side.BUY), release=False)
+
+    assert [t.order_ref for t in paper.gateway.placed] == ["o-buy"]
+    assert paper.broker.held == ("o-sell",)
+    assert paper.store.get("o-sell") is None  # not even written: nothing has left Tyche
+
+    assert paper.broker.release() == ()
+    assert [t.order_ref for t in paper.gateway.placed] == ["o-buy", "o-sell"]
+
+
+def test_a_sale_waits_until_ibkr_confirms_its_stops_cancellation(paper: Paper) -> None:
+    paper.submit(stop("o-stop"))
+    # A decision publishes the sale first, then cancels the stop on the same shares.
+    paper.submit(market("o-sell", Side.SELL), release=False)
+    paper.cancel("o-stop")
+
+    assert paper.broker.release() == ("o-sell",)
+    paper.broker.sync()
+    assert paper.broker.release() == ("o-sell",)  # IBKR has not confirmed yet
+
+    paper.gateway.set_status("o-stop", "Cancelled")
+    paper.broker.sync()
+    assert paper.broker.release() == ()
+    assert [t.order_ref for t in paper.gateway.placed] == ["o-stop", "o-sell"]
+
+
+def test_a_replacement_stop_waits_too(paper: Paper) -> None:
+    paper.submit(stop("o-stop-old"))
+    paper.submit(stop("o-stop-new", quantity="5"), release=False)
+    paper.cancel("o-stop-old")
+
+    assert paper.broker.release() == ("o-stop-new",)
+
+
+def test_a_sale_on_another_instrument_does_not_wait(paper: Paper) -> None:
+    paper.submit(stop("o-stop"))
+    paper.cancel("o-stop")
+    qqq = replace(market("o-sell", Side.SELL), instrument=QQQ)
+    paper.submit(qqq, release=False)
+
+    assert paper.broker.release() == ()
+
+
+def test_what_is_still_held_when_the_cycle_stops_waiting_is_rejected_never_sent(
+    paper: Paper,
+) -> None:
+    paper.submit(stop("o-stop"))
+    paper.submit(market("o-sell", Side.SELL), release=False)
+    paper.cancel("o-stop")
+    paper.broker.release()
+
+    assert paper.broker.reject_held("its stop's cancellation was not confirmed") == ("o-sell",)
+
+    assert paper.broker.held == ()
+    assert paper.states("o-sell") == [OrderStatus.SUBMITTED, OrderStatus.REJECTED]
+    assert "not sent: its stop's cancellation" in (paper.last("o-sell").note or "")
+    assert [t.order_ref for t in paper.gateway.placed] == ["o-stop"]
+    paper.cancel("o-sell")  # cancelling it later is harmless
+
+
+def test_cancelling_a_held_order_rejects_it_unsent(paper: Paper) -> None:
+    paper.submit(stop("o-stop"), release=False)
+    paper.cancel("o-stop")
+
+    assert paper.broker.held == ()
+    assert paper.states("o-stop") == [OrderStatus.SUBMITTED, OrderStatus.REJECTED]
+    assert paper.gateway.placed == []
+
+
+def test_releasing_needs_the_connection(paper: Paper) -> None:
+    paper.submit(market("o-sell", Side.SELL), release=False)
+    paper.broker.close()
+
+    with pytest.raises(IBKRConnectionError):
+        paper.broker.release()
+    assert paper.broker.held == ("o-sell",)
+
+
+def test_an_order_reconciliation_dropped_is_forgotten(paper: Paper) -> None:
+    paper.submit(stop("o-stop"))
+    paper.cancel("o-stop")
+    paper.gateway.forget("o-stop")  # IBKR cancelled it on a day no run read
+    assert [u.client_order_id for u in paper.broker.sync().unaccounted] == ["o-stop"]
+
+    closed = paper.broker.forget(["o-stop", "never-sent"], "ended: dropped by reconciliation")
+
+    assert closed == ("o-stop",)
+    record = paper.store.get("o-stop")
+    assert record is not None
+    assert record.state.status.is_terminal
+    assert record.state.note == "ended: dropped by reconciliation"
+    assert paper.broker.sync().unaccounted == ()
+    paper.submit(market("o-sell", Side.SELL), release=False)
+    assert paper.broker.release() == ()  # no cancellation left waiting
 
 
 def test_a_cancel_whose_order_was_lost_in_sending_waits_for_the_order_to_be_found(

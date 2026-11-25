@@ -19,6 +19,15 @@ before that check passes. No port, prefix or library default is trusted.
 * The order is written to the store, and committed, **before** it is sent. If the
   connection is lost while sending, its fate is unknown: it stays ``SUBMITTED``.
 
+**A sale waits for its stop's cancellation** (decided with Pablo, 2026-11-24, ADR-0045).
+A decision publishes a sale before it cancels the stop on the same shares, and IBKR
+confirms a cancellation only later. So every new sell order (a market sale or a stop)
+is **held**, not sent, when it is published. ``release``, called by the paper cycle
+between drains, sends each held order whose instrument has no cancellation still
+waiting for IBKR's confirmation. Two orders can then never sell the same shares, which
+a cash account cannot do. ``reject_held`` rejects what is still held when the cycle
+stops waiting: never sent, so the next decision tries again. Purchases are sent at once.
+
 **Never resend** (decided with Pablo, 2026-11-24). ``sync`` looks for every order
 whose fate is unknown in IBKR's open orders, today's completed orders and today's
 executions, by ``orderRef``. Found, it is tracked from there. Not found, it is
@@ -129,6 +138,14 @@ class IBKRBrokerError(IBKRError):
 
 
 @dataclass(frozen=True, slots=True)
+class _Held:
+    """A sell order published and checked, waiting to be sent (ADR-0045)."""
+
+    state: OrderState
+    contract_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class Unaccounted:
     """An order whose fate today's records do not explain. Reconciliation decides."""
 
@@ -214,6 +231,7 @@ class IBKRBroker:
         self._seen: set[str] = set()
         self._unsent: set[str] = set()
         self._duplicates: list[str] = []
+        self._held: dict[str, _Held] = {}
         self._report = SyncReport()
 
         bus.subscribe(OrderEvent, self._on_order, name=SUBSCRIBER)
@@ -304,6 +322,11 @@ class IBKRBroker:
     def ignored_duplicates(self) -> tuple[str, ...]:
         """Client order ids submitted more than once; the repeats were ignored."""
         return tuple(self._duplicates)
+
+    @property
+    def last_report(self) -> SyncReport:
+        """What the last ``sync`` could not settle by itself."""
+        return self._report
 
     def order(self, client_order_id: str) -> OrderState | None:
         """The latest state of an order this adapter sent."""
@@ -521,22 +544,18 @@ class IBKRBroker:
             self._unsent.add(order_id)
             self._bus.publish(OrderEvent(state.reject(reason)))
             return
-
-        now = self._clock.now()
-        self._store.record_sending(state, now)  # committed before it leaves Tyche
-        try:
-            broker_id = self._client.place(self._ticket(order, contract_id))
-        except IBKRConnectionError:
-            log.warning(
-                "order %s may or may not have reached IB Gateway; the next sync looks for "
-                "it and never resends it",
-                order_id,
-            )
+        if order.side is Side.SELL:
+            self._held[order_id] = _Held(state, contract_id)  # sent by release()
             return
-        self._store.record_placed(order_id, broker_id, now)
+        self._send(state, contract_id)
 
     def _on_cancel(self, envelope: Envelope[CancelRequestEvent]) -> None:
         order_id = envelope.event.client_order_id
+        held = self._held.pop(order_id, None)
+        if held is not None:
+            self._unsent.add(order_id)
+            self._bus.publish(OrderEvent(held.state.reject("not sent: cancelled while held")))
+            return
         record = self._store.get(order_id)
         if record is None:
             if order_id in self._unsent:
@@ -551,7 +570,86 @@ class IBKRBroker:
             except IBKRConnectionError:
                 log.warning("cancel of order %s not sent; the next sync asks again", order_id)
 
+    # --- sending held orders (ADR-0045) ---------------------------------------------
+
+    @property
+    def held(self) -> tuple[str, ...]:
+        """Sell orders published and not yet sent, oldest first."""
+        return tuple(self._held)
+
+    def release(self) -> tuple[str, ...]:
+        """Send each held sell order whose instrument has no cancellation still waiting
+        for IBKR's confirmation. Returns the orders still held.
+
+        Call it between drains, after ``sync``, which reads the confirmations.
+
+        Raises:
+            IBKRConnectionError: not connected to the configured account.
+        """
+        self._require_connection()
+        cancelling = {
+            r.state.order.instrument for r in self._store.unfinished() if r.cancel_requested
+        }
+        for order_id, held in list(self._held.items()):
+            if held.state.order.instrument in cancelling:
+                continue
+            del self._held[order_id]
+            self._send(held.state, held.contract_id)
+        return self.held
+
+    def reject_held(self, reason: str) -> tuple[str, ...]:
+        """Reject every order still held, never sent, and deliver each rejection.
+
+        Call it between drains. Returns the orders rejected.
+        """
+        rejected = self.held
+        for order_id in rejected:
+            held = self._held.pop(order_id)
+            self._unsent.add(order_id)
+            self._deliver(OrderEvent(held.state.reject(f"not sent: {reason}")))
+        return rejected
+
+    def forget(self, order_ids: Iterable[str], note: str) -> tuple[str, ...]:
+        """Close the store's records of orders Tyche no longer tracks. Returns those closed.
+
+        An order IBKR stopped listing is ``unaccounted`` at every ``sync`` until
+        reconciliation drops it from Tyche's records (ended, or a missed fill applied by
+        ``tyche resume``, ADR-0044). The paper cycle then forgets it here, so it is not
+        reported again and no sale waits on its cancellation. Nothing is published:
+        Tyche's records already say how it ended.
+        """
+        now = self._clock.now()
+        closed: list[str] = []
+        for order_id in sorted(set(order_ids)):
+            record = self._store.get(order_id)
+            if record is None or record.state.status.is_terminal:
+                continue
+            state = record.state
+            if state.status is OrderStatus.SUBMITTED:
+                state = state.reject(note)
+            else:
+                state = state.cancel(note)
+            self._store.record_state(state, now)
+            closed.append(order_id)
+        return tuple(closed)
+
     # --- helpers --------------------------------------------------------------------
+
+    def _send(self, state: OrderState, contract_id: int) -> None:
+        """Write the order to the store, committed, then send it, once."""
+        order_id = state.order.client_order_id
+        now = self._clock.now()
+        self._store.record_sending(state, now)  # committed before it leaves Tyche
+        try:
+            broker_id = self._client.place(self._ticket(state.order, contract_id))
+        except IBKRConnectionError:
+            log.warning(
+                "order %s may or may not have reached IB Gateway; the next sync looks for "
+                "it and never resends it",
+                order_id,
+            )
+            return
+        self._store.record_placed(order_id, broker_id, now)
 
     def _rejection(self, order: Order) -> str:
         if not _SYMBOL.fullmatch(order.instrument.symbol):

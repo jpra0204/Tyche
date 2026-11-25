@@ -56,16 +56,19 @@ class TestUnreconciledApproval:
                 AS_OF, proposed.sleeves, (), "default", unreconciled=Reconciliation(at=AS_OF)
             )
 
-    def test_never_halted_by_a_later_check(self) -> None:
+    def test_carries_a_check_made_after_its_close(self) -> None:
+        # A paper run reconciles at startup, after the close it then decides on
+        # (ADR-0045): the halt is always dated after the decision's ``as_of``.
         proposed = proposal({SPY: {"a": "0.1"}})
-        with pytest.raises(ValueError, match="after it"):
-            ApprovedPortfolioEvent(
-                AS_OF,
-                proposed.sleeves,
-                (),
-                "default",
-                unreconciled=mismatch(AS_OF + timedelta(minutes=1)),
-            )
+        evening = ApprovedPortfolioEvent(
+            AS_OF,
+            proposed.sleeves,
+            (),
+            "default",
+            unreconciled=mismatch(AS_OF + timedelta(hours=2, minutes=30)),
+        )
+
+        assert evening.keeps_everything
 
 
 class TestTheGate:

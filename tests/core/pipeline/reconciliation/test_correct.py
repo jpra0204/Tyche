@@ -9,7 +9,7 @@ import pytest
 
 from tests.support.costs import usd
 from tests.support.market import SPY
-from tests.support.reconciliation import AT, BUY, RULES, STOP, USD, broker_record
+from tests.support.reconciliation import AT, BUY, CALENDARS, RULES, STOP, USD, broker_record
 from tests.support.reconciliation import agreeing as tyche
 from tyche.core.domain import (
     Currency,
@@ -19,14 +19,15 @@ from tyche.core.domain import (
 )
 from tyche.core.pipeline.reconciliation import ReconciliationError, correct, reconcile, resolve
 
-LATER = AT + timedelta(days=1)
+LATER = AT + timedelta(hours=18)
+"""Still before the close of 4 January, the session the support market order is for."""
 TWELVE = {SPY: "12"}
 
 
 class TestCorrect:
     def test_a_match_is_remembered_and_changes_nothing_else(self) -> None:
         mine = tyche()
-        found = reconcile(mine, broker_record(mine), RULES, USD, AT)
+        found = reconcile(mine, broker_record(mine), RULES, USD, AT, calendars=CALENDARS)
 
         after = correct(mine, found)
 
@@ -44,7 +45,7 @@ class TestCorrect:
     def test_cash_within_the_tolerance_becomes_the_brokers(self) -> None:
         mine = tyche()
         theirs = broker_record(mine, cash=usd("5298.40"), accrued=(usd("0.50"),))
-        found = reconcile(mine, theirs, RULES, USD, AT)
+        found = reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS)
 
         after = correct(mine, found)
 
@@ -55,7 +56,9 @@ class TestCorrect:
 
     def test_an_ended_stop_leaves_the_orders_and_the_sleeve(self) -> None:
         mine = tyche()
-        found = reconcile(mine, broker_record(mine, without=(STOP,)), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, without=(STOP,)), RULES, USD, AT, calendars=CALENDARS
+        )
 
         after = correct(mine, found)
 
@@ -65,7 +68,9 @@ class TestCorrect:
 
     def test_a_mismatch_changes_nothing_but_the_halt(self) -> None:
         mine = tyche()
-        found = reconcile(mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT)
+        found = reconcile(
+            mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT, calendars=CALENDARS
+        )
 
         after = correct(mine, found)
 
@@ -79,10 +84,15 @@ class TestCorrect:
     def test_a_check_that_agrees_does_not_lift_a_halt(self) -> None:
         mine = tyche()
         halted = correct(
-            mine, reconcile(mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT)
+            mine,
+            reconcile(
+                mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT, calendars=CALENDARS
+            ),
         )
 
-        after = correct(halted, reconcile(halted, broker_record(halted), RULES, USD, LATER))
+        after = correct(
+            halted, reconcile(halted, broker_record(halted), RULES, USD, LATER, calendars=CALENDARS)
+        )
 
         assert after.reconciliation.halt == halted.reconciliation.halt
         assert after.reconciliation.last_at == LATER
@@ -90,9 +100,18 @@ class TestCorrect:
 
     def test_a_later_mismatch_replaces_the_halt(self) -> None:
         mine = tyche()
-        first = reconcile(mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT)
+        first = reconcile(
+            mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT, calendars=CALENDARS
+        )
         halted = correct(mine, first)
-        second = reconcile(halted, broker_record(halted, shares={SPY: "11"}), RULES, USD, LATER)
+        second = reconcile(
+            halted,
+            broker_record(halted, shares={SPY: "11"}),
+            RULES,
+            USD,
+            LATER,
+            calendars=CALENDARS,
+        )
 
         assert correct(halted, second).reconciliation.halt == second
 
@@ -101,7 +120,7 @@ class TestResolve:
     def test_a_stop_that_sold_on_a_missed_day_is_applied_to_its_sleeve(self) -> None:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
-        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT))
+        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS))
 
         lifted = resolve(halted, LATER)
 
@@ -119,13 +138,13 @@ class TestResolve:
         # Commission folded into the price: 6 x (439.333333 - 470.10) of realised loss.
         assert lifted.account.realized_pnl(Currency.USD) == usd("-184.600002")
         # And now the records agree.
-        again = reconcile(lifted, theirs, RULES, USD, LATER)
+        again = reconcile(lifted, theirs, RULES, USD, LATER, calendars=CALENDARS)
         assert again.status is ReconciliationStatus.MATCH
 
     def test_a_purchase_on_a_missed_day_goes_to_the_sleeves_it_was_for(self) -> None:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "13"}, cash=usd("3878"), without=(BUY,))
-        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT))
+        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS))
 
         lifted = resolve(halted, LATER)
 
@@ -133,7 +152,10 @@ class TestResolve:
         assert beta == SleeveHolding(
             "beta", SPY, Decimal(7), usd("1880") + usd("473.666667") * 3, date(2024, 1, 2)
         )
-        assert reconcile(lifted, theirs, RULES, USD, LATER).status is ReconciliationStatus.MATCH
+        assert (
+            reconcile(lifted, theirs, RULES, USD, LATER, calendars=CALENDARS).status
+            is ReconciliationStatus.MATCH
+        )
 
     def test_a_new_holding_starts_on_the_day_of_the_check(self) -> None:
         base = tyche()
@@ -149,7 +171,7 @@ class TestResolve:
         )
         # Beta held nothing in this book (gamma did): the purchase is beta's first.
         theirs = broker_record(mine, shares={SPY: "13"}, cash=usd("3878"), without=(BUY,))
-        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT))
+        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS))
 
         lifted = resolve(halted, LATER)
 
@@ -159,7 +181,10 @@ class TestResolve:
     def test_unexplained_differences_are_only_lifted(self) -> None:
         mine = tyche()
         halted = correct(
-            mine, reconcile(mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT)
+            mine,
+            reconcile(
+                mine, broker_record(mine, shares={SPY: "12"}), RULES, USD, AT, calendars=CALENDARS
+            ),
         )
 
         lifted = resolve(halted, LATER)
@@ -170,9 +195,11 @@ class TestResolve:
     def test_after_a_check_that_agreed_nothing_is_applied(self) -> None:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
-        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT))
+        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS))
         # Pablo put the account back by hand; the next check agreed.
-        agreed = correct(halted, reconcile(halted, broker_record(halted), RULES, USD, LATER))
+        agreed = correct(
+            halted, reconcile(halted, broker_record(halted), RULES, USD, LATER, calendars=CALENDARS)
+        )
 
         lifted = resolve(agreed, LATER + timedelta(hours=1))
 
@@ -187,7 +214,7 @@ class TestResolve:
     def test_an_explanation_that_does_not_fit_the_checkpoint_is_refused(self) -> None:
         mine = tyche()
         theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
-        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT))
+        halted = correct(mine, reconcile(mine, theirs, RULES, USD, AT, calendars=CALENDARS))
         gone = replace(
             halted,
             execution=replace(halted.execution, orders=halted.execution.orders[:1]),
@@ -200,7 +227,7 @@ class TestResolve:
 
 def test_the_checkpoint_refuses_a_reconciliation_after_it_was_saved() -> None:
     mine = tyche()
-    found = reconcile(mine, broker_record(mine), RULES, USD, AT)
+    found = reconcile(mine, broker_record(mine), RULES, USD, AT, calendars=CALENDARS)
 
     with pytest.raises(ValueError, match="comes after it was saved"):
         replace(mine, reconciliation=ReconciliationState(halt=None, last_at=found.at))
@@ -210,7 +237,7 @@ def test_a_check_dated_in_another_time_zone_still_applies() -> None:
     mine = tyche()
     theirs = broker_record(mine, shares={SPY: "4"}, cash=usd("7935"), without=(STOP,))
     eastern = AT.astimezone(ZoneInfo("America/New_York"))
-    halted = correct(mine, reconcile(mine, theirs, RULES, USD, eastern))
+    halted = correct(mine, reconcile(mine, theirs, RULES, USD, eastern, calendars=CALENDARS))
 
     lifted = resolve(halted, LATER)
 

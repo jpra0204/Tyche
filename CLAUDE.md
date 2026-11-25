@@ -67,13 +67,14 @@ uv run tyche report <run id>               # rebuilds report.html from any recor
 uv run tyche kill --reason "..." [--flatten]  # writes the KILL flag; never run it on Pablo's real workspace
 uv run tyche resume --reason "..."        # lifts the kill switch and the drawdown halt; Pablo's alone
 uv run tyche notify test                   # posts a test message to DISCORD_WEBHOOK_URL; never with Pablo's real .env
+uv run tyche paper run --risk-profile <name>  # one cycle on the IBKR paper account; never with Pablo's real .env or workspace
 uv run pytest -m network                   # opt-in tests against real services
 uv run pytest -m ibkr_paper                # opt-in, IB Gateway on the PAPER account only; see tests/adapters/brokers/ibkr/test_paper_account.py
 ```
 
 Python is pinned to 3.14 through `uv` ([ADR-0002](docs/adr/0002-python-314-and-uv.md)). Always run tools with `uv run`, never the system Python.
 
-Run `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital`, `tyche compare-profiles` and `tyche report` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there, and a report rewrites a file in it. Never run `tyche kill` or `tyche resume` on Pablo's real workspace: engaging is his call, and resuming is his alone, like arming live trading. Never run `tyche notify test`, or `tyche kill` and `tyche resume` anywhere, with a real `DISCORD_WEBHOOK_URL` in the environment or the workspace: they post to Pablo's channel. Tests remove every `.env` key from the environment. Paper and agent commands do not exist yet. They are added to this section in the phase that implements them.
+Run `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital`, `tyche compare-profiles` and `tyche report` only against a scratch workspace (`--home`), never Pablo's real one: every run writes a record there, and a report rewrites a file in it. Never run `tyche kill` or `tyche resume` on Pablo's real workspace: engaging is his call, and resuming is his alone, like arming live trading. Never run `tyche notify test`, or `tyche kill` and `tyche resume` anywhere, with a real `DISCORD_WEBHOOK_URL` in the environment or the workspace: they post to Pablo's channel. Tests remove every `.env` key from the environment. Never run `tyche paper run` yourself: it connects to IB Gateway, sends orders and writes Pablo's state database; it is his to run, by hand until the scheduler (Phase 2, PR 15). Agent commands do not exist yet; they are added to this section in the phase that implements them.
 
 ## Repo map
 

@@ -375,14 +375,13 @@ class ApprovedPortfolioEvent(Event):
                 )
             if self.halt.at > self.as_of:
                 raise ValueError("ApprovedPortfolioEvent: halted by a trigger after it")
-        if self.unreconciled is not None:
-            if self.unreconciled.status is not ReconciliationStatus.MISMATCH:
-                raise ValueError(
-                    f"ApprovedPortfolioEvent: a reconciliation {self.unreconciled.status} "
-                    "does not halt"
-                )
-            if self.unreconciled.at > self.as_of:
-                raise ValueError("ApprovedPortfolioEvent: halted by a reconciliation after it")
+        # A reconciliation halt is not checked against ``as_of``: a paper run reconciles at
+        # startup, after the close its decision is about, so it is dated later (ADR-0045).
+        unreconciled = self.unreconciled
+        if unreconciled is not None and unreconciled.status is not ReconciliationStatus.MISMATCH:
+            raise ValueError(
+                f"ApprovedPortfolioEvent: a reconciliation {unreconciled.status} does not halt"
+            )
         stopped = self.halt is not None or self.kill is not None or self.unreconciled is not None
         if stopped and (self.targets or self.adjustments):
             raise ValueError("ApprovedPortfolioEvent: a halted or killed approval approves nothing")

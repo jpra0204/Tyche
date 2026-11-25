@@ -39,6 +39,18 @@ class AlertKind(StrEnum):
     RUN_FAILED = "run_failed"
     """A run stopped with an error before it finished."""
 
+    CYCLE_SKIPPED = "cycle_skipped"
+    """A session's decision was not taken: too late to trade, or a candidate had no bar
+    (ADR-0043)."""
+
+    ORDERS = "orders"
+    """Orders the paper cycle could not send as decided: lost while sending, or a sale
+    whose stop's cancellation IBKR did not confirm; or executions in the account that
+    are not Tyche's (ADR-0042, ADR-0045)."""
+
+    STOPPED = "stopped"
+    """A paper run started with trading still halted from an earlier run (ADR-0045)."""
+
     TEST = "test"
     """``tyche notify test``: checks that the channel works. Nothing happened."""
 

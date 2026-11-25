@@ -264,7 +264,7 @@ def run_backtest(
 
     needed = max(universe.history_needed, *signals.history_needed.values())
     warm_up = {
-        code: _sessions_before(calendars[code], sessions[code][0].day, needed) for code in codes
+        code: sessions_before(calendars[code], sessions[code][0].day, needed) for code in codes
     }
     load_from = min(
         (found[0].day for found in warm_up.values() if found),
@@ -332,7 +332,7 @@ def run_backtest(
     )
 
 
-def _sessions_before(calendar: Calendar, day: date, count: int) -> tuple[Session, ...]:
+def sessions_before(calendar: Calendar, day: date, count: int) -> tuple[Session, ...]:
     """Up to ``count`` sessions before ``day``, oldest first; fewer if the calendar ends."""
     found: list[Session] = []
     before = day

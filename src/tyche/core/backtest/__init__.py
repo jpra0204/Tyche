@@ -46,6 +46,7 @@ from tyche.core.backtest.runner import (
     BacktestSpec,
     Resume,
     run_backtest,
+    sessions_before,
 )
 from tyche.core.backtest.settings import BacktestSettings, HoldoutError
 from tyche.core.backtest.sweep import (
@@ -134,6 +135,7 @@ __all__ = [
     "run_backtest",
     "series_metrics",
     "session_sharpe",
+    "sessions_before",
     "size_penalty",
     "trial_key",
     "yearly_returns",

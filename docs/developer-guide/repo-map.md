@@ -61,7 +61,7 @@ src/tyche/
 │   └── reports/            report rendering
 ├── config/               the workspace, config file schemas, loading, config hash, .env secrets
 │   └── templates/          files `tyche init` copies into a new workspace
-├── runtime/              composition root: chooses adapters and builds the engine
+├── runtime/              composition root: chooses adapters and builds the engine; paper.py is the paper cycle (ADR-0045)
 └── cli/                  the `tyche` command
 ```
 
