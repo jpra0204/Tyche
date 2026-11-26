@@ -95,6 +95,8 @@ Backtest, paper and live run the same engine and the same pipeline stages ([ADR-
 | Paper | Wall clock (`SystemClock`) | `DailyFeed`: the replay of each session since the last run, fetched two hours after the close ([ADR-0043](../adr/0043-daily-feed-and-the-catch-up-rule.md)) | `IBKRBroker` on the paper account |
 | Live | Wall clock (`SystemClock`) | `DailyFeed` | `IBKRBroker` on the live account, only after the manual gate in [ADR-0013](../adr/0013-live-trading-gate.md) |
 
+The console (`tyche ui`, [ADR-0046](../adr/0046-a-local-web-console.md)) is a second driving adapter beside the CLI: a React page and a small HTTP API on `127.0.0.1` that read through `tyche.runtime` and, from U2, run `tyche` commands as subprocesses. It adds no path to the broker.
+
 `tyche paper run` (`tyche.runtime.paper`) wires the paper row ([ADR-0045](../adr/0045-the-paper-cycle.md)). Each evening's cycle is two runs: a check that reads IBKR's fills, reconciles and saves, then, if a session has closed since the last decision, a decision built from the checkpoint the check saved. The stages are the backtest's; only the three parts above differ.
 
 Parity means the *code path* is the same. It does not mean simulated fills match real ones; the limits are listed in section 9.

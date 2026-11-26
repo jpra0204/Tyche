@@ -40,6 +40,7 @@ Each note answers the same four questions: what problem does this solve, what is
 | [Orders sent at most once](at-most-once-orders.md) | Write down what you send before sending it, look for it after a failure, and never send it twice; keep the vendor's model behind a small translating layer |
 | [Catching up without acting on stale signals](freshness-and-catch-up.md) | Replay every missed input so measurements stay right, but act only before the deadline the action must meet; judge freshness by that deadline, not by age |
 | [Reconciliation: trusting the broker over yourself](reconciliation.md) | Compare your record with the counterparty's; decide per field what is noise to adopt, what to repair, and what halts; explain a difference, but let a human turn the explanation into a fact |
+| [A second front door](a-second-front-door.md) | A new way in calls the same code as the old one, or the old one itself, and a local server still needs a lock |
 | [Read, reconcile, then decide](read-then-decide.md) | Take in what the world did and check your record against it before you act; hold an action that could collide with another until the first is confirmed |
 
 ## Planned

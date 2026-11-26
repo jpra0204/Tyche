@@ -1238,3 +1238,44 @@ class TestPaperRun:
         assert "First paper run: Tyche started from IBKR's cash." in result.stdout
         assert "reconciliation match" in result.stdout
         assert "cannot connect to IB Gateway" in result.stderr
+
+
+class TestUi:
+    """`tyche ui` (ADR-0046). The API itself is tested in tests/api."""
+
+    def test_needs_the_built_page(
+        self, home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runner.invoke(app, ["init"])
+        monkeypatch.setattr(cli, "default_app_dir", lambda: tmp_path / "missing")
+
+        result = runner.invoke(app, ["ui", "--no-browser"])
+
+        assert result.exit_code == 1
+        assert "run `make ui`" in result.stderr
+
+    def test_serves_on_127_0_0_1_with_a_new_token(
+        self, home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runner.invoke(app, ["init"])
+        built = tmp_path / "dist"
+        built.mkdir()
+        (built / "index.html").write_text("<html></html>")
+        monkeypatch.setattr(cli, "default_app_dir", lambda: built)
+        served: list[int] = []
+        opened: list[str] = []
+        monkeypatch.setattr(cli, "serve", lambda console, port: served.append(port))
+        monkeypatch.setattr("webbrowser.open", opened.append)
+
+        result = runner.invoke(app, ["ui", "--port", "9123"])
+
+        assert result.exit_code == 0, result.output
+        assert served == [9123]
+        (address,) = opened
+        assert address.startswith("http://127.0.0.1:9123/#token=")
+        assert address in result.stdout
+        token = address.split("#token=")[1]
+        assert len(token) >= 40
+        again = runner.invoke(app, ["ui", "--port", "9123"])
+        assert opened[-1] != address  # a new token at every launch
+        assert again.exit_code == 0
