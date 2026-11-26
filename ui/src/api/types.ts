@@ -21,7 +21,11 @@ export type RunRequest =
   | ReportRequest
   | Schemas["PaperRunRequest"]
   | Schemas["KillRequest"]
-  | Schemas["ResumeRequest"];
+  | Schemas["ResumeRequest"]
+  | Schemas["WalkForwardRequest"]
+  | Schemas["SweepRequest"]
+  | Schemas["CapitalRunRequest"]
+  | Schemas["CompareProfilesRequest"];
 export type DataView = Schemas["DataView"];
 export type BacktestSummary = Schemas["BacktestSummary"];
 export type PaperRunRequest = Schemas["PaperRunRequest"];
@@ -30,3 +34,6 @@ export type ResumeRequest = Schemas["ResumeRequest"];
 export type PaperView = Schemas["PaperView"];
 export type ReconciliationView = Schemas["ReconciliationView"];
 export type AlertView = Schemas["AlertView"];
+export type ResearchView = Schemas["ResearchView"];
+export type StudySummary = Schemas["StudySummary"];
+export type StudyKind = StudySummary["kind"];

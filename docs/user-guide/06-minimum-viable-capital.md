@@ -17,6 +17,8 @@ Everything on the [backtest page](03-running-a-backtest.md) applies: the holdout
 uv run tyche capital --from 2005-01-03
 ```
 
+From the console: **Research**, **Capital** ([the console](11-the-console.md)); a field left empty keeps the default.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `--from` | (required) | First session date to trade |

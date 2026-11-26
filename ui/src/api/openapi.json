@@ -320,6 +320,125 @@
         "title": "BacktestSummary",
         "type": "object"
       },
+      "CapitalDefaults": {
+        "description": "``tyche capital``'s defaults, for the form to show.",
+        "properties": {
+          "amounts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Amounts",
+            "type": "array"
+          },
+          "positions": {
+            "title": "Positions",
+            "type": "integer"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "tolerance": {
+            "title": "Tolerance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amounts",
+          "reference",
+          "tolerance",
+          "positions"
+        ],
+        "title": "CapitalDefaults",
+        "type": "object"
+      },
+      "CapitalRunRequest": {
+        "additionalProperties": false,
+        "description": "``tyche capital``: each strategy alone at several account sizes. An option left\nempty is left out, so the command's own default applies.",
+        "properties": {
+          "amounts": {
+            "default": [],
+            "items": {
+              "pattern": "^[0-9]{1,9}(\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Amounts",
+            "type": "array"
+          },
+          "command": {
+            "const": "capital",
+            "title": "Command",
+            "type": "string"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "positions": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positions"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{1,9}(\\.[0-9]{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "risk_profile": {
+            "default": "default",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Risk Profile",
+            "type": "string"
+          },
+          "tolerance": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{1,3}(\\.[0-9]{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance"
+          }
+        },
+        "required": [
+          "command",
+          "first"
+        ],
+        "title": "CapitalRunRequest",
+        "type": "object"
+      },
       "CashCheckView": {
         "description": "One currency's cash, Tyche's against the broker's (ADR-0044).",
         "properties": {
@@ -386,6 +505,50 @@
           "pending"
         ],
         "title": "CashView",
+        "type": "object"
+      },
+      "CompareProfilesRequest": {
+        "additionalProperties": false,
+        "description": "``tyche compare-profiles``: one backtest per risk profile; none named compares\nevery profile in ``config/risk/``.",
+        "properties": {
+          "command": {
+            "const": "compare_profiles",
+            "title": "Command",
+            "type": "string"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "risk_profiles": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Risk Profiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command",
+          "first"
+        ],
+        "title": "CompareProfilesRequest",
         "type": "object"
       },
       "ConfigView": {
@@ -999,7 +1162,7 @@
       },
       "ReportRequest": {
         "additionalProperties": false,
-        "description": "``tyche report``: write a backtest's report again, from its record.",
+        "description": "``tyche report``: write a record's report again: a backtest's, a walk-forward's, a\nsweep's, a capital analysis's or a profile comparison's.",
         "properties": {
           "command": {
             "const": "report",
@@ -1017,6 +1180,27 @@
           "run_id"
         ],
         "title": "ReportRequest",
+        "type": "object"
+      },
+      "ResearchView": {
+        "description": "What the Research page's forms offer.",
+        "properties": {
+          "capital": {
+            "$ref": "#/components/schemas/CapitalDefaults"
+          },
+          "sweeps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sweeps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sweeps",
+          "capital"
+        ],
+        "title": "ResearchView",
         "type": "object"
       },
       "ResumeRequest": {
@@ -1128,7 +1312,11 @@
               "report",
               "paper_run",
               "kill",
-              "resume"
+              "resume",
+              "walk_forward",
+              "sweep",
+              "capital",
+              "compare_profiles"
             ],
             "title": "Command",
             "type": "string"
@@ -1286,6 +1474,151 @@
         "title": "StrategyView",
         "type": "object"
       },
+      "StudySummary": {
+        "description": "One recorded study, from its record file.\n\n``headline`` is one line in words: the scheme and folds, the sweep and its trials,\neach strategy's minimum viable capital, or the profiles compared. When the record\ncannot be read, ``error`` says why.",
+        "properties": {
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "has_report": {
+            "default": false,
+            "title": "Has Report",
+            "type": "boolean"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "kind": {
+            "enum": [
+              "walk_forward",
+              "sweep",
+              "capital",
+              "profiles"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "study_id"
+        ],
+        "title": "StudySummary",
+        "type": "object"
+      },
+      "SweepRequest": {
+        "additionalProperties": false,
+        "description": "``tyche sweep``: every combination of ``config/sweeps/<name>.toml``.",
+        "properties": {
+          "command": {
+            "const": "sweep",
+            "title": "Command",
+            "type": "string"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "risk_profile": {
+            "default": "default",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Risk Profile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "name",
+          "first"
+        ],
+        "title": "SweepRequest",
+        "type": "object"
+      },
       "TradingView": {
         "description": "What stops trading now.",
         "properties": {
@@ -1379,6 +1712,77 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WalkForwardRequest": {
+        "additionalProperties": false,
+        "description": "``tyche walk-forward``: folds of whole calendar years, each a backtest.",
+        "properties": {
+          "command": {
+            "const": "walk_forward",
+            "title": "Command",
+            "type": "string"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "risk_profile": {
+            "default": "default",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Risk Profile",
+            "type": "string"
+          },
+          "rolling": {
+            "default": false,
+            "title": "Rolling",
+            "type": "boolean"
+          },
+          "sweep": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweep"
+          },
+          "test_years": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Test Years",
+            "type": "integer"
+          },
+          "train_years": {
+            "default": 5,
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Train Years",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command",
+          "first"
+        ],
+        "title": "WalkForwardRequest",
         "type": "object"
       }
     }
@@ -1591,6 +1995,53 @@
         "summary": "Get Paper"
       }
     },
+    "/api/research": {
+      "get": {
+        "description": "What the Research page's forms offer: the sweeps, and the capital defaults.",
+        "operationId": "getResearch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research"
+      }
+    },
     "/api/runs": {
       "post": {
         "description": "Start a ``tyche`` command; refused while another is running.",
@@ -1620,11 +2071,15 @@
                 "discriminator": {
                   "mapping": {
                     "backtest": "#/components/schemas/BacktestRequest",
+                    "capital": "#/components/schemas/CapitalRunRequest",
+                    "compare_profiles": "#/components/schemas/CompareProfilesRequest",
                     "data_fetch": "#/components/schemas/FetchRequest",
                     "kill": "#/components/schemas/KillRequest",
                     "paper_run": "#/components/schemas/PaperRunRequest",
                     "report": "#/components/schemas/ReportRequest",
-                    "resume": "#/components/schemas/ResumeRequest"
+                    "resume": "#/components/schemas/ResumeRequest",
+                    "sweep": "#/components/schemas/SweepRequest",
+                    "walk_forward": "#/components/schemas/WalkForwardRequest"
                   },
                   "propertyName": "command"
                 },
@@ -1646,6 +2101,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/ResumeRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WalkForwardRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SweepRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CapitalRunRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CompareProfilesRequest"
                   }
                 ],
                 "title": "Request"
@@ -1789,6 +2256,144 @@
           }
         },
         "summary": "Get Status"
+      }
+    },
+    "/api/studies/{kind}": {
+      "get": {
+        "description": "Every recorded walk-forward, sweep, capital analysis or profile comparison.",
+        "operationId": "listStudies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "walk_forward",
+                "sweep",
+                "capital",
+                "profiles"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudySummary"
+                  },
+                  "title": "Response Liststudies",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Studies"
+      }
+    },
+    "/api/studies/{kind}/{study_id}/report": {
+      "get": {
+        "description": "A study's ``report.html``, for the page to show in a sandboxed frame.",
+        "operationId": "getStudyReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "walk_forward",
+                "sweep",
+                "capital",
+                "profiles"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "study_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}(-[0-9]+)?$",
+              "title": "Study Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Study Report"
       }
     }
   }

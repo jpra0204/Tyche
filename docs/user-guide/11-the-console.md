@@ -2,7 +2,7 @@
 
 A page in your browser to see your workspace and, as it grows, to run Tyche from it. It runs on your Mac only. Design: [ADR-0046](../adr/0046-a-local-web-console.md).
 
-> **Today (console PR U3)** it has four pages: **Status** reads; **Data** and **Backtests** run `tyche data fetch` and `tyche backtest` and show their reports; **Paper** runs the paper cycle, the kill switch and resume. Walk-forward, sweeps, capital and profile comparison come in U4; until then, run those in the terminal.
+> **Today (console PR U4)** it has five pages: **Status** reads; **Data**, **Backtests** and **Research** run `tyche data fetch`, `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital` and `tyche compare-profiles` and show their reports; **Paper** runs the paper cycle, the kill switch and resume. The configuration as pages comes in U5.
 
 ## Open it
 
@@ -64,6 +64,19 @@ Every run is recorded. Running many and keeping the best one is overfitting, not
 
 - **Report** opens its `report.html` inside the console. **Backtests** at the top goes back.
 - **Write report** appears when a record has no report yet; it runs `tyche report <run id>`.
+
+### The Research page
+
+A tab for each study beyond one backtest. Each tab has a form that runs the command, the run's output, and every record of that kind in the workspace, newest first, with a line saying what it found and a **Report** (or **Write report**) button. Coming back from a report returns to the same tab.
+
+| Tab | Runs | The form |
+|---|---|---|
+| **Walk-forward** | `tyche walk-forward` ([walk-forward](04-walk-forward.md)) | From, To, risk profile, training and test years, **Rolling**, and an optional **sweep on each training window** |
+| **Sweep** | `tyche sweep <name>` ([sweeps](05-parameter-sweeps.md)) | The sweep (a file in `config/sweeps/`), From, To, risk profile |
+| **Capital** | `tyche capital` ([minimum viable capital](06-minimum-viable-capital.md)) | From, To, risk profile; amounts, reference, tolerance and positions, each showing its default. Empty keeps the default |
+| **Profiles** | `tyche compare-profiles` ([comparing profiles](08-risk-profiles.md)) | From, To, and every profile or the ones you choose |
+
+The same honesty applies as in the terminal: every sweep's trials count against every later Sharpe ratio of its plugin, a sweep's pick is in-sample, and a profile comparison names no best profile. The forms say so under their fields.
 
 ### The Paper page
 

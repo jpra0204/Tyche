@@ -81,7 +81,7 @@ export function BacktestTable({ backtests }: { backtests: BacktestSummary[] }) {
             <Table.Th ta="right">Return</Table.Th>
             <Table.Th ta="right">Benchmark</Table.Th>
             <Table.Th ta="right">Max drawdown</Table.Th>
-            <Table.Th>Outcome</Table.Th>
+            <Table.Th miw={130}>Outcome</Table.Th>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>

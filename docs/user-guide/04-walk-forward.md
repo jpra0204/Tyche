@@ -20,6 +20,8 @@ The report says this in its first lines. The learning note [walk-forward testing
 uv run tyche walk-forward --from 2005-01-03
 ```
 
+From the console: **Research**, **Walk-forward** ([the console](11-the-console.md)). It runs this same command.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `--from` | (required) | First day of the first training window |

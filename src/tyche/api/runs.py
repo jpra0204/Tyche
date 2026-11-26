@@ -17,13 +17,15 @@ import sys
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import IO, Literal
 
 from tyche.api.models import (
     AnyRunRequest,
     BacktestRequest,
+    CapitalRunRequest,
     CommandName,
+    CompareProfilesRequest,
     FetchRequest,
     KillRequest,
     PaperRunRequest,
@@ -31,6 +33,8 @@ from tyche.api.models import (
     ResumeRequest,
     RunLine,
     RunView,
+    SweepRequest,
+    WalkForwardRequest,
 )
 from tyche.config import Workspace
 from tyche.core.ports import Clock
@@ -84,6 +88,39 @@ def arguments(request: AnyRunRequest) -> list[str]:
             return ["kill", f"--reason={request.reason}", *flatten, "--yes"]
         case ResumeRequest():
             return ["resume", f"--reason={request.reason}", "--yes"]
+        case WalkForwardRequest():
+            args = ["walk-forward", *_range(request.first, request.last)]
+            args.extend(["--train-years", str(request.train_years)])
+            args.extend(["--test-years", str(request.test_years)])
+            if request.rolling:
+                args.append("--rolling")
+            if request.sweep is not None:
+                args.extend(["--sweep", request.sweep])
+            return [*args, "--risk-profile", request.risk_profile]
+        case SweepRequest():
+            args = ["sweep", request.name, *_range(request.first, request.last)]
+            return [*args, "--risk-profile", request.risk_profile]
+        case CapitalRunRequest():
+            args = ["capital", *_range(request.first, request.last)]
+            if request.amounts:
+                args.extend(["--amounts", ",".join(request.amounts)])
+            if request.reference is not None:
+                args.extend(["--reference", request.reference])
+            if request.tolerance is not None:
+                args.extend(["--tolerance", request.tolerance])
+            if request.positions is not None:
+                args.extend(["--positions", str(request.positions)])
+            return [*args, "--risk-profile", request.risk_profile]
+        case CompareProfilesRequest():
+            args = ["compare-profiles", *_range(request.first, request.last)]
+            for profile in request.risk_profiles:
+                args.extend(["--risk-profile", profile])
+            return args
+
+
+def _range(first: date, last: date | None) -> list[str]:
+    """``--from``, and ``--to`` if given."""
+    return ["--from", first.isoformat(), *(["--to", last.isoformat()] if last else [])]
 
 
 @dataclass

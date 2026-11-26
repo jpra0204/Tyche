@@ -28,6 +28,7 @@ export function useCurrentRun() {
       void queryClient.invalidateQueries({ queryKey: ["backtests"] });
       void queryClient.invalidateQueries({ queryKey: ["status"] });
       void queryClient.invalidateQueries({ queryKey: ["paper"] });
+      void queryClient.invalidateQueries({ queryKey: ["studies"] });
     }
   }, [state, number, queryClient]);
 

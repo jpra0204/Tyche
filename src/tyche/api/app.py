@@ -22,15 +22,19 @@ from tyche.api.models import (
     BacktestSummary,
     DataView,
     PaperView,
+    ResearchView,
     RunId,
     RunRequest,
     RunView,
     StatusView,
+    StudyKind,
+    StudySummary,
 )
 from tyche.api.paper import read_paper
 from tyche.api.runs import TYCHE, RunBusyError, Runner, RunStartError
 from tyche.api.security import LOCAL_HOSTS, TOKEN_HEADER, same_token
 from tyche.api.status import read_status
+from tyche.api.studies import StudyNotFoundError, list_studies, read_research, study_report
 from tyche.config import Workspace
 from tyche.core.ports import Clock
 from tyche.core.risk import DEFAULT_RISK_PROFILE
@@ -119,6 +123,29 @@ def create_app(
         except RecordNotFoundError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
         # Opened by itself, it could run nothing: reports have no script, and this says so.
+        return HTMLResponse(html, headers={"Content-Security-Policy": "sandbox"})
+
+    @api.get("/research", operation_id="getResearch")
+    def get_research() -> ResearchView:
+        """What the Research page's forms offer: the sweeps, and the capital defaults."""
+        return read_research(workspace)
+
+    @api.get("/studies/{kind}", operation_id="listStudies")
+    def get_studies(kind: StudyKind) -> list[StudySummary]:
+        """Every recorded walk-forward, sweep, capital analysis or profile comparison."""
+        return list_studies(workspace, kind)
+
+    @api.get(
+        "/studies/{kind}/{study_id}/report",
+        operation_id="getStudyReport",
+        response_class=HTMLResponse,
+    )
+    def get_study_report(kind: StudyKind, study_id: RunId) -> HTMLResponse:
+        """A study's ``report.html``, for the page to show in a sandboxed frame."""
+        try:
+            html = study_report(workspace, kind, study_id)
+        except StudyNotFoundError as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
         return HTMLResponse(html, headers={"Content-Security-Policy": "sandbox"})
 
     @api.post("/runs", operation_id="startRun", status_code=status.HTTP_201_CREATED)
