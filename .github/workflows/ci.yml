@@ -43,3 +43,33 @@ jobs:
 
       - name: Tests
         run: uv run pytest --cov --cov-report=term-missing
+
+  console:
+    name: Console (type check, lint, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 22, the version this was built with (ADR-0046); Vite needs 22.12 or later.
+      - name: Install Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

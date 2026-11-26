@@ -1,6 +1,6 @@
 # ADR-0046: A local web console
 
-- **Status:** Proposed
+- **Status:** Accepted (Pablo, 2026-11-25, with the console plan U1 to U5)
 - **Date:** 2026-11-25
 
 ## Context
@@ -16,7 +16,7 @@ Tyche's rules that a console must keep:
 
 Library facts, read from the npm and PyPI registries on 2026-11-25: React 19.3.1 (MIT), Vite 8.3.8 (MIT; needs Node 20.19+ or 22.12+; this Mac has 22.23.4), TypeScript 7.0.2 (Apache-2.0), Mantine 9.8.2 (MIT; needs React 19.2+), TanStack Query 5.108.4 (MIT), React Router 8.5.3 (MIT); FastAPI 0.165.0 (MIT, lists Python 3.14), uvicorn 0.54.0 (BSD-3-Clause, lists Python 3.14), httpx 0.28.1 (BSD-3-Clause). All free.
 
-## Decision (proposed)
+## Decision
 
 1. **Two parts, one command.** A React single-page app in `ui/` at the repository root (TypeScript, built by Vite), and a small HTTP API in `tyche.api` (FastAPI, served by uvicorn). `tyche ui` builds nothing: it serves the built app and the API together on `127.0.0.1`, prints the address, and opens the browser. `make ui` builds the app.
 
@@ -46,12 +46,13 @@ Library facts, read from the npm and PyPI registries on 2026-11-25: React 19.3.1
    │   │   └── paper/        the paper cycle, the account, reconciliation
    │   ├── components/       parts shared by features
    │   └── lib/              formatting (money, dates), small hooks
-   └── tests/
-   src/tyche/api/            the HTTP API: app, token, runner, one routes module per resource
+   ├── package.json          exact versions; package-lock.json committed
+   └── vite.config.ts        builds into dist/ (ignored); the dev server passes /api on
+   src/tyche/api/            the HTTP API: app, token check, models (the contract), one module per page
    tests/api/
    ```
 
-8. **Checked in CI** like the rest: the API's tests with pytest (FastAPI's test client, which needs httpx, test-only); the app's type check, lint and build in a new CI job. No end-to-end browser tests at first.
+8. **Checked in CI** like the rest: the API's tests with pytest (Starlette's test client, which needs `httpx2`, test-only); the app's type check, lint and build in a new CI job; a test that the committed `openapi.json` matches the API. No end-to-end browser tests at first.
 
 ## Alternatives considered
 
@@ -62,7 +63,9 @@ Library facts, read from the npm and PyPI registries on 2026-11-25: React 19.3.1
 
 ## Consequences
 
-- New runtime dependencies `fastapi` and `uvicorn`, and `httpx` for tests. Node and npm for building the app; `ui/package-lock.json` committed.
+- New runtime dependencies `fastapi` 0.165.0 and `uvicorn` 0.54.0 (with `starlette` 1.10.0, BSD-3-Clause), and `httpx2` 2.16.2 (BSD-3-Clause, from the pydantic project) for tests: Starlette 1.10's test client asks for `httpx2` instead of `httpx`, read when building U1. Node and npm for building the app; `ui/package-lock.json` committed.
+- **TypeScript is held at 5.9.3**, not 7.0.2: typescript-eslint 8.74.0 accepts TypeScript below 6.1, and openapi-typescript 7.13.0 needs 5.x (npm, 2026-11-25). Revisit when both support 7.
+- The app's 210 npm packages are all under permissive licences (MIT, ISC, BSD, Apache-2.0, 0BSD, BlueOak); `lightningcss`, Vite's CSS tool, is MPL-2.0, used unmodified at build time only.
 - A second language in the repository, with its own lint and type check in CI.
 - CLAUDE.md gains `tyche ui` and the rule that agents never start or call it on Pablo's workspace.
 - Every new command later gets its form in the console in the same PR, or the console falls behind the CLI.

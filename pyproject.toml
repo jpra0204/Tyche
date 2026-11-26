@@ -9,11 +9,13 @@ requires-python = ">=3.14"
 # lockfile only ever contains what the code actually imports. See ADR-0002.
 dependencies = [
     "exchange-calendars>=4.13.3",
+    "fastapi>=0.165.0",
     "ib-async>=2.1.0",
     "matplotlib>=3.11.2",
     "pyarrow>=26.0.1",
     "pydantic>=2.14.3",
     "typer>=0.29.1",
+    "uvicorn>=0.54.0",
     "yfinance>=1.8.0",
 ]
 
@@ -27,6 +29,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "backtesting>=0.6.6",
+    "httpx2>=2.16.2",
     "hypothesis>=6.170.15",
     "import-linter>=2.16",
     "mypy>=2.4.1",
@@ -131,6 +134,8 @@ name = "Outer layers depend inward, never the reverse"
 type = "layers"
 layers = [
     "tyche.cli",
+    # The console's API: a second front door, started by `tyche ui` (ADR-0046).
+    "tyche.api",
     "tyche.runtime",
     "tyche.adapters | tyche.strategies | tyche.config",
     "tyche.core",
@@ -168,6 +173,23 @@ forbidden_modules = [
     "subprocess",
     "matplotlib",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Only the console's API imports the web framework"
+# FastAPI, Starlette and uvicorn stay in tyche.api; the CLI starts the server through
+# tyche.api.serve (ADR-0046).
+type = "forbidden"
+source_modules = [
+    "tyche.cli",
+    "tyche.runtime",
+    "tyche.adapters",
+    "tyche.config",
+    "tyche.strategies",
+    "tyche.core",
+]
+forbidden_modules = ["fastapi", "starlette", "uvicorn"]
+# Direct imports only: the CLI reaches the server through tyche.api, never by itself.
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Tyche never imports the reference backtester"

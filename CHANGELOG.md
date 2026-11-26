@@ -65,6 +65,10 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - Alerts: `cycle_skipped_alert` (every skipped decision of a run in one alert, collected by `AlertCollector`), `orders_alert` and `stopped_alert`; `AlertKind` `cycle_skipped`, `orders` and `stopped`.
 - `sessions_before` in `tyche.core.backtest`.
 - User guide: the paper run. Learning note: read, reconcile, then decide.
+- The console, U1 (ADR-0046): `tyche ui [--home] [--port] [--no-browser]` serves a React page and an HTTP API on `127.0.0.1` only, locked with a new token per launch and to local host names. One read-only page, **Status**: the config check for a chosen risk profile, whether each secret is set, the kill switch and both halts, and the account from the latest checkpoint. `make ui` builds the page, `make ui-types` regenerates its types from the API's schema, `make ui-check` (part of `make check`) type-checks and lints it; a CI job builds it.
+- New dependencies: `fastapi` and `uvicorn` (with `starlette`); `httpx2` for tests. The page's own packages are pinned in `ui/package.json` with `ui/package-lock.json`.
+- An import contract: only `tyche.api` imports FastAPI, Starlette or uvicorn; `tyche.api` sits between `tyche.cli` and `tyche.runtime` in the layers.
+- User guide: the console. Developer guide: the console. Learning note: a second front door.
 
 ### Changed
 

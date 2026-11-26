@@ -7,6 +7,7 @@ For Pablo as a developer, and for any Claude Code session working on the code.
 | Page | What it covers |
 |---|---|
 | [Repo map](repo-map.md) | What every folder and package holds, and which way dependencies may point |
+| [The console](the-console.md) | How `tyche ui` and the React app fit together, where a new page or API field goes, the type contract, working on the page |
 | [How to add a data source](how-to-add-a-data-source.md) | Writing a `BarSource` adapter, with yfinance as the worked example |
 | [How to add a strategy](how-to-add-a-strategy.md) | The strategy contract in practice: one class, the rules it must keep, testing it without the engine |
 | [Conventions](conventions.md) | Coding rules, testing strategy, git workflow, definition of done |

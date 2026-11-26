@@ -1,0 +1,624 @@
+{
+  "components": {
+    "schemas": {
+      "AccountView": {
+        "description": "Tyche's account as the latest checkpoint saved it.",
+        "properties": {
+          "cash": {
+            "items": {
+              "$ref": "#/components/schemas/CashView"
+            },
+            "title": "Cash",
+            "type": "array"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PositionView"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "saved_at": {
+            "format": "date-time",
+            "title": "Saved At",
+            "type": "string"
+          },
+          "working_orders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderView"
+            },
+            "title": "Working Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "saved_at",
+          "cash",
+          "positions",
+          "working_orders"
+        ],
+        "title": "AccountView",
+        "type": "object"
+      },
+      "CashView": {
+        "description": "Cash in one currency: settled now, and still to settle.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "string"
+          },
+          "settled": {
+            "title": "Settled",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "settled",
+          "pending"
+        ],
+        "title": "CashView",
+        "type": "object"
+      },
+      "ConfigView": {
+        "description": "The workspace's configuration, as ``tyche config check`` reads it.\n\nWhen it cannot be read, ``valid`` is false, ``error`` says why, and the rest is empty.",
+        "properties": {
+          "cash_budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Budget"
+          },
+          "config_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Hash"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "market_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Profile"
+          },
+          "money_caps": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MoneyCapView"
+            },
+            "title": "Money Caps",
+            "type": "array"
+          },
+          "risk_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskProfileView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "risk_profiles": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Profiles",
+            "type": "array"
+          },
+          "strategies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StrategyView"
+            },
+            "title": "Strategies",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ConfigView",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HaltView": {
+        "description": "A halt stored in the latest checkpoint: the drawdown kill or reconciliation.",
+        "properties": {
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since",
+          "reasons"
+        ],
+        "title": "HaltView",
+        "type": "object"
+      },
+      "KillView": {
+        "description": "The kill switch, while it is engaged (ADR-0039).",
+        "properties": {
+          "engaged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engaged At"
+          },
+          "flatten": {
+            "title": "Flatten",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "flatten",
+          "engaged_at"
+        ],
+        "title": "KillView",
+        "type": "object"
+      },
+      "MoneyCapView": {
+        "description": "The guardrails' money caps in one currency (ADR-0034).",
+        "properties": {
+          "capital": {
+            "title": "Capital",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          }
+        },
+        "required": [
+          "currency",
+          "capital",
+          "order"
+        ],
+        "title": "MoneyCapView",
+        "type": "object"
+      },
+      "OrderView": {
+        "description": "One order the last run left working at the broker.",
+        "properties": {
+          "client_order_id": {
+            "title": "Client Order Id",
+            "type": "string"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "order_type": {
+            "title": "Order Type",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "string"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "stop_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Price"
+          }
+        },
+        "required": [
+          "client_order_id",
+          "instrument",
+          "side",
+          "order_type",
+          "remaining",
+          "stop_price"
+        ],
+        "title": "OrderView",
+        "type": "object"
+      },
+      "PositionView": {
+        "description": "One holding, at what it cost.",
+        "properties": {
+          "cost": {
+            "title": "Cost",
+            "type": "string"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instrument",
+          "quantity",
+          "cost"
+        ],
+        "title": "PositionView",
+        "type": "object"
+      },
+      "RiskProfileView": {
+        "description": "The active risk profile's limits (ADR-0032).",
+        "properties": {
+          "daily_loss_limit": {
+            "title": "Daily Loss Limit",
+            "type": "string"
+          },
+          "drawdown_kill": {
+            "title": "Drawdown Kill",
+            "type": "string"
+          },
+          "max_open_positions": {
+            "title": "Max Open Positions",
+            "type": "integer"
+          },
+          "max_position_size": {
+            "title": "Max Position Size",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "risk_per_trade": {
+            "title": "Risk Per Trade",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "risk_per_trade",
+          "max_open_positions",
+          "max_position_size",
+          "daily_loss_limit",
+          "drawdown_kill"
+        ],
+        "title": "RiskProfileView",
+        "type": "object"
+      },
+      "SecretsView": {
+        "description": "Which secrets ``.env`` sets. Never their values.",
+        "properties": {
+          "discord_webhook": {
+            "title": "Discord Webhook",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ib_gateway": {
+            "title": "Ib Gateway",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "discord_webhook",
+          "ib_gateway"
+        ],
+        "title": "SecretsView",
+        "type": "object"
+      },
+      "StatusView": {
+        "description": "Everything the Status page shows.",
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/ConfigView"
+          },
+          "secrets": {
+            "$ref": "#/components/schemas/SecretsView"
+          },
+          "trading": {
+            "$ref": "#/components/schemas/TradingView"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "config",
+          "secrets",
+          "trading",
+          "account"
+        ],
+        "title": "StatusView",
+        "type": "object"
+      },
+      "StrategyView": {
+        "description": "One configured strategy and its share of equity.",
+        "properties": {
+          "budget": {
+            "title": "Budget",
+            "type": "string"
+          },
+          "plugin": {
+            "title": "Plugin",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "plugin",
+          "budget"
+        ],
+        "title": "StrategyView",
+        "type": "object"
+      },
+      "TradingView": {
+        "description": "What stops trading now.",
+        "properties": {
+          "drawdown_halt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HaltView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KillView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reconciliation_halt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HaltView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state_unreadable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Unreadable"
+          },
+          "stopped": {
+            "title": "Stopped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stopped"
+        ],
+        "title": "TradingView",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Tyche console",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/status": {
+      "get": {
+        "description": "The workspace, its config, which secrets are set, what stops trading, and the\naccount as the latest checkpoint saved it.",
+        "operationId": "getStatus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "risk_profile",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Risk Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Status"
+      }
+    }
+  }
+}

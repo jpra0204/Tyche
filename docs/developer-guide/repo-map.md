@@ -17,6 +17,7 @@ Tyche/
 ├── .env.example          template for the workspace's .env; never holds real values
 ├── .github/workflows/    CI
 ├── src/tyche/            the package
+├── ui/                   the console's React app (ADR-0046); built into ui/dist by `make ui`
 ├── tests/                tests, mirroring src/tyche
 └── docs/                 all documentation
 ```
@@ -62,6 +63,7 @@ src/tyche/
 ├── config/               the workspace, config file schemas, loading, config hash, .env secrets
 │   └── templates/          files `tyche init` copies into a new workspace
 ├── runtime/              composition root: chooses adapters and builds the engine; paper.py is the paper cycle (ADR-0045)
+├── api/                  the console's HTTP API, served by `tyche ui` (ADR-0046)
 └── cli/                  the `tyche` command
 ```
 

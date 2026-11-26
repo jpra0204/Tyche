@@ -6,6 +6,7 @@ its result or error into text and an exit code. No logic lives here.
 
 import logging
 import os
+import webbrowser
 from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -15,6 +16,7 @@ from typing import Annotated, Any, NoReturn
 import typer
 
 from tyche import __version__
+from tyche.api import DEFAULT_PORT, HOST, create_app, default_app_dir, new_token, serve
 from tyche.config import (
     HOME_ENV_VAR,
     ConfigError,
@@ -1125,6 +1127,35 @@ def _describe_paper(outcome: PaperOutcome) -> list[str]:
     if outcome.checkpoint is not None:
         lines.append(f"Saved: checkpoint of run {outcome.checkpoint.run_id}.")
     return lines
+
+
+@app.command()
+def ui(
+    home: HomeOption = None,
+    port: Annotated[int, typer.Option("--port", help="Port on 127.0.0.1.")] = DEFAULT_PORT,
+    browser: Annotated[
+        bool, typer.Option("--browser/--no-browser", help="Open the console in the browser.")
+    ] = True,
+) -> None:
+    """Open the console: a page to see the workspace and, later, run Tyche from it.
+
+    Serves the built React app (`make ui` builds it) and its API on 127.0.0.1 only,
+    locked with a new token at every launch. Stop it with Ctrl+C.
+    """
+    workspace = _existing_workspace(home)
+    _open_logs(workspace, "ui", port=port)
+    app_dir = default_app_dir()
+    if not (app_dir / "index.html").is_file():
+        _fail(f"the console's page is not built ({app_dir} has no index.html); run `make ui`")
+    token = new_token()
+    console = create_app(workspace, token, environ=os.environ, app_dir=app_dir)
+    address = f"http://{HOST}:{port}/#token={token}"
+    typer.echo(f"Tyche console for {workspace.root}")
+    typer.echo(f"  Open: {address}")
+    typer.echo("  The address holds this launch's key: do not share it. Ctrl+C stops the console.")
+    if browser:
+        webbrowser.open(address)
+    serve(console, port)
 
 
 @notify_app.command("test")

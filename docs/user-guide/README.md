@@ -16,16 +16,17 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 | [Risk profiles and guardrails](08-risk-profiles.md) | The three layers of risk limits, making a new profile, checking them, what the risk gate does to a backtest (`--risk-profile`), comparing profiles side by side (`tyche compare-profiles`), and one profile per live stage for a small account |
 | [Discord alerts, secrets and logs](09-discord-alerts-and-logs.md) | Setting up the Discord webhook and checking it (`tyche notify test`), the `.env` file, which alerts exist and when they are sent, and the daily log files |
 | [The paper run](10-paper-run.md) | Running one paper cycle by hand (`tyche paper run`): what it needs, what it does, the first run, what it prints, and what to do when it stops |
+| [The console](11-the-console.md) | Building and opening the console (`make ui`, `tyche ui`), the Status page, the key in its address |
 
 ## Planned
 
 | Page | What it will cover | Written in |
 |---|---|---|
-| `11-first-time-setup.md` | IBKR paper account, IB Gateway, choosing a market profile and a risk profile | Phase 2 |
-| `12-daily-and-weekly-routine.md` | What Tyche does by itself and what you check | Phase 2 |
-| `13-reading-discord-reports.md` | The daily summary, and each alert in detail | Phase 2 |
-| `14-kill-switch.md` | Stopping new orders and flattening positions | Phase 2 |
-| `15-weekly-review.md` | Running the review and approving or rejecting proposals | Phase 3 |
-| `16-promoting-a-strategy.md` | Taking a strategy from paper to live | Phase 3 |
+| `12-first-time-setup.md` | IBKR paper account, IB Gateway, choosing a market profile and a risk profile | Phase 2 |
+| `13-daily-and-weekly-routine.md` | What Tyche does by itself and what you check | Phase 2 |
+| `14-reading-discord-reports.md` | The daily summary, and each alert in detail | Phase 2 |
+| `15-kill-switch.md` | Stopping new orders and flattening positions | Phase 2 |
+| `16-weekly-review.md` | Running the review and approving or rejecting proposals | Phase 3 |
+| `17-promoting-a-strategy.md` | Taking a strategy from paper to live | Phase 3 |
 
 [Risk profiles and guardrails](08-risk-profiles.md) grows through Phase 2: switching the paper profile comes later.
