@@ -16,7 +16,7 @@ Step-by-step instructions for Pablo as the person *using* Tyche. Each page is wr
 | [Risk profiles and guardrails](08-risk-profiles.md) | The three layers of risk limits, making a new profile, checking them, what the risk gate does to a backtest (`--risk-profile`), comparing profiles side by side (`tyche compare-profiles`), and one profile per live stage for a small account |
 | [Discord alerts, secrets and logs](09-discord-alerts-and-logs.md) | Setting up the Discord webhook and checking it (`tyche notify test`), the `.env` file, which alerts exist and when they are sent, and the daily log files |
 | [The paper run](10-paper-run.md) | Running one paper cycle by hand (`tyche paper run`): what it needs, what it does, the first run, what it prints, and what to do when it stops |
-| [The console](11-the-console.md) | Building and opening the console (`make ui`, `tyche ui`), the Status page, the key in its address |
+| [The console](11-the-console.md) | Building and opening the console (`make ui`, `tyche ui`); its pages: Status, Data, Backtests, Research, Paper (the paper cycle, kill switch and resume, each confirmed) and Config (read-only); one run at a time; the key in its address; what to do when it does not work |
 
 ## Planned
 
