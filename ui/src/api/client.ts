@@ -4,6 +4,7 @@ import type {
   DataView,
   PaperView,
   ResearchView,
+  WorkspaceConfigView,
   StudyKind,
   StudySummary,
   RunRequest,
@@ -28,6 +29,7 @@ export interface Api {
   getData(): Promise<DataView>;
   getPaper(): Promise<PaperView>;
   getResearch(): Promise<ResearchView>;
+  getConfig(): Promise<WorkspaceConfigView>;
   listStudies(kind: StudyKind): Promise<StudySummary[]>;
   getStudyReport(kind: StudyKind, studyId: string): Promise<string>;
   listBacktests(): Promise<BacktestSummary[]>;
@@ -79,6 +81,7 @@ export function createApi(token: string): Api {
       return await response.text();
     },
     getResearch: () => get<ResearchView>("/research"),
+    getConfig: () => get<WorkspaceConfigView>("/config"),
     listStudies: (kind) => get<StudySummary[]>(`/studies/${kind}`),
     getStudyReport: async (kind, studyId) => {
       const path = `/studies/${kind}/${encodeURIComponent(studyId)}/report`;

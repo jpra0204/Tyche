@@ -551,6 +551,26 @@
         "title": "CompareProfilesRequest",
         "type": "object"
       },
+      "ConfigFileView": {
+        "description": "One loaded file, as parsed and hashed: what a run record stores.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "title": "Settings",
+            "type": "object"
+          }
+        },
+        "required": [
+          "path",
+          "settings"
+        ],
+        "title": "ConfigFileView",
+        "type": "object"
+      },
       "ConfigView": {
         "description": "The workspace's configuration, as ``tyche config check`` reads it.\n\nWhen it cannot be read, ``valid`` is false, ``error`` says why, and the rest is empty.",
         "properties": {
@@ -809,6 +829,48 @@
         "title": "FetchRequest",
         "type": "object"
       },
+      "GuardrailsView": {
+        "description": "The absolute limits no profile may pass (ADR-0032), and the money caps (ADR-0034).",
+        "properties": {
+          "max_daily_loss_limit": {
+            "title": "Max Daily Loss Limit",
+            "type": "string"
+          },
+          "max_drawdown_kill": {
+            "title": "Max Drawdown Kill",
+            "type": "string"
+          },
+          "max_open_positions": {
+            "title": "Max Open Positions",
+            "type": "integer"
+          },
+          "max_position_size": {
+            "title": "Max Position Size",
+            "type": "string"
+          },
+          "max_risk_per_trade": {
+            "title": "Max Risk Per Trade",
+            "type": "string"
+          },
+          "money_caps": {
+            "items": {
+              "$ref": "#/components/schemas/MoneyCapView"
+            },
+            "title": "Money Caps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "max_risk_per_trade",
+          "max_open_positions",
+          "max_position_size",
+          "max_daily_loss_limit",
+          "max_drawdown_kill",
+          "money_caps"
+        ],
+        "title": "GuardrailsView",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -910,6 +972,76 @@
           "engaged_at"
         ],
         "title": "KillView",
+        "type": "object"
+      },
+      "MarketView": {
+        "description": "The active market profile, in short; the whole file is under ``files``.",
+        "properties": {
+          "benchmark": {
+            "title": "Benchmark",
+            "type": "string"
+          },
+          "calendars": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Calendars",
+            "type": "array"
+          },
+          "candidates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "cash_currencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cash Currencies",
+            "type": "array"
+          },
+          "costs_checked_on": {
+            "format": "date",
+            "title": "Costs Checked On",
+            "type": "string"
+          },
+          "holdout_starts": {
+            "format": "date",
+            "title": "Holdout Starts",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_buffer": {
+            "title": "Price Buffer",
+            "type": "string"
+          },
+          "rebalance_band": {
+            "title": "Rebalance Band",
+            "type": "string"
+          },
+          "starting_cash": {
+            "title": "Starting Cash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cash_currencies",
+          "calendars",
+          "candidates",
+          "benchmark",
+          "rebalance_band",
+          "price_buffer",
+          "starting_cash",
+          "holdout_starts",
+          "costs_checked_on"
+        ],
+        "title": "MarketView",
         "type": "object"
       },
       "MoneyCapView": {
@@ -1087,6 +1219,46 @@
           "cost"
         ],
         "title": "PositionView",
+        "type": "object"
+      },
+      "ProfileCheckView": {
+        "description": "One risk profile in ``config/risk/``, checked as the active one, as\n``tyche config check --risk-profile <name>`` does.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskProfileView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "valid"
+        ],
+        "title": "ProfileCheckView",
         "type": "object"
       },
       "ReconciliationView": {
@@ -1450,6 +1622,74 @@
         "title": "StatusView",
         "type": "object"
       },
+      "StrategyDetailView": {
+        "description": "One configured strategy: its file, budget, parameters and own risk limits.",
+        "properties": {
+          "budget": {
+            "title": "Budget",
+            "type": "string"
+          },
+          "max_open_positions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Open Positions"
+          },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "plugin": {
+            "title": "Plugin",
+            "type": "string"
+          },
+          "risk_per_trade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "plugin",
+          "budget",
+          "source",
+          "parameters"
+        ],
+        "title": "StrategyDetailView",
+        "type": "object"
+      },
       "StrategyView": {
         "description": "One configured strategy and its share of equity.",
         "properties": {
@@ -1619,6 +1859,62 @@
         "title": "SweepRequest",
         "type": "object"
       },
+      "SweepView": {
+        "description": "A sweep in ``config/sweeps/``: the strategy it varies and every value it tries.",
+        "properties": {
+          "combinations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Combinations"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "grid": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "default": {},
+            "title": "Grid",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SweepView",
+        "type": "object"
+      },
       "TradingView": {
         "description": "What stops trading now.",
         "properties": {
@@ -1784,6 +2080,115 @@
         ],
         "title": "WalkForwardRequest",
         "type": "object"
+      },
+      "WorkspaceConfigView": {
+        "description": "Everything the Config page shows, read-only.\n\n``valid`` and ``error`` are ``tyche config check``'s verdict under the ``default``\nprofile, strategies built; the rest is empty when it fails. ``profiles`` checks every\nfile in ``config/risk/`` as the active one, as ``--risk-profile`` would: every profile\nmust fit the guardrails whichever is active, and each strategy's own limits must fit\nthe active one.",
+        "properties": {
+          "cash_budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Budget"
+          },
+          "config_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Hash"
+          },
+          "env_readable_by_others": {
+            "default": false,
+            "title": "Env Readable By Others",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConfigFileView"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "guardrails": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "market": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profiles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProfileCheckView"
+            },
+            "title": "Profiles",
+            "type": "array"
+          },
+          "strategies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StrategyDetailView"
+            },
+            "title": "Strategies",
+            "type": "array"
+          },
+          "sweeps": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SweepView"
+            },
+            "title": "Sweeps",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace",
+          "valid"
+        ],
+        "title": "WorkspaceConfigView",
+        "type": "object"
       }
     }
   },
@@ -1899,6 +2304,53 @@
           }
         },
         "summary": "Get Backtest Report"
+      }
+    },
+    "/api/config": {
+      "get": {
+        "description": "The workspace's configuration, read-only: the check, every risk profile, the\nguardrails, strategies, sweeps, market profile, and each loaded file.",
+        "operationId": "getConfig",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Config"
       }
     },
     "/api/data": {

@@ -8,6 +8,7 @@ import { ApiContext } from "../api/context";
 import { MissingToken } from "../components/MissingToken";
 import { BacktestsPage } from "../features/backtests/BacktestsPage";
 import { ReportPage } from "../features/backtests/ReportPage";
+import { ConfigPage } from "../features/config/ConfigPage";
 import { DataPage } from "../features/data/DataPage";
 import { PaperPage } from "../features/paper/PaperPage";
 import { ResearchPage } from "../features/research/ResearchPage";
@@ -40,6 +41,7 @@ export function App({ token }: { token: string | null }) {
                   <Route path="research" element={<ResearchPage />} />
                   <Route path="research/:kind/:studyId" element={<StudyReportPage />} />
                   <Route path="paper" element={<PaperPage />} />
+                  <Route path="config" element={<ConfigPage />} />
                   <Route path="*" element={<StatusPage />} />
                 </Route>
               </Routes>

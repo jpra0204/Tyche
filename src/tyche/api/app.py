@@ -29,12 +29,14 @@ from tyche.api.models import (
     StatusView,
     StudyKind,
     StudySummary,
+    WorkspaceConfigView,
 )
 from tyche.api.paper import read_paper
 from tyche.api.runs import TYCHE, RunBusyError, Runner, RunStartError
 from tyche.api.security import LOCAL_HOSTS, TOKEN_HEADER, same_token
 from tyche.api.status import read_status
 from tyche.api.studies import StudyNotFoundError, list_studies, read_research, study_report
+from tyche.api.workspace_config import read_workspace_config
 from tyche.config import Workspace
 from tyche.core.ports import Clock
 from tyche.core.risk import DEFAULT_RISK_PROFILE
@@ -124,6 +126,12 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
         # Opened by itself, it could run nothing: reports have no script, and this says so.
         return HTMLResponse(html, headers={"Content-Security-Policy": "sandbox"})
+
+    @api.get("/config", operation_id="getConfig")
+    def get_config() -> WorkspaceConfigView:
+        """The workspace's configuration, read-only: the check, every risk profile, the
+        guardrails, strategies, sweeps, market profile, and each loaded file."""
+        return read_workspace_config(workspace)
 
     @api.get("/research", operation_id="getResearch")
     def get_research() -> ResearchView:

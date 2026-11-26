@@ -23,5 +23,5 @@ export const NAVIGATION: NavItem[] = [
   { label: "Backtests", path: "/backtests", icon: IconChartLine },
   { label: "Research", path: "/research", icon: IconFlask },
   { label: "Paper", path: "/paper", icon: IconPlayerPlay },
-  { label: "Config", path: "/config", icon: IconSettings, comingIn: "U5" },
+  { label: "Config", path: "/config", icon: IconSettings },
 ];
