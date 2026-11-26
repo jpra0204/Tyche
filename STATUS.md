@@ -254,6 +254,18 @@ Two things in the brief's Phase 1 that this plan moves:
 - **Risk-profile sweeps** wait for Phase 2, because risk profiles do not exist until the risk layer is built. Phase 1 has a pass-through gate so that the event flow is already the final one.
 - **The holdout** arrives with the first backtest (PR 15), earlier than the improvement loop that needs it, so that no Phase 1 experiment uses it up.
 
+## Console plan: a local web console (proposed 2026-11-25, not yet agreed)
+
+*Asked for by Pablo on 2026-11-25; [ADR-0046](docs/adr/0046-a-local-web-console.md) is proposed.* A React page to run the workflow Tyche has, growing with each feature. It sits beside Phase 2, one PR at a time; Pablo chooses where it goes in the order. Nothing here costs money: every library is MIT, BSD or Apache, and Node is already installed.
+
+| # | PR | Delivers |
+|---|---|---|
+| U1 | Skeleton and status | ADR-0046; `tyche ui` (127.0.0.1, a token per launch); the API's first endpoint; the React shell (Vite, TypeScript, Mantine, navigation) with a **Status** page: config check, active profile, kill switch, halts, latest checkpoint. Read-only. A CI job for the app |
+| U2 | Runs | Running a command from the page as a `tyche` subprocess, one at a time, its output live; **Data** (fetch) and **Backtest** forms; the list of past runs, each report opened in the page |
+| U3 | Paper | **Paper**: run the cycle (with confirmation), the account from the latest checkpoint (cash, positions, working orders), both reconciliations, the alerts; the kill switch and resume, each confirmed |
+| U4 | Research | Forms for walk-forward, sweeps, capital and profile comparison, and their reports |
+| U5 | Config, read-only | Profiles, strategies, guardrails and the market profile as pages, with the config check's messages. Editing comes later, with its own ADR |
+
 ## Carried into later phases
 
 | Commitment | Phase |
@@ -302,6 +314,7 @@ Two things in the brief's Phase 1 that this plan moves:
 | PR 22's proposed defaults for a small account: Tiered for the real account (yours to choose at IBKR); low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). The positions part is decided: one risk profile per live stage (PR 5, ADR-0036) | Before the first paper run |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
 | Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
+| The console's plan (U1 to U5) and ADR-0046, and where it goes among Phase 2's PRs 15 to 20 | Before any console code |
 | **How USD reaches the account.** The paper account holds CAD only (seen 2026-11-24); Tyche buys US ETFs in USD, long only and without borrowing. Options: convert CAD to USD at IBKR by hand, deposit USD, or trade CAD-listed funds instead. Currency conversion was planned for Phase 4. Facts to read first are under *To verify*. `tyche paper run` refuses a first run with no USD | Before the first paper run |
 
 Decisions that belong to a Phase 1 PR are listed in the plan above.
