@@ -5,20 +5,25 @@ with uvicorn on ``127.0.0.1``. Routes are thin: each reads through ``tyche.runti
 ``tyche.config`` and answers with a model from ``tyche.api.models``.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated
 
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from tyche import __version__
-from tyche.api.models import StatusView
+from tyche.adapters.clocks import SystemClock
+from tyche.api.backtests import RecordNotFoundError, list_backtests, report_html
+from tyche.api.data import read_data
+from tyche.api.models import BacktestSummary, DataView, RunId, RunRequest, RunView, StatusView
+from tyche.api.runs import TYCHE, RunBusyError, Runner, RunStartError
 from tyche.api.security import LOCAL_HOSTS, TOKEN_HEADER, same_token
 from tyche.api.status import read_status
 from tyche.config import Workspace
+from tyche.core.ports import Clock
 from tyche.core.risk import DEFAULT_RISK_PROFILE
 
 HOST = "127.0.0.1"
@@ -38,6 +43,8 @@ def create_app(
     *,
     environ: Mapping[str, str],
     app_dir: Path | None = None,
+    clock: Clock | None = None,
+    program: Sequence[str] = TYCHE,
 ) -> FastAPI:
     """The console for ``workspace``, locked with ``token``.
 
@@ -46,7 +53,10 @@ def create_app(
         token: This launch's token; every ``/api`` call must carry it in ``X-Tyche-Token``.
         environ: The process environment, for secrets set there (whether, never what).
         app_dir: The built React app to serve, or ``None`` to serve the API alone.
+        clock: When runs start and end. Defaults to the system clock.
+        program: The ``tyche`` a run starts; tests pass a stand-in.
     """
+    runner = Runner(workspace, environ, clock or SystemClock(), program)
 
     def require_token(
         given: Annotated[str | None, Header(alias=TOKEN_HEADER)] = None,
@@ -61,6 +71,7 @@ def create_app(
         redoc_url=None,
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOCAL_HOSTS))
+    app.state.runner = runner  # for tests, to wait for a run to end
 
     api = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
 
@@ -71,6 +82,45 @@ def create_app(
         """The workspace, its config, which secrets are set, what stops trading, and the
         account as the latest checkpoint saved it."""
         return read_status(workspace, risk_profile, environ)
+
+    @api.get("/data", operation_id="getData")
+    def get_data() -> DataView:
+        """What ``tyche data fetch`` can fetch: the exchanges, and what ``--all`` fetches."""
+        return read_data(workspace)
+
+    @api.get("/backtests", operation_id="listBacktests")
+    def get_backtests() -> list[BacktestSummary]:
+        """Every recorded backtest in the workspace, newest first."""
+        return list_backtests(workspace)
+
+    @api.get(
+        "/backtests/{run_id}/report",
+        operation_id="getBacktestReport",
+        response_class=HTMLResponse,
+    )
+    def get_backtest_report(run_id: RunId) -> HTMLResponse:
+        """A backtest's ``report.html``, for the page to show in a sandboxed frame."""
+        try:
+            html = report_html(workspace, run_id)
+        except RecordNotFoundError as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+        # Opened by itself, it could run nothing: reports have no script, and this says so.
+        return HTMLResponse(html, headers={"Content-Security-Policy": "sandbox"})
+
+    @api.post("/runs", operation_id="startRun", status_code=status.HTTP_201_CREATED)
+    def start_run(request: Annotated[RunRequest, Body()]) -> RunView:
+        """Start a ``tyche`` command; refused while another is running."""
+        try:
+            return runner.start(request)
+        except RunBusyError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        except RunStartError as error:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(error)) from error
+
+    @api.get("/runs/current", operation_id="getCurrentRun")
+    def get_current_run() -> RunView | None:
+        """The run going now, or the last one since the console started, with its output."""
+        return runner.current()
 
     app.include_router(api)
 

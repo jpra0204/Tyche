@@ -69,6 +69,8 @@ All notable changes to Tyche are recorded here. The format follows [Keep a Chang
 - New dependencies: `fastapi` and `uvicorn` (with `starlette`); `httpx2` for tests. The page's own packages are pinned in `ui/package.json` with `ui/package-lock.json`.
 - An import contract: only `tyche.api` imports FastAPI, Starlette or uvicorn; `tyche.api` sits between `tyche.cli` and `tyche.runtime` in the layers.
 - User guide: the console. Developer guide: the console. Learning note: a second front door.
+- The console, U2 (ADR-0046): running `tyche` from the page. `POST /api/runs` starts `tyche data fetch`, `tyche backtest` or `tyche report` as a subprocess in the console's workspace, from a typed request (a field the command does not have, or a value that could read as an option, is refused before anything starts); one run at a time, a second is refused with 409. `GET /api/runs/current` gives the run and every line it printed on each stream; the page asks again every 0.7 s while it runs. Two new pages: **Data** (fetch everything the market profile follows, or chosen symbols on one exchange) and **Backtests** (a form, the run's output live, every recorded backtest with its numbers, and its report shown in the page in a sandboxed frame, or written again with **Write report**). The header shows which command is running, on every page.
+- `GET /api/data` (the exchanges and what `--all` fetches), `GET /api/backtests` (every recorded backtest, newest first; a record that cannot be read is listed with why) and `GET /api/backtests/{run_id}/report`.
 
 ### Changed
 

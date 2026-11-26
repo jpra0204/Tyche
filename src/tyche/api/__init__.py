@@ -3,8 +3,8 @@
 ``tyche ui`` serves it, with the built React app (``ui/dist``), on ``127.0.0.1`` only.
 Every call under ``/api`` must carry the token made for that launch. The API reads what
 the CLI reads (the workspace, its config, the kill switch, the state database) through
-``tyche.runtime`` and ``tyche.config``; from U2 on it runs commands as ``tyche``
-subprocesses, so the page can never do what the CLI cannot.
+``tyche.runtime`` and ``tyche.config``, and runs commands as ``tyche`` subprocesses
+(``tyche.api.runs``), so the page can never do what the CLI cannot.
 
 This is the only package that imports the web framework (an import contract says so).
 """

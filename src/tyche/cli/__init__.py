@@ -1137,7 +1137,7 @@ def ui(
         bool, typer.Option("--browser/--no-browser", help="Open the console in the browser.")
     ] = True,
 ) -> None:
-    """Open the console: a page to see the workspace and, later, run Tyche from it.
+    """Open the console: a page to see the workspace and run Tyche from it.
 
     Serves the built React app (`make ui` builds it) and its API on 127.0.0.1 only,
     locked with a new token at every launch. Stop it with Ctrl+C.
