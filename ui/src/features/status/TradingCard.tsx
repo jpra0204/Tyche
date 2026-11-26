@@ -14,7 +14,8 @@ function Halt({ title, halt, runbook }: { title: string; halt: HaltView; runbook
         ))}
       </List>
       <Text size="sm" mt="xs">
-        Only <code>tyche resume</code> lifts it. Runbook: <code>{runbook}</code>
+        Only resume lifts it: <code>tyche resume</code>, or Resume on the Paper page. Runbook:{" "}
+        <code>{runbook}</code>
       </Text>
     </Alert>
   );

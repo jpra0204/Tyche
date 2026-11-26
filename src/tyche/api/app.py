@@ -18,7 +18,16 @@ from tyche import __version__
 from tyche.adapters.clocks import SystemClock
 from tyche.api.backtests import RecordNotFoundError, list_backtests, report_html
 from tyche.api.data import read_data
-from tyche.api.models import BacktestSummary, DataView, RunId, RunRequest, RunView, StatusView
+from tyche.api.models import (
+    BacktestSummary,
+    DataView,
+    PaperView,
+    RunId,
+    RunRequest,
+    RunView,
+    StatusView,
+)
+from tyche.api.paper import read_paper
 from tyche.api.runs import TYCHE, RunBusyError, Runner, RunStartError
 from tyche.api.security import LOCAL_HOSTS, TOKEN_HEADER, same_token
 from tyche.api.status import read_status
@@ -87,6 +96,11 @@ def create_app(
     def get_data() -> DataView:
         """What ``tyche data fetch`` can fetch: the exchanges, and what ``--all`` fetches."""
         return read_data(workspace)
+
+    @api.get("/paper", operation_id="getPaper")
+    def get_paper() -> PaperView:
+        """The last paper cycle's reconciliations, and the latest alerts from the logs."""
+        return read_paper(workspace)
 
     @api.get("/backtests", operation_id="listBacktests")
     def get_backtests() -> list[BacktestSummary]:

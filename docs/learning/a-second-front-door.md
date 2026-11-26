@@ -29,6 +29,8 @@ The page never sends a command line for the server to run. It sends a small type
 
 This is an *allowlist*: say what is allowed and refuse the rest, rather than trying to list what is dangerous.
 
+For the commands that touch the account (the paper cycle, `kill`, `resume`), the request also carries `confirmed: true`. It adds no security (anything holding the token could send it) but it puts the confirmation into the contract: a page that forgot to ask would fail its own type check.
+
 ## In Tyche
 
 - `tyche.api`: `create_app`, `security.py` (token and host names), `models.py` (the contract, including the run requests), `runs.py` (the subprocess, one at a time), `status.py`, `data.py`, `backtests.py`.

@@ -41,7 +41,9 @@ The page sends a typed request, never a command line ([a second front door](../l
 3. Tests in `tests/api/test_runs.py`: the arguments, and the request with an option-like value refused (422) before a process starts.
 4. `make ui-types`, then a form in its feature folder that calls `useStartRun()` and shows `<LastRun run={useCurrentRun().data} />`.
 
-The paper cycle, `kill` and `resume` are not runnable before U3, and when they are, each asks for confirmation in the page (ADR-0046).
+**The paper cycle, `kill` and `resume`** (U3) also carry `confirmed: Literal[True]` in their request, so the contract itself says the page asked first, and `kill` and `resume` run with `--yes`, the answer to their own question. A reason is free text, so it goes as one `--reason=<text>` argument: nothing in it can read as an option. Their tests never start the real `tyche paper run` (it connects to IB Gateway); `kill` and `resume` run for real on a temporary workspace with an empty environment.
+
+**Alerts are read from the logs** (`tyche.api.paper`): every alert is written to `logs/<day>.jsonl` as it is sent or not, already redacted (ADR-0040), and that is the only record of them. **Reconciliations** are the `ReconciliationEvent`s of the last cycle's two journal runs (`paper-<time>-check` and `paper-<time>`).
 
 **Live output is polled, not streamed.** `GET /api/runs/current` returns the run with all its lines; `useCurrentRun` asks again every 0.7 s while the state is `running`, and stops when it ends. A plain GET carries the token header like every other call (an `EventSource` cannot set headers), and a run prints tens or hundreds of lines, so sending them all each time is cheap. When a run ends, the page reads the records and the status again.
 

@@ -2,6 +2,7 @@
 import type {
   BacktestSummary,
   DataView,
+  PaperView,
   RunRequest,
   RunView,
   StatusView,
@@ -22,6 +23,7 @@ export class ApiError extends Error {
 export interface Api {
   getStatus(riskProfile: string): Promise<StatusView>;
   getData(): Promise<DataView>;
+  getPaper(): Promise<PaperView>;
   listBacktests(): Promise<BacktestSummary[]>;
   getBacktestReport(runId: string): Promise<string>;
   startRun(request: RunRequest): Promise<RunView>;
@@ -64,6 +66,7 @@ export function createApi(token: string): Api {
   return {
     getStatus: (riskProfile) => get<StatusView>("/status", { risk_profile: riskProfile }),
     getData: () => get<DataView>("/data"),
+    getPaper: () => get<PaperView>("/paper"),
     listBacktests: () => get<BacktestSummary[]>("/backtests"),
     getBacktestReport: async (runId) => {
       const response = await call(`/backtests/${encodeURIComponent(runId)}/report`, {}, "text/html");

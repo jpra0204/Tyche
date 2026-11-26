@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/paper": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Paper
+         * @description The last paper cycle's reconciliations, and the latest alerts from the logs.
+         */
+        get: operations["getPaper"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -149,6 +169,30 @@ export interface components {
             working_orders: components["schemas"]["OrderView"][];
         };
         /**
+         * AlertView
+         * @description An alert as the log recorded it: what it said, and whether Discord got it.
+         */
+        AlertView: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Delivery
+             * @enum {string}
+             */
+            delivery: "sent" | "not_sent" | "no_channel";
+            /** Error */
+            error?: string | null;
+            /** Kind */
+            kind: string;
+            /** Lines */
+            lines: string[];
+            /** Title */
+            title: string;
+        };
+        /**
          * BacktestRequest
          * @description ``tyche backtest``: the configured strategies on cached history.
          */
@@ -221,6 +265,26 @@ export interface components {
             total_return?: string | null;
         };
         /**
+         * CashCheckView
+         * @description One currency's cash, Tyche's against the broker's (ADR-0044).
+         */
+        CashCheckView: {
+            /** Accrued */
+            accrued: string;
+            /** Allowed */
+            allowed: string;
+            /** Broker Pending */
+            broker_pending: string;
+            /** Broker Settled */
+            broker_settled: string;
+            /** Currency */
+            currency: string;
+            /** Outcome */
+            outcome: string;
+            /** Tyche */
+            tyche: string;
+        };
+        /**
          * CashView
          * @description Cash in one currency: settled now, and still to settle.
          */
@@ -284,6 +348,18 @@ export interface components {
             followed: string[];
         };
         /**
+         * DifferenceView
+         * @description One disagreement between Tyche's records and the broker's. Any one halts.
+         */
+        DifferenceView: {
+            /** Detail */
+            detail: string;
+            /** Kind */
+            kind: string;
+            /** Subject */
+            subject: string;
+        };
+        /**
          * ExchangeView
          * @description An exchange ``tyche data fetch`` knows.
          */
@@ -341,6 +417,30 @@ export interface components {
             since: string;
         };
         /**
+         * KillRequest
+         * @description ``tyche kill``: no new orders from the next decision on; with ``flatten``, sell
+         *     every holding there. Run with ``--yes``: the page asked first.
+         */
+        KillRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "kill";
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Flatten
+             * @default false
+             */
+            flatten: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * KillView
          * @description The kill switch, while it is engaged (ADR-0039).
          */
@@ -383,6 +483,44 @@ export interface components {
             stop_price: string | null;
         };
         /**
+         * PaperRunRequest
+         * @description ``tyche paper run``: one decision cycle on the IBKR paper account (ADR-0045).
+         *
+         *     ``confirmed`` must be true: the page asks first, and the contract says so.
+         */
+        PaperRunRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "paper_run";
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Risk Profile
+             * @default default
+             */
+            risk_profile: string;
+        };
+        /**
+         * PaperView
+         * @description What the Paper page shows beside the status: the last cycle's reconciliations,
+         *     and the latest alerts, newest first.
+         */
+        PaperView: {
+            /** Alerts */
+            alerts: components["schemas"]["AlertView"][];
+            /** Last Cycle */
+            last_cycle: string | null;
+            /** Reconciliations */
+            reconciliations: components["schemas"]["ReconciliationView"][];
+            /** State Unreadable */
+            state_unreadable?: string | null;
+        };
+        /**
          * PositionView
          * @description One holding, at what it cost.
          */
@@ -393,6 +531,37 @@ export interface components {
             instrument: string;
             /** Quantity */
             quantity: string;
+        };
+        /**
+         * ReconciliationView
+         * @description What one comparison with IBKR found: at the check, or after the decision.
+         */
+        ReconciliationView: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Cash */
+            cash: components["schemas"]["CashCheckView"][];
+            /** Differences */
+            differences: components["schemas"]["DifferenceView"][];
+            /** Ended */
+            ended: string[];
+            /** Inferred */
+            inferred: string[];
+            /** Run Id */
+            run_id: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "check" | "decision";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "match" | "corrected" | "mismatch";
         };
         /**
          * ReportRequest
@@ -406,6 +575,25 @@ export interface components {
             command: "report";
             /** Run Id */
             run_id: string;
+        };
+        /**
+         * ResumeRequest
+         * @description ``tyche resume``: lift the kill switch and the halts. Run with ``--yes``: the page
+         *     showed what it lifts and asked first.
+         */
+        ResumeRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "resume";
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /** Reason */
+            reason: string;
         };
         /**
          * RiskProfileView
@@ -449,7 +637,7 @@ export interface components {
              * Command
              * @enum {string}
              */
-            command: "data_fetch" | "backtest" | "report";
+            command: "data_fetch" | "backtest" | "report" | "paper_run" | "kill" | "resume";
             /** Exit Code */
             exit_code: number | null;
             /** Finished At */
@@ -635,6 +823,37 @@ export interface operations {
             };
         };
     };
+    getPaper: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     startRun: {
         parameters: {
             query?: never;
@@ -646,7 +865,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FetchRequest"] | components["schemas"]["BacktestRequest"] | components["schemas"]["ReportRequest"];
+                "application/json": components["schemas"]["FetchRequest"] | components["schemas"]["BacktestRequest"] | components["schemas"]["ReportRequest"] | components["schemas"]["PaperRunRequest"] | components["schemas"]["KillRequest"] | components["schemas"]["ResumeRequest"];
             };
         };
         responses: {

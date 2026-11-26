@@ -45,6 +45,60 @@
         "title": "AccountView",
         "type": "object"
       },
+      "AlertView": {
+        "description": "An alert as the log recorded it: what it said, and whether Discord got it.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "delivery": {
+            "enum": [
+              "sent",
+              "not_sent",
+              "no_channel"
+            ],
+            "title": "Delivery",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "title",
+          "lines",
+          "delivery"
+        ],
+        "title": "AlertView",
+        "type": "object"
+      },
       "BacktestRequest": {
         "additionalProperties": false,
         "description": "``tyche backtest``: the configured strategies on cached history.",
@@ -266,6 +320,50 @@
         "title": "BacktestSummary",
         "type": "object"
       },
+      "CashCheckView": {
+        "description": "One currency's cash, Tyche's against the broker's (ADR-0044).",
+        "properties": {
+          "accrued": {
+            "title": "Accrued",
+            "type": "string"
+          },
+          "allowed": {
+            "title": "Allowed",
+            "type": "string"
+          },
+          "broker_pending": {
+            "title": "Broker Pending",
+            "type": "string"
+          },
+          "broker_settled": {
+            "title": "Broker Settled",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "tyche": {
+            "title": "Tyche",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "tyche",
+          "broker_settled",
+          "broker_pending",
+          "accrued",
+          "allowed",
+          "outcome"
+        ],
+        "title": "CashCheckView",
+        "type": "object"
+      },
       "CashView": {
         "description": "Cash in one currency: settled now, and still to settle.",
         "properties": {
@@ -424,6 +522,30 @@
         "title": "DataView",
         "type": "object"
       },
+      "DifferenceView": {
+        "description": "One disagreement between Tyche's records and the broker's. Any one halts.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "subject",
+          "detail"
+        ],
+        "title": "DifferenceView",
+        "type": "object"
+      },
       "ExchangeView": {
         "description": "An exchange ``tyche data fetch`` knows.",
         "properties": {
@@ -560,6 +682,41 @@
         "title": "HaltView",
         "type": "object"
       },
+      "KillRequest": {
+        "additionalProperties": false,
+        "description": "``tyche kill``: no new orders from the next decision on; with ``flatten``, sell\nevery holding there. Run with ``--yes``: the page asked first.",
+        "properties": {
+          "command": {
+            "const": "kill",
+            "title": "Command",
+            "type": "string"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "flatten": {
+            "default": false,
+            "title": "Flatten",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "confirmed"
+        ],
+        "title": "KillRequest",
+        "type": "object"
+      },
       "KillView": {
         "description": "The kill switch, while it is engaged (ADR-0039).",
         "properties": {
@@ -669,6 +826,82 @@
         "title": "OrderView",
         "type": "object"
       },
+      "PaperRunRequest": {
+        "additionalProperties": false,
+        "description": "``tyche paper run``: one decision cycle on the IBKR paper account (ADR-0045).\n\n``confirmed`` must be true: the page asks first, and the contract says so.",
+        "properties": {
+          "command": {
+            "const": "paper_run",
+            "title": "Command",
+            "type": "string"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "risk_profile": {
+            "default": "default",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Risk Profile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "confirmed"
+        ],
+        "title": "PaperRunRequest",
+        "type": "object"
+      },
+      "PaperView": {
+        "description": "What the Paper page shows beside the status: the last cycle's reconciliations,\nand the latest alerts, newest first.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertView"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "last_cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cycle"
+          },
+          "reconciliations": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationView"
+            },
+            "title": "Reconciliations",
+            "type": "array"
+          },
+          "state_unreadable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Unreadable"
+          }
+        },
+        "required": [
+          "last_cycle",
+          "reconciliations",
+          "alerts"
+        ],
+        "title": "PaperView",
+        "type": "object"
+      },
       "PositionView": {
         "description": "One holding, at what it cost.",
         "properties": {
@@ -693,6 +926,77 @@
         "title": "PositionView",
         "type": "object"
       },
+      "ReconciliationView": {
+        "description": "What one comparison with IBKR found: at the check, or after the decision.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "cash": {
+            "items": {
+              "$ref": "#/components/schemas/CashCheckView"
+            },
+            "title": "Cash",
+            "type": "array"
+          },
+          "differences": {
+            "items": {
+              "$ref": "#/components/schemas/DifferenceView"
+            },
+            "title": "Differences",
+            "type": "array"
+          },
+          "ended": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ended",
+            "type": "array"
+          },
+          "inferred": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inferred",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "check",
+              "decision"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "match",
+              "corrected",
+              "mismatch"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "stage",
+          "at",
+          "status",
+          "differences",
+          "inferred",
+          "ended",
+          "cash"
+        ],
+        "title": "ReconciliationView",
+        "type": "object"
+      },
       "ReportRequest": {
         "additionalProperties": false,
         "description": "``tyche report``: write a backtest's report again, from its record.",
@@ -713,6 +1017,36 @@
           "run_id"
         ],
         "title": "ReportRequest",
+        "type": "object"
+      },
+      "ResumeRequest": {
+        "additionalProperties": false,
+        "description": "``tyche resume``: lift the kill switch and the halts. Run with ``--yes``: the page\nshowed what it lifts and asked first.",
+        "properties": {
+          "command": {
+            "const": "resume",
+            "title": "Command",
+            "type": "string"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "confirmed"
+        ],
+        "title": "ResumeRequest",
         "type": "object"
       },
       "RiskProfileView": {
@@ -791,7 +1125,10 @@
             "enum": [
               "data_fetch",
               "backtest",
-              "report"
+              "report",
+              "paper_run",
+              "kill",
+              "resume"
             ],
             "title": "Command",
             "type": "string"
@@ -1207,6 +1544,53 @@
         "summary": "Get Data"
       }
     },
+    "/api/paper": {
+      "get": {
+        "description": "The last paper cycle's reconciliations, and the latest alerts from the logs.",
+        "operationId": "getPaper",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper"
+      }
+    },
     "/api/runs": {
       "post": {
         "description": "Start a ``tyche`` command; refused while another is running.",
@@ -1237,7 +1621,10 @@
                   "mapping": {
                     "backtest": "#/components/schemas/BacktestRequest",
                     "data_fetch": "#/components/schemas/FetchRequest",
-                    "report": "#/components/schemas/ReportRequest"
+                    "kill": "#/components/schemas/KillRequest",
+                    "paper_run": "#/components/schemas/PaperRunRequest",
+                    "report": "#/components/schemas/ReportRequest",
+                    "resume": "#/components/schemas/ResumeRequest"
                   },
                   "propertyName": "command"
                 },
@@ -1250,6 +1637,15 @@
                   },
                   {
                     "$ref": "#/components/schemas/ReportRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PaperRunRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/KillRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ResumeRequest"
                   }
                 ],
                 "title": "Request"
