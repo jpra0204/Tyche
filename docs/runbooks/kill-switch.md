@@ -15,7 +15,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
 ## Before you start
 
 - Know which workspace is the real one. Use `--home <folder>` on every command below if `TYCHE_HOME` is not set to it.
-- Do not run `tyche kill` or `tyche resume` while a paper run is running. Nothing stops you yet; the scheduler (PR 15) will.
+- Do not run `tyche kill` or `tyche resume` while a paper run is running. Nothing stops you in the terminal yet; the scheduler (PR 15) will. The console refuses it while it runs a paper cycle itself (one run at a time).
 
 ## Stop trading
 
@@ -25,7 +25,7 @@ What it does ([ADR-0039](../adr/0039-kill-switch-and-manual-restart.md)):
    uv run tyche kill --reason "what you saw"
    ```
 
-   Add `--flatten` to sell everything at the next open; it asks you to confirm. You should see `Kill switch engaged`, your reason, what happens to holdings, and then either the orders the last run left working at the broker or `left no order working`.
+   Add `--flatten` to sell everything at the next open; it asks you to confirm. Or, with the console open: **Paper**, **Kill switch…** ([the console](../user-guide/11-the-console.md)); the terminal is quicker if the console is busy with another run. You should see `Kill switch engaged`, your reason, what happens to holdings, and then either the orders the last run left working at the broker or `left no order working`.
 
    Last comes a `Discord:` line. With a webhook set, the channel gets *Kill switch engaged* with your reason ([alerts](../user-guide/09-discord-alerts-and-logs.md)). If Discord cannot be reached, the line says why; the switch is engaged anyway.
 

@@ -15,6 +15,18 @@ export type RunLine = Schemas["RunLine"];
 export type FetchRequest = Schemas["FetchRequest"];
 export type BacktestRequest = Schemas["BacktestRequest"];
 export type ReportRequest = Schemas["ReportRequest"];
-export type RunRequest = FetchRequest | BacktestRequest | ReportRequest;
+export type RunRequest =
+  | FetchRequest
+  | BacktestRequest
+  | ReportRequest
+  | Schemas["PaperRunRequest"]
+  | Schemas["KillRequest"]
+  | Schemas["ResumeRequest"];
 export type DataView = Schemas["DataView"];
 export type BacktestSummary = Schemas["BacktestSummary"];
+export type PaperRunRequest = Schemas["PaperRunRequest"];
+export type KillRequest = Schemas["KillRequest"];
+export type ResumeRequest = Schemas["ResumeRequest"];
+export type PaperView = Schemas["PaperView"];
+export type ReconciliationView = Schemas["ReconciliationView"];
+export type AlertView = Schemas["AlertView"];

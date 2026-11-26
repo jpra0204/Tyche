@@ -21,6 +21,8 @@
    uv run tyche paper run --risk-profile stage-1
    ```
 
+   Or from the console: **Paper**, choose the profile, **Run the paper cycle…** ([the console](11-the-console.md)). It runs this same command and shows the same output.
+
 3. **Expected**, on a first run with a decision:
 
    ```text

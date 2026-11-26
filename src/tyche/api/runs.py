@@ -21,9 +21,14 @@ from datetime import datetime
 from typing import IO, Literal
 
 from tyche.api.models import (
+    AnyRunRequest,
     BacktestRequest,
+    CommandName,
     FetchRequest,
+    KillRequest,
+    PaperRunRequest,
     ReportRequest,
+    ResumeRequest,
     RunLine,
     RunView,
 )
@@ -42,10 +47,12 @@ class RunStartError(Exception):
     """The command could not be started at all."""
 
 
-def arguments(request: FetchRequest | BacktestRequest | ReportRequest) -> list[str]:
+def arguments(request: AnyRunRequest) -> list[str]:
     """The command's arguments for ``request``, as typed in a terminal after ``tyche``.
 
-    ``--home`` is not among them: the runner adds it, for the console's workspace.
+    ``--home`` is not among them: the runner adds it, for the console's workspace. A
+    reason goes as one ``--reason=<text>`` argument, so no text can read as an option.
+    ``kill`` and ``resume`` get ``--yes``: the page has already asked, as they would.
     """
     match request:
         case FetchRequest():
@@ -70,12 +77,19 @@ def arguments(request: FetchRequest | BacktestRequest | ReportRequest) -> list[s
             return args
         case ReportRequest():
             return ["report", request.run_id]
+        case PaperRunRequest():
+            return ["paper", "run", "--risk-profile", request.risk_profile]
+        case KillRequest():
+            flatten = ["--flatten"] if request.flatten else []
+            return ["kill", f"--reason={request.reason}", *flatten, "--yes"]
+        case ResumeRequest():
+            return ["resume", f"--reason={request.reason}", "--yes"]
 
 
 @dataclass
 class _Run:
     number: int
-    command: Literal["data_fetch", "backtest", "report"]
+    command: CommandName
     argv: list[str]
     started_at: datetime
     process: subprocess.Popen[str]
@@ -159,7 +173,7 @@ class Runner:
         self._current: _Run | None = None
         self._count = 0
 
-    def start(self, request: FetchRequest | BacktestRequest | ReportRequest) -> RunView:
+    def start(self, request: AnyRunRequest) -> RunView:
         """Start the command ``request`` names.
 
         Raises:

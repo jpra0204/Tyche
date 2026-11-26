@@ -119,6 +119,7 @@ Recommended, still: turn on *Automatically delete head branches* in the GitHub r
 - The paper cycle (Phase 2, PR 14, [ADR-0045](docs/adr/0045-the-paper-cycle.md), accepted 2026-11-24): `tyche paper run [--risk-profile <name>]` runs one cycle on the IBKR paper account, recorded as two runs. **The check** (`paper-<time>-check`) connects, reads IBKR's fills into Tyche's stages (placing the stop of each filled entry), reconciles, corrects, and saves; on a first run Tyche starts from IBKR's USD cash and refuses an account holding anything else. **The decision** (`paper-<time>`), when a session has closed since the last one, is built from the check's checkpoint, warms up from the cache, runs the engine over the `DailyFeed`, waits up to a minute for IBKR to confirm stop cancellations, reconciles again and saves. Alerts go after the run: skipped decisions (one alert), orders lost or not sent, a halt still standing, a failed run. New: `DifferenceKind.STALE_ORDER`; `IBKRBroker.held`, `release`, `reject_held`, `forget`; `AlertKind` `cycle_skipped`, `orders`, `stopped`. **Tested against a fake gateway only**: the first real run is Pablo's.
 - The console, U1 ([ADR-0046](docs/adr/0046-a-local-web-console.md), accepted 2026-11-25): `make ui` builds a React page (`ui/`: Vite, TypeScript, Mantine, TanStack Query, React Router) and `tyche ui` serves it with an HTTP API (`tyche.api`: FastAPI on uvicorn) on `127.0.0.1` only, locked with a new token at every launch and to local host names. One page, **Status**, read-only: the config check for any risk profile, which secrets are set (never their values), the kill switch and both halts, and the account from the latest checkpoint. The API's models generate the page's TypeScript types; a test fails when they drift. A CI job type-checks, lints and builds the page.
 - The console, U2 ([ADR-0046](docs/adr/0046-a-local-web-console.md)): running `tyche` from the page. A typed request (never a command line) becomes the arguments of `tyche data fetch`, `tyche backtest` or `tyche report`, started as a subprocess in the console's workspace, one at a time; both output streams are kept and the page polls them while it runs. **Data** (everything the profile follows, or chosen symbols) and **Backtests** (a form, every recorded backtest with its numbers, each report shown in a sandboxed frame, or written again). Checked end to end with the real `tyche backtest` in tests, and by hand in the browser on a scratch workspace (fetch, backtest, report, write report).
+- The console, U3 ([ADR-0046](docs/adr/0046-a-local-web-console.md)): the **Paper** page. `tyche paper run`, `tyche kill` and `tyche resume` run from the page after a confirmation dialog (flatten needs a second tick; resume lists what it lifts); their requests must carry `confirmed: true`, and `kill` and `resume` run with `--yes`. It shows readiness, what stops trading, the account, the last cycle's two reconciliations from the journal, and the latest alerts from the logs with their delivery. Kill and resume checked end to end in tests and by hand on a scratch workspace; the real paper cycle only with a stand-in, never against IB Gateway.
 
 Packages still holding only a docstring: `core.improvement`, `core.agents`, and the LLM adapter.
 
@@ -258,13 +259,13 @@ Two things in the brief's Phase 1 that this plan moves:
 
 ## Console plan: a local web console (agreed 2026-11-25)
 
-*Asked for and agreed by Pablo on 2026-11-25; [ADR-0046](docs/adr/0046-a-local-web-console.md) accepted with it.* A React page to run the workflow Tyche has, growing with each feature. It sits beside Phase 2, one PR at a time; Pablo chooses where it goes in the order. Nothing here costs money: every library is MIT, BSD or Apache, and Node is already installed.
+*Asked for and agreed by Pablo on 2026-11-25; [ADR-0046](docs/adr/0046-a-local-web-console.md) accepted with it.* A React page to run the workflow Tyche has, growing with each feature. It sits beside Phase 2, one PR at a time; Pablo chooses where it goes in the order. Nothing here costs money: every library is MIT, BSD or Apache, and Node is already installed. **Order, decided by Pablo on 2026-11-26: finish the console (U2 to U5) before Phase 2's PR 15.**
 
 | # | PR | Delivers |
 |---|---|---|
 | U1 | Skeleton and status (merged, #55) | ADR-0046; `tyche ui` (127.0.0.1, a token per launch); the API's first endpoint; the React shell (Vite, TypeScript, Mantine, navigation) with a **Status** page: config check, active profile, kill switch, halts, latest checkpoint. Read-only. A CI job for the app |
-| U2 | Runs (**in review**) | Running a command from the page as a `tyche` subprocess, one at a time, its output live; **Data** (fetch) and **Backtest** forms; the list of past runs, each report opened in the page |
-| U3 | Paper | **Paper**: run the cycle (with confirmation), the account from the latest checkpoint (cash, positions, working orders), both reconciliations, the alerts; the kill switch and resume, each confirmed |
+| U2 | Runs (merged, #56) | Running a command from the page as a `tyche` subprocess, one at a time, its output live; **Data** (fetch) and **Backtest** forms; the list of past runs, each report opened in the page |
+| U3 | Paper (**in review**) | **Paper**: run the cycle (with confirmation), the account from the latest checkpoint (cash, positions, working orders), both reconciliations, the alerts; the kill switch and resume, each confirmed |
 | U4 | Research | Forms for walk-forward, sweeps, capital and profile comparison, and their reports |
 | U5 | Config, read-only | Profiles, strategies, guardrails and the market profile as pages, with the config check's messages. Editing comes later, with its own ADR |
 
@@ -316,7 +317,6 @@ Two things in the brief's Phase 1 that this plan moves:
 | PR 22's proposed defaults for a small account: Tiered for the real account (yours to choose at IBKR); low turnover below USD 10,000 ([ADR-0031](docs/adr/0031-minimum-viable-capital.md)). The positions part is decided: one risk profile per live stage (PR 5, ADR-0036) | Before the first paper run |
 | Whether the Phase 3 gate deflates a Sharpe ratio against zero (the paper's test, what PR 21 reports) or against the benchmark's Sharpe ratio. Against zero, holding SPY from 2005 to 2023 passes at 99.3% (ADR-0030) | Phase 3 gate; worth a view in PR 21's review |
 | Scheduler: APScheduler or cron in the container | Phase 2, PR 15 |
-| Where the console's U3 to U5 go among Phase 2's PRs 15 to 20 (U2 came next: "Start U2", 2026-11-26) | After U2 merges |
 | **How USD reaches the account.** The paper account holds CAD only (seen 2026-11-24); Tyche buys US ETFs in USD, long only and without borrowing. Options: convert CAD to USD at IBKR by hand, deposit USD, or trade CAD-listed funds instead. Currency conversion was planned for Phase 4. Facts to read first are under *To verify*. `tyche paper run` refuses a first run with no USD | Before the first paper run |
 
 Decisions that belong to a Phase 1 PR are listed in the plan above.
@@ -343,7 +343,7 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Console U2 is in review**: `make ui`, then `uv run tyche ui` ([the console](docs/user-guide/11-the-console.md)). The **Data** and **Backtests** pages run `tyche data fetch`, `tyche backtest` and `tyche report` as subprocesses, one at a time, with their output live, and show each backtest's report in the page. Where U3 to U5 go among Phase 2's PRs 15 to 20 is yours to choose after it merges.
+**Console U3 is in review**: `make ui`, then `uv run tyche ui` ([the console](docs/user-guide/11-the-console.md)). The **Paper** page runs the paper cycle, the kill switch and resume, each after a confirmation, and shows the account, the last cycle's reconciliations and the alerts. Next, as you decided on 2026-11-26: U4 (research forms), then U5 (config, read-only), then Phase 2's PR 15.
 
 **PR 14 (the paper run) is merged.** Your first paper run is still to do, with its prerequisites below and in [the paper run](docs/user-guide/10-paper-run.md).
 

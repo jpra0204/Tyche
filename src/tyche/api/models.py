@@ -196,10 +196,53 @@ class ReportRequest(_Request):
     run_id: RunId
 
 
-RunRequest = Annotated[
-    FetchRequest | BacktestRequest | ReportRequest, Field(discriminator="command")
+Reason = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=300, pattern=r"^[^\x00-\x1f\x7f]+$"
+    ),
 ]
+"""Why, for the journal and the alert: one line of text."""
+
+
+class PaperRunRequest(_Request):
+    """``tyche paper run``: one decision cycle on the IBKR paper account (ADR-0045).
+
+    ``confirmed`` must be true: the page asks first, and the contract says so.
+    """
+
+    command: Literal["paper_run"]
+    risk_profile: ProfileName = "default"
+    confirmed: Literal[True]
+
+
+class KillRequest(_Request):
+    """``tyche kill``: no new orders from the next decision on; with ``flatten``, sell
+    every holding there. Run with ``--yes``: the page asked first."""
+
+    command: Literal["kill"]
+    reason: Reason
+    flatten: bool = False
+    confirmed: Literal[True]
+
+
+class ResumeRequest(_Request):
+    """``tyche resume``: lift the kill switch and the halts. Run with ``--yes``: the page
+    showed what it lifts and asked first."""
+
+    command: Literal["resume"]
+    reason: Reason
+    confirmed: Literal[True]
+
+
+AnyRunRequest = (
+    FetchRequest | BacktestRequest | ReportRequest | PaperRunRequest | KillRequest | ResumeRequest
+)
+
+RunRequest = Annotated[AnyRunRequest, Field(discriminator="command")]
 """Every command the page can run. Anything else is refused before a process starts."""
+
+CommandName = Literal["data_fetch", "backtest", "report", "paper_run", "kill", "resume"]
 
 
 class RunLine(_Model):
@@ -213,7 +256,7 @@ class RunView(_Model):
     """A command started from the page, running or finished, with all it printed."""
 
     number: int
-    command: Literal["data_fetch", "backtest", "report"]
+    command: CommandName
     argv: list[str]
     started_at: datetime
     finished_at: datetime | None
@@ -268,3 +311,60 @@ class BacktestSummary(_Model):
     max_drawdown: str | None = None
     has_report: bool = False
     error: str | None = None
+
+
+# --- Paper (U3) -------------------------------------------------------------------------
+
+
+class DifferenceView(_Model):
+    """One disagreement between Tyche's records and the broker's. Any one halts."""
+
+    kind: str
+    subject: str
+    detail: str
+
+
+class CashCheckView(_Model):
+    """One currency's cash, Tyche's against the broker's (ADR-0044)."""
+
+    currency: str
+    tyche: str
+    broker_settled: str
+    broker_pending: str
+    accrued: str
+    allowed: str
+    outcome: str
+
+
+class ReconciliationView(_Model):
+    """What one comparison with IBKR found: at the check, or after the decision."""
+
+    run_id: str
+    stage: Literal["check", "decision"]
+    at: datetime
+    status: Literal["match", "corrected", "mismatch"]
+    differences: list[DifferenceView]
+    inferred: list[str]
+    ended: list[str]
+    cash: list[CashCheckView]
+
+
+class AlertView(_Model):
+    """An alert as the log recorded it: what it said, and whether Discord got it."""
+
+    at: datetime
+    kind: str
+    title: str
+    lines: list[str]
+    delivery: Literal["sent", "not_sent", "no_channel"]
+    error: str | None = None
+
+
+class PaperView(_Model):
+    """What the Paper page shows beside the status: the last cycle's reconciliations,
+    and the latest alerts, newest first."""
+
+    last_cycle: str | None
+    reconciliations: list[ReconciliationView]
+    alerts: list[AlertView]
+    state_unreadable: str | None = None

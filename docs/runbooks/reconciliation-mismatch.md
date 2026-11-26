@@ -18,7 +18,7 @@ Every `tyche paper run` reconciles twice: at startup, once IBKR's fills are read
 ## Before you start
 
 - Know which workspace is the real one. Use `--home <folder>` on every command below if `TYCHE_HOME` is not set to it.
-- Do not run `tyche resume` while a paper run is running. Nothing stops you yet; the scheduler (PR 15) will.
+- Do not run `tyche resume` while a paper run is running. Nothing stops you in the terminal yet; the scheduler (PR 15) will. The console refuses it while it runs a paper cycle itself (one run at a time).
 - Have IBKR's own app open on the **paper** account: Client Portal (**Portfolio**, and **Trade** → **Orders & Trades**) or IBKR Mobile.
 
 ## Find out what differs

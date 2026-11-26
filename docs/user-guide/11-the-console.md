@@ -2,7 +2,7 @@
 
 A page in your browser to see your workspace and, as it grows, to run Tyche from it. It runs on your Mac only. Design: [ADR-0046](../adr/0046-a-local-web-console.md).
 
-> **Today (console PR U2)** it has three pages: **Status** reads; **Data** and **Backtests** run `tyche data fetch` and `tyche backtest` for you and show their reports. The paper run, the kill switch and resume come in U3; walk-forward, sweeps, capital and profile comparison in U4. Until then, run those in the terminal.
+> **Today (console PR U3)** it has four pages: **Status** reads; **Data** and **Backtests** run `tyche data fetch` and `tyche backtest` and show their reports; **Paper** runs the paper cycle, the kill switch and resume. Walk-forward, sweeps, capital and profile comparison come in U4; until then, run those in the terminal.
 
 ## Open it
 
@@ -64,6 +64,22 @@ Every run is recorded. Running many and keeping the best one is overfitting, not
 
 - **Report** opens its `report.html` inside the console. **Backtests** at the top goes back.
 - **Write report** appears when a record has no report yet; it runs `tyche report <run id>`.
+
+### The Paper page
+
+Everything about the IBKR **paper** account in one place. Live trading is never run from the console.
+
+| Card | Shows, or does |
+|---|---|
+| **Paper cycle** | **Run the paper cycle…** runs `tyche paper run --risk-profile <the one chosen>`, after a dialog that says what it will do: connect to IB Gateway, reconcile, and, if a session has closed, **send orders** for the next open. Greyed out until the IB Gateway connection is set in `.env` and the configuration passes its check |
+| **Trading** | The kill switch and the halts, as on Status. **Kill switch…** asks for a reason, and with **Also flatten** a second tick (*I want every holding sold*), then runs `tyche kill`. **Resume…** (only when something stops trading) lists exactly what it lifts, asks for a reason, then runs `tyche resume` |
+| **Account** | As the last paper run saved it |
+| **Reconciliation** | The last cycle's two checks against IBKR: at the start, and after the decision if one ran. Each is a **match**, **corrected** or a **mismatch**, with its differences, fills inferred on a day no run read, orders that ended unfilled, and cash, Tyche's against IBKR's |
+| **Alerts** | The latest 50, newest first, from the logs: what each said, and whether Discord got it (**sent**, **not sent** with why, or **no channel** when `DISCORD_WEBHOOK_URL` is empty) |
+
+The dialogs are the same questions the commands ask in the terminal; the page answers them for the command (`--yes`) only after you have.
+
+**One run at a time applies here too.** While a backtest or a fetch runs, **Kill switch…** waits for it. In a hurry, the terminal always works: `uv run tyche kill --reason "..."`. The same rule keeps you from engaging or resuming in the middle of a paper cycle started from the page, which the runbooks ask you never to do.
 
 ## The key in the address
 
