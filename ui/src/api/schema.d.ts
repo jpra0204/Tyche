@@ -4,6 +4,106 @@
  */
 
 export interface paths {
+    "/api/backtests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backtests
+         * @description Every recorded backtest in the workspace, newest first.
+         */
+        get: operations["listBacktests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backtests/{run_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backtest Report
+         * @description A backtest's ``report.html``, for the page to show in a sandboxed frame.
+         */
+        get: operations["getBacktestReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Data
+         * @description What ``tyche data fetch`` can fetch: the exchanges, and what ``--all`` fetches.
+         */
+        get: operations["getData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description Start a ``tyche`` command; refused while another is running.
+         */
+        post: operations["startRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current Run
+         * @description The run going now, or the last one since the console started, with its output.
+         */
+        get: operations["getCurrentRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -47,6 +147,78 @@ export interface components {
             saved_at: string;
             /** Working Orders */
             working_orders: components["schemas"]["OrderView"][];
+        };
+        /**
+         * BacktestRequest
+         * @description ``tyche backtest``: the configured strategies on cached history.
+         */
+        BacktestRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "backtest";
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /** Last */
+            last?: string | null;
+            /**
+             * Risk Profile
+             * @default default
+             */
+            risk_profile: string;
+        };
+        /**
+         * BacktestSummary
+         * @description One recorded backtest, from its ``run.json`` and ``metrics.json``.
+         *
+         *     Fractions are strings as ``metrics.json`` writes them (``"0.081234"`` is 8.12%).
+         *     When the record cannot be read, ``error`` says why and the rest may be empty.
+         */
+        BacktestSummary: {
+            /** Benchmark */
+            benchmark?: string | null;
+            /** Benchmark Total Return */
+            benchmark_total_return?: string | null;
+            /** Completed */
+            completed?: boolean | null;
+            /** Currency */
+            currency?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Failure */
+            failure?: string | null;
+            /** Final Equity */
+            final_equity?: string | null;
+            /** First */
+            first?: string | null;
+            /**
+             * Halted
+             * @default false
+             */
+            halted: boolean;
+            /**
+             * Has Report
+             * @default false
+             */
+            has_report: boolean;
+            /** Last */
+            last?: string | null;
+            /** Max Drawdown */
+            max_drawdown?: string | null;
+            /** Risk Profile */
+            risk_profile?: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Starting Cash */
+            starting_cash?: string | null;
+            /** Total Return */
+            total_return?: string | null;
         };
         /**
          * CashView
@@ -93,6 +265,62 @@ export interface components {
             strategies: components["schemas"]["StrategyView"][];
             /** Valid */
             valid: boolean;
+        };
+        /**
+         * DataView
+         * @description What the Data page offers: the exchanges, and what ``--all`` fetches.
+         */
+        DataView: {
+            /**
+             * Default First
+             * Format: date
+             */
+            default_first: string;
+            /** Error */
+            error?: string | null;
+            /** Exchanges */
+            exchanges: components["schemas"]["ExchangeView"][];
+            /** Followed */
+            followed: string[];
+        };
+        /**
+         * ExchangeView
+         * @description An exchange ``tyche data fetch`` knows.
+         */
+        ExchangeView: {
+            /** Mic */
+            mic: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * FetchRequest
+         * @description ``tyche data fetch``: the profile's whole list, or symbols on one exchange.
+         */
+        FetchRequest: {
+            /** Asset Class */
+            asset_class?: ("etf" | "stock") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "data_fetch";
+            /**
+             * Every Candidate
+             * @default false
+             */
+            every_candidate: boolean;
+            /** Exchange */
+            exchange?: string | null;
+            /** First */
+            first?: string | null;
+            /** Last */
+            last?: string | null;
+            /**
+             * Symbols
+             * @default []
+             */
+            symbols: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -167,6 +395,19 @@ export interface components {
             quantity: string;
         };
         /**
+         * ReportRequest
+         * @description ``tyche report``: write a backtest's report again, from its record.
+         */
+        ReportRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "report";
+            /** Run Id */
+            run_id: string;
+        };
+        /**
          * RiskProfileView
          * @description The active risk profile's limits (ADR-0032).
          */
@@ -183,6 +424,50 @@ export interface components {
             name: string;
             /** Risk Per Trade */
             risk_per_trade: string;
+        };
+        /**
+         * RunLine
+         * @description One line the command printed, on its output or its error stream.
+         */
+        RunLine: {
+            /**
+             * Stream
+             * @enum {string}
+             */
+            stream: "out" | "err";
+            /** Text */
+            text: string;
+        };
+        /**
+         * RunView
+         * @description A command started from the page, running or finished, with all it printed.
+         */
+        RunView: {
+            /** Argv */
+            argv: string[];
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "data_fetch" | "backtest" | "report";
+            /** Exit Code */
+            exit_code: number | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Lines */
+            lines: components["schemas"]["RunLine"][];
+            /** Number */
+            number: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "succeeded" | "failed";
         };
         /**
          * SecretsView
@@ -255,6 +540,167 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listBacktests: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getBacktestReport: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getData: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    startRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchRequest"] | components["schemas"]["BacktestRequest"] | components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getCurrentRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getStatus: {
         parameters: {
             query?: {

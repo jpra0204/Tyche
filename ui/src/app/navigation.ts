@@ -12,8 +12,8 @@ export interface NavItem {
 
 export const NAVIGATION: NavItem[] = [
   { label: "Status", path: "/", icon: IconGauge },
-  { label: "Data", path: "/data", icon: IconDatabase, comingIn: "U2" },
-  { label: "Backtests", path: "/backtests", icon: IconChartLine, comingIn: "U2" },
+  { label: "Data", path: "/data", icon: IconDatabase },
+  { label: "Backtests", path: "/backtests", icon: IconChartLine },
   { label: "Paper", path: "/paper", icon: IconPlayerPlay, comingIn: "U3" },
   { label: "Config", path: "/config", icon: IconSettings, comingIn: "U5" },
 ];

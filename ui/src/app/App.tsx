@@ -6,6 +6,9 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import { createApi } from "../api/client";
 import { ApiContext } from "../api/context";
 import { MissingToken } from "../components/MissingToken";
+import { BacktestsPage } from "../features/backtests/BacktestsPage";
+import { ReportPage } from "../features/backtests/ReportPage";
+import { DataPage } from "../features/data/DataPage";
 import { StatusPage } from "../features/status/StatusPage";
 import { Layout } from "./Layout";
 import { theme } from "./theme";
@@ -28,6 +31,9 @@ export function App({ token }: { token: string | null }) {
               <Routes>
                 <Route element={<Layout />}>
                   <Route index element={<StatusPage />} />
+                  <Route path="data" element={<DataPage />} />
+                  <Route path="backtests" element={<BacktestsPage />} />
+                  <Route path="backtests/:runId" element={<ReportPage />} />
                   <Route path="*" element={<StatusPage />} />
                 </Route>
               </Routes>

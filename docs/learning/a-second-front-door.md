@@ -9,7 +9,7 @@ In [hexagonal architecture](hexagonal-architecture.md) the core sits in the midd
 The danger with a second door is drift. If the page computed its own view of the account, or placed orders its own way, there would be two Tychés that slowly disagree, and the one handling money would be the less tested. So:
 
 - **Reading** goes through `tyche.runtime` and `tyche.config`, the same functions `tyche config check` and `tyche kill` use. The Status page *is* those commands' answers, as data.
-- **Running** (from U2) starts the `tyche` command itself as a subprocess, with the options the form chose. The page can never do what the CLI cannot, and every safety check the CLI has comes along for free.
+- **Running** starts the `tyche` command itself as a subprocess, with the options the form chose. The page can never do what the CLI cannot, and every safety check the CLI has comes along for free: a backtest form that reaches the holdout gets the CLI's own refusal, printed on the page.
 - **An import contract** keeps the web framework inside `tyche.api`, so it cannot leak into the core.
 
 ## The lock
@@ -19,9 +19,19 @@ The danger with a second door is drift. If the page computed its own view of the
 1. **A token per launch**, put in the address after `#`. The fragment is never sent to a server, so it does not end up in logs; the page reads it, keeps it for its tab, and sends it in a header. Another site cannot know it.
 2. **A host check.** A site can point its own domain at your machine (DNS rebinding) to look "local". The server refuses any host name but `127.0.0.1` and `localhost`.
 
+## A request, not a command line
+
+The page never sends a command line for the server to run. It sends a small typed request, `{"command": "backtest", "first": "2005-01-03", "risk_profile": "stage-1"}`, and the server builds the argument list from it (`tyche.api.runs.arguments`). Three things follow:
+
+- **Only listed commands exist.** `paper_run`, `kill` or anything else is not one of the request types, so it is refused before a process starts. Adding one is a code change, reviewed like any other.
+- **No value can turn into an option.** A symbol, a profile name or a run id must match a pattern that never starts with `-`, so `--all` typed as a symbol, or `--home /elsewhere` as a profile, is refused. A field the command does not have is refused too, not ignored.
+- **No shell.** The arguments go to the operating system as a list, so `;`, `$(...)` or spaces mean nothing special.
+
+This is an *allowlist*: say what is allowed and refuse the rest, rather than trying to list what is dangerous.
+
 ## In Tyche
 
-- `tyche.api`: `create_app`, `security.py` (token and host names), `models.py` (the contract), `status.py`.
+- `tyche.api`: `create_app`, `security.py` (token and host names), `models.py` (the contract, including the run requests), `runs.py` (the subprocess, one at a time), `status.py`, `data.py`, `backtests.py`.
 - `tyche ui` in `tyche.cli`: makes the token, serves, opens the browser.
 - `ui/`: the React app; `ui/src/api/` is the only place it talks to the server.
 

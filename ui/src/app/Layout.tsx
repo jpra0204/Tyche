@@ -1,6 +1,7 @@
 import { AppShell, Badge, Group, NavLink, Text, Title } from "@mantine/core";
 import { NavLink as RouterLink, Outlet, useLocation } from "react-router";
 
+import { RunIndicator } from "../features/runs/RunIndicator";
 import { NAVIGATION } from "./navigation";
 
 export function Layout() {
@@ -11,9 +12,12 @@ export function Layout() {
       <AppShell.Header>
         <Group h="100%" px="lg" justify="space-between">
           <Title order={3}>Tyche</Title>
-          <Text size="sm" c="dimmed">
-            Paper account only. Live trading is never run from here.
-          </Text>
+          <Group gap="md">
+            <RunIndicator />
+            <Text size="sm" c="dimmed">
+              Paper account only. Live trading is never run from here.
+            </Text>
+          </Group>
         </Group>
       </AppShell.Header>
 
@@ -39,7 +43,7 @@ export function Layout() {
               to={item.path}
               label={item.label}
               leftSection={<Icon size={18} stroke={1.5} />}
-              active={pathname === item.path}
+              active={item.path === "/" ? pathname === "/" : pathname.startsWith(item.path)}
             />
           );
         })}

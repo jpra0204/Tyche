@@ -7,6 +7,8 @@ flowchart LR
     Browser["React app (ui/dist)"] -- "/api/… + X-Tyche-Token" --> API["tyche.api (FastAPI)"]
     API --> Runtime["tyche.runtime / tyche.config"]
     Runtime --> WS[("workspace: config, KILL, state/tyche.db, reports/")]
+    API -- "Runner: one subprocess at a time" --> Run["tyche data fetch / backtest / report --home …"]
+    Run --> WS
     CLI["tyche ui"] -- "create_app + serve on 127.0.0.1" --> API
 ```
 
@@ -17,15 +19,35 @@ flowchart LR
 | New data for a page | A model in `src/tyche/api/models.py`, a reader beside `status.py` (one module per page), a route in `app.py`. Then `make ui-types` |
 | A new page | `ui/src/features/<name>/`: the page, its parts, a `use<Name>.ts` query hook. Add it to `ui/src/app/navigation.ts` and to the routes in `ui/src/app/App.tsx` |
 | A call to the API | A method in `ui/src/api/client.ts`, typed with the names in `ui/src/api/types.ts` |
+| A command the page can run | See *Running a command* below |
 | Shared look | `ui/src/components/` (cards, alerts), `ui/src/lib/format.ts` (money, percent, dates), `ui/src/app/theme.ts` |
 
 Rules:
 
-- **The API only reads, or runs `tyche` as a subprocess** (from U2). It never calls the broker, the risk gate or anything a command does not: a page cannot do what the CLI cannot.
+- **The API only reads, or runs `tyche` as a subprocess** (`tyche.api.runs`). It never calls the broker, the risk gate or anything a command does not: a page cannot do what the CLI cannot.
 - **Every `/api` route sits behind the token.** Add routes to the `api` router in `create_app`, never to `app` directly.
 - **Secrets never leave the server.** Models carry whether a secret is set, never its value; a test checks the webhook is not in the response.
 - **Only `tyche.api` imports FastAPI, Starlette or uvicorn** (an import contract).
 - **Money and fractions are strings** in the API, formatted in `lib/format.ts`.
+
+## Running a command
+
+A run is the CLI itself: `Runner.start` starts `python -m tyche <arguments> --home <workspace>` with the console's environment and `PYTHONUNBUFFERED=1`, reads its output and error streams line by line on two threads, and keeps them with the run. One run at a time: a second gets `RunBusyError`, which the route answers with 409. The last run stays in memory until the next one starts; what it wrote is in the workspace.
+
+The page sends a typed request, never a command line ([a second front door](../learning/a-second-front-door.md)). To let it run another command:
+
+1. A request model in `models.py`, deriving `_Request` (a field the command lacks is refused), with a `command` literal and a pattern on every free-text value so none can start with `-`. Add it to `RunRequest`.
+2. A `case` in `tyche.api.runs.arguments` that builds the arguments as a terminal would.
+3. Tests in `tests/api/test_runs.py`: the arguments, and the request with an option-like value refused (422) before a process starts.
+4. `make ui-types`, then a form in its feature folder that calls `useStartRun()` and shows `<LastRun run={useCurrentRun().data} />`.
+
+The paper cycle, `kill` and `resume` are not runnable before U3, and when they are, each asks for confirmation in the page (ADR-0046).
+
+**Live output is polled, not streamed.** `GET /api/runs/current` returns the run with all its lines; `useCurrentRun` asks again every 0.7 s while the state is `running`, and stops when it ends. A plain GET carries the token header like every other call (an `EventSource` cannot set headers), and a run prints tens or hundreds of lines, so sending them all each time is cheap. When a run ends, the page reads the records and the status again.
+
+Tests start a stand-in program (`create_app(..., program=...)`) to check the runner alone, and the real `tyche backtest` on a workspace with a cache to check it end to end. `app.state.runner.wait()` waits for a run to end.
+
+**Reports are shown in a sandboxed frame** (`ReportPage.tsx`). The page fetches `report.html` with the token and shows it from a `blob:` address with `sandbox="allow-same-origin"` and no `allow-scripts`: nothing in it can run, so same-origin gives it no reach. Not `srcdoc`: a `srcdoc` document resolves `#section` links against the console's address, so the report's table of contents would load the console inside the frame.
 
 ## The type contract
 

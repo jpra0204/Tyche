@@ -45,6 +45,227 @@
         "title": "AccountView",
         "type": "object"
       },
+      "BacktestRequest": {
+        "additionalProperties": false,
+        "description": "``tyche backtest``: the configured strategies on cached history.",
+        "properties": {
+          "command": {
+            "const": "backtest",
+            "title": "Command",
+            "type": "string"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "risk_profile": {
+            "default": "default",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}$",
+            "title": "Risk Profile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "first"
+        ],
+        "title": "BacktestRequest",
+        "type": "object"
+      },
+      "BacktestSummary": {
+        "description": "One recorded backtest, from its ``run.json`` and ``metrics.json``.\n\nFractions are strings as ``metrics.json`` writes them (``\"0.081234\"`` is 8.12%).\nWhen the record cannot be read, ``error`` says why and the rest may be empty.",
+        "properties": {
+          "benchmark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark"
+          },
+          "benchmark_total_return": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Total Return"
+          },
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "final_equity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Equity"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "halted": {
+            "default": false,
+            "title": "Halted",
+            "type": "boolean"
+          },
+          "has_report": {
+            "default": false,
+            "title": "Has Report",
+            "type": "boolean"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "max_drawdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Drawdown"
+          },
+          "risk_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Profile"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "starting_cash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starting Cash"
+          },
+          "total_return": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Return"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "BacktestSummary",
+        "type": "object"
+      },
       "CashView": {
         "description": "Cash in one currency: settled now, and still to settle.",
         "properties": {
@@ -159,6 +380,148 @@
           "valid"
         ],
         "title": "ConfigView",
+        "type": "object"
+      },
+      "DataView": {
+        "description": "What the Data page offers: the exchanges, and what ``--all`` fetches.",
+        "properties": {
+          "default_first": {
+            "format": "date",
+            "title": "Default First",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "exchanges": {
+            "items": {
+              "$ref": "#/components/schemas/ExchangeView"
+            },
+            "title": "Exchanges",
+            "type": "array"
+          },
+          "followed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Followed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exchanges",
+          "default_first",
+          "followed"
+        ],
+        "title": "DataView",
+        "type": "object"
+      },
+      "ExchangeView": {
+        "description": "An exchange ``tyche data fetch`` knows.",
+        "properties": {
+          "mic": {
+            "title": "Mic",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mic",
+          "name"
+        ],
+        "title": "ExchangeView",
+        "type": "object"
+      },
+      "FetchRequest": {
+        "additionalProperties": false,
+        "description": "``tyche data fetch``: the profile's whole list, or symbols on one exchange.",
+        "properties": {
+          "asset_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "etf",
+                  "stock"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
+          },
+          "command": {
+            "const": "data_fetch",
+            "title": "Command",
+            "type": "string"
+          },
+          "every_candidate": {
+            "default": false,
+            "title": "Every Candidate",
+            "type": "boolean"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "symbols": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Z0-9][A-Z0-9.\\-]{0,11}$",
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "title": "FetchRequest",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -330,6 +693,28 @@
         "title": "PositionView",
         "type": "object"
       },
+      "ReportRequest": {
+        "additionalProperties": false,
+        "description": "``tyche report``: write a backtest's report again, from its record.",
+        "properties": {
+          "command": {
+            "const": "report",
+            "title": "Command",
+            "type": "string"
+          },
+          "run_id": {
+            "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}(-[0-9]+)?$",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "title": "ReportRequest",
+        "type": "object"
+      },
       "RiskProfileView": {
         "description": "The active risk profile's limits (ADR-0032).",
         "properties": {
@@ -367,6 +752,110 @@
           "drawdown_kill"
         ],
         "title": "RiskProfileView",
+        "type": "object"
+      },
+      "RunLine": {
+        "description": "One line the command printed, on its output or its error stream.",
+        "properties": {
+          "stream": {
+            "enum": [
+              "out",
+              "err"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream",
+          "text"
+        ],
+        "title": "RunLine",
+        "type": "object"
+      },
+      "RunView": {
+        "description": "A command started from the page, running or finished, with all it printed.",
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Argv",
+            "type": "array"
+          },
+          "command": {
+            "enum": [
+              "data_fetch",
+              "backtest",
+              "report"
+            ],
+            "title": "Command",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RunLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "command",
+          "argv",
+          "started_at",
+          "finished_at",
+          "exit_code",
+          "state",
+          "lines"
+        ],
+        "title": "RunView",
         "type": "object"
       },
       "SecretsView": {
@@ -563,6 +1052,292 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/backtests": {
+      "get": {
+        "description": "Every recorded backtest in the workspace, newest first.",
+        "operationId": "listBacktests",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestSummary"
+                  },
+                  "title": "Response Listbacktests",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Backtests"
+      }
+    },
+    "/api/backtests/{run_id}/report": {
+      "get": {
+        "description": "A backtest's ``report.html``, for the page to show in a sandboxed frame.",
+        "operationId": "getBacktestReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}(-[0-9]+)?$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Backtest Report"
+      }
+    },
+    "/api/data": {
+      "get": {
+        "description": "What ``tyche data fetch`` can fetch: the exchanges, and what ``--all`` fetches.",
+        "operationId": "getData",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Data"
+      }
+    },
+    "/api/runs": {
+      "post": {
+        "description": "Start a ``tyche`` command; refused while another is running.",
+        "operationId": "startRun",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "backtest": "#/components/schemas/BacktestRequest",
+                    "data_fetch": "#/components/schemas/FetchRequest",
+                    "report": "#/components/schemas/ReportRequest"
+                  },
+                  "propertyName": "command"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/FetchRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BacktestRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReportRequest"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run"
+      }
+    },
+    "/api/runs/current": {
+      "get": {
+        "description": "The run going now, or the last one since the console started, with its output.",
+        "operationId": "getCurrentRun",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tyche-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tyche-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RunView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Getcurrentrun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Current Run"
+      }
+    },
     "/api/status": {
       "get": {
         "description": "The workspace, its config, which secrets are set, what stops trading, and the\naccount as the latest checkpoint saved it.",
