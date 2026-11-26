@@ -34,6 +34,7 @@ from tyche.config import (
     load_secrets,
 )
 from tyche.core.domain import Checkpoint, Money
+from tyche.core.risk import Guardrails, RiskProfile
 from tyche.runtime.kill_switch import TradingStatus, status
 
 
@@ -59,7 +60,6 @@ def _config(workspace: Workspace, risk_profile: str) -> ConfigView:
 
 
 def _config_view(config: TycheConfig) -> ConfigView:
-    profile = config.risk_profile
     guardrails = config.guardrails
     budgets = [spec.budget for spec in config.strategies]
     cash = Decimal(1) - sum(budgets, start=Decimal(0))
@@ -67,29 +67,39 @@ def _config_view(config: TycheConfig) -> ConfigView:
         valid=True,
         market_profile=str(config.market_profile),
         config_hash=config.config_hash,
-        risk_profile=RiskProfileView(
-            name=profile.name,
-            risk_per_trade=str(profile.risk_per_trade),
-            max_open_positions=profile.max_open_positions,
-            max_position_size=str(profile.max_position_size),
-            daily_loss_limit=str(profile.daily_loss_limit),
-            drawdown_kill=str(profile.drawdown_kill),
-        ),
+        risk_profile=risk_profile_view(config.risk_profile),
         risk_profiles=list(config.risk_profiles),
         strategies=[
             StrategyView(strategy_id=s.strategy_id, plugin=s.plugin, budget=str(s.budget))
             for s in config.strategies
         ],
         cash_budget=str(cash) if cash else None,
-        money_caps=[
-            MoneyCapView(
-                currency=str(capital.currency),
-                capital=str(capital.amount),
-                order=_amount(guardrails.order_cap(capital.currency)),
-            )
-            for capital in guardrails.max_total_capital
-        ],
+        money_caps=money_caps_view(guardrails),
     )
+
+
+def risk_profile_view(profile: RiskProfile) -> RiskProfileView:
+    """A risk profile's limits, as the API gives them."""
+    return RiskProfileView(
+        name=profile.name,
+        risk_per_trade=str(profile.risk_per_trade),
+        max_open_positions=profile.max_open_positions,
+        max_position_size=str(profile.max_position_size),
+        daily_loss_limit=str(profile.daily_loss_limit),
+        drawdown_kill=str(profile.drawdown_kill),
+    )
+
+
+def money_caps_view(guardrails: Guardrails) -> list[MoneyCapView]:
+    """The guardrails' capital and order caps, one per currency."""
+    return [
+        MoneyCapView(
+            currency=str(capital.currency),
+            capital=str(capital.amount),
+            order=_amount(guardrails.order_cap(capital.currency)),
+        )
+        for capital in guardrails.max_total_capital
+    ]
 
 
 def _secrets(workspace: Workspace, environ: Mapping[str, str]) -> SecretsView:

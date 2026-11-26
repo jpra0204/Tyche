@@ -2,7 +2,7 @@
 
 A page in your browser to see your workspace and, as it grows, to run Tyche from it. It runs on your Mac only. Design: [ADR-0046](../adr/0046-a-local-web-console.md).
 
-> **Today (console PR U4)** it has five pages: **Status** reads; **Data**, **Backtests** and **Research** run `tyche data fetch`, `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital` and `tyche compare-profiles` and show their reports; **Paper** runs the paper cycle, the kill switch and resume. The configuration as pages comes in U5.
+> **Today (console PR U5)** it has six pages: **Status** and **Config** read; **Data**, **Backtests** and **Research** run `tyche data fetch`, `tyche backtest`, `tyche walk-forward`, `tyche sweep`, `tyche capital` and `tyche compare-profiles` and show their reports; **Paper** runs the paper cycle, the kill switch and resume. The configuration is edited in its files, by hand; editing from the page would come later, with its own decision.
 
 ## Open it
 
@@ -93,6 +93,20 @@ Everything about the IBKR **paper** account in one place. Live trading is never 
 The dialogs are the same questions the commands ask in the terminal; the page answers them for the command (`--yes`) only after you have.
 
 **One run at a time applies here too.** While a backtest or a fetch runs, **Kill switch…** waits for it. In a hurry, the terminal always works: `uv run tyche kill --reason "..."`. The same rule keeps you from engaging or resuming in the middle of a paper cycle started from the page, which the runbooks ask you never to do.
+
+### The Config page
+
+Your configuration as Tyche reads it, **read-only**: edit the files in the workspace's `config/` folder, then press **Refresh**.
+
+| Tab | Shows |
+|---|---|
+| **Check** | Whether `tyche config check` passes under `default`, and if not, its message; the config hash; a warning if other users can read `.env` |
+| **Risk** | Each profile in `config/risk/` beside the guardrails, limit by limit, each checked as the active one (as `--risk-profile` would); a profile that does not pass shows why. The money caps for paper and live |
+| **Strategies and sweeps** | Each strategy's plugin, file, budget, parameters and own limits, and the cash left over; each sweep's values and how many combinations it runs, or why it cannot run |
+| **Market** | The market profile in short: currencies, calendars, candidates, benchmark, rebalance band, price buffer; the backtests' starting cash, the holdout date, when costs were last checked |
+| **Files as loaded** | Every setting of every file Tyche loaded, exactly as hashed: what a run record stores |
+
+`.env` is never shown, only whether other users can read it; the Status page says which secrets are set.
 
 ## The key in the address
 

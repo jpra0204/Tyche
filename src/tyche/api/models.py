@@ -7,7 +7,7 @@ Secrets never appear: only whether each one is set.
 """
 
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -483,3 +483,96 @@ class StudySummary(_Model):
     headline: str | None = None
     has_report: bool = False
     error: str | None = None
+
+
+# --- Config, read-only (U5) -------------------------------------------------------------
+
+
+class ProfileCheckView(_Model):
+    """One risk profile in ``config/risk/``, checked as the active one, as
+    ``tyche config check --risk-profile <name>`` does."""
+
+    name: str
+    valid: bool
+    error: str | None = None
+    profile: RiskProfileView | None = None
+
+
+class GuardrailsView(_Model):
+    """The absolute limits no profile may pass (ADR-0032), and the money caps (ADR-0034)."""
+
+    max_risk_per_trade: str
+    max_open_positions: int
+    max_position_size: str
+    max_daily_loss_limit: str
+    max_drawdown_kill: str
+    money_caps: list[MoneyCapView]
+
+
+class StrategyDetailView(_Model):
+    """One configured strategy: its file, budget, parameters and own risk limits."""
+
+    strategy_id: str
+    plugin: str
+    budget: str
+    source: str
+    parameters: dict[str, Any]
+    risk_per_trade: str | None = None
+    max_open_positions: int | None = None
+    max_position_size: str | None = None
+
+
+class SweepView(_Model):
+    """A sweep in ``config/sweeps/``: the strategy it varies and every value it tries."""
+
+    name: str
+    strategy_id: str | None = None
+    grid: dict[str, list[Any]] = {}
+    combinations: int | None = None
+    error: str | None = None
+
+
+class MarketView(_Model):
+    """The active market profile, in short; the whole file is under ``files``."""
+
+    name: str
+    cash_currencies: list[str]
+    calendars: list[str]
+    candidates: list[str]
+    benchmark: str
+    rebalance_band: str
+    price_buffer: str
+    starting_cash: str
+    holdout_starts: date
+    costs_checked_on: date
+
+
+class ConfigFileView(_Model):
+    """One loaded file, as parsed and hashed: what a run record stores."""
+
+    path: str
+    settings: dict[str, Any]
+
+
+class WorkspaceConfigView(_Model):
+    """Everything the Config page shows, read-only.
+
+    ``valid`` and ``error`` are ``tyche config check``'s verdict under the ``default``
+    profile, strategies built; the rest is empty when it fails. ``profiles`` checks every
+    file in ``config/risk/`` as the active one, as ``--risk-profile`` would: every profile
+    must fit the guardrails whichever is active, and each strategy's own limits must fit
+    the active one.
+    """
+
+    workspace: str
+    valid: bool
+    error: str | None = None
+    config_hash: str | None = None
+    env_readable_by_others: bool = False
+    guardrails: GuardrailsView | None = None
+    profiles: list[ProfileCheckView] = []
+    strategies: list[StrategyDetailView] = []
+    cash_budget: str | None = None
+    sweeps: list[SweepView] = []
+    market: MarketView | None = None
+    files: list[ConfigFileView] = []

@@ -44,6 +44,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description The workspace's configuration, read-only: the check, every risk profile, the
+         *     guardrails, strategies, sweeps, market profile, and each loaded file.
+         */
+        get: operations["getConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data": {
         parameters: {
             query?: never;
@@ -430,6 +451,18 @@ export interface components {
             risk_profiles: string[];
         };
         /**
+         * ConfigFileView
+         * @description One loaded file, as parsed and hashed: what a run record stores.
+         */
+        ConfigFileView: {
+            /** Path */
+            path: string;
+            /** Settings */
+            settings: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * ConfigView
          * @description The workspace's configuration, as ``tyche config check`` reads it.
          *
@@ -531,6 +564,24 @@ export interface components {
              */
             symbols: string[];
         };
+        /**
+         * GuardrailsView
+         * @description The absolute limits no profile may pass (ADR-0032), and the money caps (ADR-0034).
+         */
+        GuardrailsView: {
+            /** Max Daily Loss Limit */
+            max_daily_loss_limit: string;
+            /** Max Drawdown Kill */
+            max_drawdown_kill: string;
+            /** Max Open Positions */
+            max_open_positions: number;
+            /** Max Position Size */
+            max_position_size: string;
+            /** Max Risk Per Trade */
+            max_risk_per_trade: string;
+            /** Money Caps */
+            money_caps: components["schemas"]["MoneyCapView"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -584,6 +635,38 @@ export interface components {
             flatten: boolean;
             /** Reason */
             reason: string;
+        };
+        /**
+         * MarketView
+         * @description The active market profile, in short; the whole file is under ``files``.
+         */
+        MarketView: {
+            /** Benchmark */
+            benchmark: string;
+            /** Calendars */
+            calendars: string[];
+            /** Candidates */
+            candidates: string[];
+            /** Cash Currencies */
+            cash_currencies: string[];
+            /**
+             * Costs Checked On
+             * Format: date
+             */
+            costs_checked_on: string;
+            /**
+             * Holdout Starts
+             * Format: date
+             */
+            holdout_starts: string;
+            /** Name */
+            name: string;
+            /** Price Buffer */
+            price_buffer: string;
+            /** Rebalance Band */
+            rebalance_band: string;
+            /** Starting Cash */
+            starting_cash: string;
         };
         /**
          * MoneyCapView
@@ -664,6 +747,20 @@ export interface components {
             instrument: string;
             /** Quantity */
             quantity: string;
+        };
+        /**
+         * ProfileCheckView
+         * @description One risk profile in ``config/risk/``, checked as the active one, as
+         *     ``tyche config check --risk-profile <name>`` does.
+         */
+        ProfileCheckView: {
+            /** Error */
+            error?: string | null;
+            /** Name */
+            name: string;
+            profile?: components["schemas"]["RiskProfileView"] | null;
+            /** Valid */
+            valid: boolean;
         };
         /**
          * ReconciliationView
@@ -825,6 +922,30 @@ export interface components {
             workspace: string;
         };
         /**
+         * StrategyDetailView
+         * @description One configured strategy: its file, budget, parameters and own risk limits.
+         */
+        StrategyDetailView: {
+            /** Budget */
+            budget: string;
+            /** Max Open Positions */
+            max_open_positions?: number | null;
+            /** Max Position Size */
+            max_position_size?: string | null;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Plugin */
+            plugin: string;
+            /** Risk Per Trade */
+            risk_per_trade?: string | null;
+            /** Source */
+            source: string;
+            /** Strategy Id */
+            strategy_id: string;
+        };
+        /**
          * StrategyView
          * @description One configured strategy and its share of equity.
          */
@@ -896,6 +1017,27 @@ export interface components {
             risk_profile: string;
         };
         /**
+         * SweepView
+         * @description A sweep in ``config/sweeps/``: the strategy it varies and every value it tries.
+         */
+        SweepView: {
+            /** Combinations */
+            combinations?: number | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Grid
+             * @default {}
+             */
+            grid: {
+                [key: string]: unknown[];
+            };
+            /** Name */
+            name: string;
+            /** Strategy Id */
+            strategy_id?: string | null;
+        };
+        /**
          * TradingView
          * @description What stops trading now.
          */
@@ -961,6 +1103,55 @@ export interface components {
              */
             train_years: number;
         };
+        /**
+         * WorkspaceConfigView
+         * @description Everything the Config page shows, read-only.
+         *
+         *     ``valid`` and ``error`` are ``tyche config check``'s verdict under the ``default``
+         *     profile, strategies built; the rest is empty when it fails. ``profiles`` checks every
+         *     file in ``config/risk/`` as the active one, as ``--risk-profile`` would: every profile
+         *     must fit the guardrails whichever is active, and each strategy's own limits must fit
+         *     the active one.
+         */
+        WorkspaceConfigView: {
+            /** Cash Budget */
+            cash_budget?: string | null;
+            /** Config Hash */
+            config_hash?: string | null;
+            /**
+             * Env Readable By Others
+             * @default false
+             */
+            env_readable_by_others: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Files
+             * @default []
+             */
+            files: components["schemas"]["ConfigFileView"][];
+            guardrails?: components["schemas"]["GuardrailsView"] | null;
+            market?: components["schemas"]["MarketView"] | null;
+            /**
+             * Profiles
+             * @default []
+             */
+            profiles: components["schemas"]["ProfileCheckView"][];
+            /**
+             * Strategies
+             * @default []
+             */
+            strategies: components["schemas"]["StrategyDetailView"][];
+            /**
+             * Sweeps
+             * @default []
+             */
+            sweeps: components["schemas"]["SweepView"][];
+            /** Valid */
+            valid: boolean;
+            /** Workspace */
+            workspace: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1021,6 +1212,37 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceConfigView"];
                 };
             };
             /** @description Validation Error */
