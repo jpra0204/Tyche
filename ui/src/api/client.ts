@@ -3,6 +3,9 @@ import type {
   BacktestSummary,
   DataView,
   PaperView,
+  ResearchView,
+  StudyKind,
+  StudySummary,
   RunRequest,
   RunView,
   StatusView,
@@ -24,6 +27,9 @@ export interface Api {
   getStatus(riskProfile: string): Promise<StatusView>;
   getData(): Promise<DataView>;
   getPaper(): Promise<PaperView>;
+  getResearch(): Promise<ResearchView>;
+  listStudies(kind: StudyKind): Promise<StudySummary[]>;
+  getStudyReport(kind: StudyKind, studyId: string): Promise<string>;
   listBacktests(): Promise<BacktestSummary[]>;
   getBacktestReport(runId: string): Promise<string>;
   startRun(request: RunRequest): Promise<RunView>;
@@ -70,6 +76,13 @@ export function createApi(token: string): Api {
     listBacktests: () => get<BacktestSummary[]>("/backtests"),
     getBacktestReport: async (runId) => {
       const response = await call(`/backtests/${encodeURIComponent(runId)}/report`, {}, "text/html");
+      return await response.text();
+    },
+    getResearch: () => get<ResearchView>("/research"),
+    listStudies: (kind) => get<StudySummary[]>(`/studies/${kind}`),
+    getStudyReport: async (kind, studyId) => {
+      const path = `/studies/${kind}/${encodeURIComponent(studyId)}/report`;
+      const response = await call(path, {}, "text/html");
       return await response.text();
     },
     startRun: async (request) => {

@@ -120,6 +120,7 @@ Recommended, still: turn on *Automatically delete head branches* in the GitHub r
 - The console, U1 ([ADR-0046](docs/adr/0046-a-local-web-console.md), accepted 2026-11-25): `make ui` builds a React page (`ui/`: Vite, TypeScript, Mantine, TanStack Query, React Router) and `tyche ui` serves it with an HTTP API (`tyche.api`: FastAPI on uvicorn) on `127.0.0.1` only, locked with a new token at every launch and to local host names. One page, **Status**, read-only: the config check for any risk profile, which secrets are set (never their values), the kill switch and both halts, and the account from the latest checkpoint. The API's models generate the page's TypeScript types; a test fails when they drift. A CI job type-checks, lints and builds the page.
 - The console, U2 ([ADR-0046](docs/adr/0046-a-local-web-console.md)): running `tyche` from the page. A typed request (never a command line) becomes the arguments of `tyche data fetch`, `tyche backtest` or `tyche report`, started as a subprocess in the console's workspace, one at a time; both output streams are kept and the page polls them while it runs. **Data** (everything the profile follows, or chosen symbols) and **Backtests** (a form, every recorded backtest with its numbers, each report shown in a sandboxed frame, or written again). Checked end to end with the real `tyche backtest` in tests, and by hand in the browser on a scratch workspace (fetch, backtest, report, write report).
 - The console, U3 ([ADR-0046](docs/adr/0046-a-local-web-console.md)): the **Paper** page. `tyche paper run`, `tyche kill` and `tyche resume` run from the page after a confirmation dialog (flatten needs a second tick; resume lists what it lifts); their requests must carry `confirmed: true`, and `kill` and `resume` run with `--yes`. It shows readiness, what stops trading, the account, the last cycle's two reconciliations from the journal, and the latest alerts from the logs with their delivery. Kill and resume checked end to end in tests and by hand on a scratch workspace; the real paper cycle only with a stand-in, never against IB Gateway.
+- The console, U4 ([ADR-0046](docs/adr/0046-a-local-web-console.md)): the **Research** page, a tab each for walk-forward, sweep, capital and profile comparison: a form that runs the command (every option the CLI has; an empty capital option keeps its default), the run live, and the kind's records with a one-line headline and the report in the page. Checked with records from the runtime tests' helpers, a real `tyche compare-profiles` from the API, and by hand on a scratch workspace (a walk-forward run from the form, every tab's list, a capital report).
 
 Packages still holding only a docstring: `core.improvement`, `core.agents`, and the LLM adapter.
 
@@ -265,8 +266,8 @@ Two things in the brief's Phase 1 that this plan moves:
 |---|---|---|
 | U1 | Skeleton and status (merged, #55) | ADR-0046; `tyche ui` (127.0.0.1, a token per launch); the API's first endpoint; the React shell (Vite, TypeScript, Mantine, navigation) with a **Status** page: config check, active profile, kill switch, halts, latest checkpoint. Read-only. A CI job for the app |
 | U2 | Runs (merged, #56) | Running a command from the page as a `tyche` subprocess, one at a time, its output live; **Data** (fetch) and **Backtest** forms; the list of past runs, each report opened in the page |
-| U3 | Paper (**in review**) | **Paper**: run the cycle (with confirmation), the account from the latest checkpoint (cash, positions, working orders), both reconciliations, the alerts; the kill switch and resume, each confirmed |
-| U4 | Research | Forms for walk-forward, sweeps, capital and profile comparison, and their reports |
+| U3 | Paper (merged, #57) | **Paper**: run the cycle (with confirmation), the account from the latest checkpoint (cash, positions, working orders), both reconciliations, the alerts; the kill switch and resume, each confirmed |
+| U4 | Research (**in review**) | Forms for walk-forward, sweeps, capital and profile comparison, and their reports |
 | U5 | Config, read-only | Profiles, strategies, guardrails and the market profile as pages, with the config check's messages. Editing comes later, with its own ADR |
 
 ## Carried into later phases
@@ -343,7 +344,7 @@ The honest notes, with what was agreed for each, are in the [system overview, se
 
 ## Next
 
-**Console U3 is in review**: `make ui`, then `uv run tyche ui` ([the console](docs/user-guide/11-the-console.md)). The **Paper** page runs the paper cycle, the kill switch and resume, each after a confirmation, and shows the account, the last cycle's reconciliations and the alerts. Next, as you decided on 2026-11-26: U4 (research forms), then U5 (config, read-only), then Phase 2's PR 15.
+**Console U4 is in review**: `make ui`, then `uv run tyche ui` ([the console](docs/user-guide/11-the-console.md)). The **Research** page runs walk-forward, sweeps, capital and profile comparison from forms and shows their reports. Next, as you decided on 2026-11-26: U5 (config, read-only), then Phase 2's PR 15.
 
 **PR 14 (the paper run) is merged.** Your first paper run is still to do, with its prerequisites below and in [the paper run](docs/user-guide/10-paper-run.md).
 

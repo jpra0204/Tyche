@@ -10,6 +10,8 @@ import { BacktestsPage } from "../features/backtests/BacktestsPage";
 import { ReportPage } from "../features/backtests/ReportPage";
 import { DataPage } from "../features/data/DataPage";
 import { PaperPage } from "../features/paper/PaperPage";
+import { ResearchPage } from "../features/research/ResearchPage";
+import { StudyReportPage } from "../features/research/StudyReportPage";
 import { StatusPage } from "../features/status/StatusPage";
 import { Layout } from "./Layout";
 import { theme } from "./theme";
@@ -35,6 +37,8 @@ export function App({ token }: { token: string | null }) {
                   <Route path="data" element={<DataPage />} />
                   <Route path="backtests" element={<BacktestsPage />} />
                   <Route path="backtests/:runId" element={<ReportPage />} />
+                  <Route path="research" element={<ResearchPage />} />
+                  <Route path="research/:kind/:studyId" element={<StudyReportPage />} />
                   <Route path="paper" element={<PaperPage />} />
                   <Route path="*" element={<StatusPage />} />
                 </Route>

@@ -175,6 +175,8 @@ uv run tyche compare-profiles --from 2005-01-03                      # every pro
 uv run tyche compare-profiles --from 2005-01-03 --risk-profile default --risk-profile stage-2
 ```
 
+From the console: **Research**, **Profiles** ([the console](11-the-console.md)).
+
 It prints one line per profile as it finishes, then where the record and the report are:
 
 ```text

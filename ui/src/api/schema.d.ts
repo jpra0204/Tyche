@@ -84,6 +84,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Research
+         * @description What the Research page's forms offer: the sweeps, and the capital defaults.
+         */
+        get: operations["getResearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -137,6 +157,46 @@ export interface paths {
          *     account as the latest checkpoint saved it.
          */
         get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Studies
+         * @description Every recorded walk-forward, sweep, capital analysis or profile comparison.
+         */
+        get: operations["listStudies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/studies/{kind}/{study_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Study Report
+         * @description A study's ``report.html``, for the page to show in a sandboxed frame.
+         */
+        get: operations["getStudyReport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -265,6 +325,55 @@ export interface components {
             total_return?: string | null;
         };
         /**
+         * CapitalDefaults
+         * @description ``tyche capital``'s defaults, for the form to show.
+         */
+        CapitalDefaults: {
+            /** Amounts */
+            amounts: string[];
+            /** Positions */
+            positions: number;
+            /** Reference */
+            reference: string;
+            /** Tolerance */
+            tolerance: string;
+        };
+        /**
+         * CapitalRunRequest
+         * @description ``tyche capital``: each strategy alone at several account sizes. An option left
+         *     empty is left out, so the command's own default applies.
+         */
+        CapitalRunRequest: {
+            /**
+             * Amounts
+             * @default []
+             */
+            amounts: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "capital";
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /** Last */
+            last?: string | null;
+            /** Positions */
+            positions?: number | null;
+            /** Reference */
+            reference?: string | null;
+            /**
+             * Risk Profile
+             * @default default
+             */
+            risk_profile: string;
+            /** Tolerance */
+            tolerance?: string | null;
+        };
+        /**
          * CashCheckView
          * @description One currency's cash, Tyche's against the broker's (ADR-0044).
          */
@@ -295,6 +404,30 @@ export interface components {
             pending: string;
             /** Settled */
             settled: string;
+        };
+        /**
+         * CompareProfilesRequest
+         * @description ``tyche compare-profiles``: one backtest per risk profile; none named compares
+         *     every profile in ``config/risk/``.
+         */
+        CompareProfilesRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "compare_profiles";
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /** Last */
+            last?: string | null;
+            /**
+             * Risk Profiles
+             * @default []
+             */
+            risk_profiles: string[];
         };
         /**
          * ConfigView
@@ -565,7 +698,8 @@ export interface components {
         };
         /**
          * ReportRequest
-         * @description ``tyche report``: write a backtest's report again, from its record.
+         * @description ``tyche report``: write a record's report again: a backtest's, a walk-forward's, a
+         *     sweep's, a capital analysis's or a profile comparison's.
          */
         ReportRequest: {
             /**
@@ -575,6 +709,15 @@ export interface components {
             command: "report";
             /** Run Id */
             run_id: string;
+        };
+        /**
+         * ResearchView
+         * @description What the Research page's forms offer.
+         */
+        ResearchView: {
+            capital: components["schemas"]["CapitalDefaults"];
+            /** Sweeps */
+            sweeps: string[];
         };
         /**
          * ResumeRequest
@@ -637,7 +780,7 @@ export interface components {
              * Command
              * @enum {string}
              */
-            command: "data_fetch" | "backtest" | "report" | "paper_run" | "kill" | "resume";
+            command: "data_fetch" | "backtest" | "report" | "paper_run" | "kill" | "resume" | "walk_forward" | "sweep" | "capital" | "compare_profiles";
             /** Exit Code */
             exit_code: number | null;
             /** Finished At */
@@ -694,6 +837,65 @@ export interface components {
             strategy_id: string;
         };
         /**
+         * StudySummary
+         * @description One recorded study, from its record file.
+         *
+         *     ``headline`` is one line in words: the scheme and folds, the sweep and its trials,
+         *     each strategy's minimum viable capital, or the profiles compared. When the record
+         *     cannot be read, ``error`` says why.
+         */
+        StudySummary: {
+            /** Completed */
+            completed?: boolean | null;
+            /** Error */
+            error?: string | null;
+            /** First */
+            first?: string | null;
+            /**
+             * Has Report
+             * @default false
+             */
+            has_report: boolean;
+            /** Headline */
+            headline?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "walk_forward" | "sweep" | "capital" | "profiles";
+            /** Last */
+            last?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Study Id */
+            study_id: string;
+        };
+        /**
+         * SweepRequest
+         * @description ``tyche sweep``: every combination of ``config/sweeps/<name>.toml``.
+         */
+        SweepRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "sweep";
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /** Last */
+            last?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Risk Profile
+             * @default default
+             */
+            risk_profile: string;
+        };
+        /**
          * TradingView
          * @description What stops trading now.
          */
@@ -718,6 +920,46 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WalkForwardRequest
+         * @description ``tyche walk-forward``: folds of whole calendar years, each a backtest.
+         */
+        WalkForwardRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command: "walk_forward";
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /** Last */
+            last?: string | null;
+            /**
+             * Risk Profile
+             * @default default
+             */
+            risk_profile: string;
+            /**
+             * Rolling
+             * @default false
+             */
+            rolling: boolean;
+            /** Sweep */
+            sweep?: string | null;
+            /**
+             * Test Years
+             * @default 1
+             */
+            test_years: number;
+            /**
+             * Train Years
+             * @default 5
+             */
+            train_years: number;
         };
     };
     responses: never;
@@ -854,6 +1096,37 @@ export interface operations {
             };
         };
     };
+    getResearch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     startRun: {
         parameters: {
             query?: never;
@@ -865,7 +1138,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FetchRequest"] | components["schemas"]["BacktestRequest"] | components["schemas"]["ReportRequest"] | components["schemas"]["PaperRunRequest"] | components["schemas"]["KillRequest"] | components["schemas"]["ResumeRequest"];
+                "application/json": components["schemas"]["FetchRequest"] | components["schemas"]["BacktestRequest"] | components["schemas"]["ReportRequest"] | components["schemas"]["PaperRunRequest"] | components["schemas"]["KillRequest"] | components["schemas"]["ResumeRequest"] | components["schemas"]["WalkForwardRequest"] | components["schemas"]["SweepRequest"] | components["schemas"]["CapitalRunRequest"] | components["schemas"]["CompareProfilesRequest"];
             };
         };
         responses: {
@@ -940,6 +1213,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listStudies: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path: {
+                kind: "walk_forward" | "sweep" | "capital" | "profiles";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudySummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getStudyReport: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tyche-Token"?: string | null;
+            };
+            path: {
+                kind: "walk_forward" | "sweep" | "capital" | "profiles";
+                study_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

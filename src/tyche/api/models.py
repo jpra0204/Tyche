@@ -190,7 +190,8 @@ class BacktestRequest(_Request):
 
 
 class ReportRequest(_Request):
-    """``tyche report``: write a backtest's report again, from its record."""
+    """``tyche report``: write a record's report again: a backtest's, a walk-forward's, a
+    sweep's, a capital analysis's or a profile comparison's."""
 
     command: Literal["report"]
     run_id: RunId
@@ -235,14 +236,88 @@ class ResumeRequest(_Request):
     confirmed: Literal[True]
 
 
+Amount = Annotated[str, StringConstraints(pattern=r"^[0-9]{1,9}(\.[0-9]{1,2})?$")]
+"""An amount of money, as typed: digits, and cents if any."""
+
+Points = Annotated[str, StringConstraints(pattern=r"^[0-9]{1,3}(\.[0-9]{1,4})?$")]
+"""Percentage points, as typed: ``0.5`` is half a point."""
+
+
+class WalkForwardRequest(_Request):
+    """``tyche walk-forward``: folds of whole calendar years, each a backtest."""
+
+    command: Literal["walk_forward"]
+    first: date
+    last: date | None = None
+    train_years: Annotated[int, Field(ge=1, le=30)] = 5
+    test_years: Annotated[int, Field(ge=1, le=10)] = 1
+    rolling: bool = False
+    sweep: ProfileName | None = None
+    risk_profile: ProfileName = "default"
+
+
+class SweepRequest(_Request):
+    """``tyche sweep``: every combination of ``config/sweeps/<name>.toml``."""
+
+    command: Literal["sweep"]
+    name: ProfileName
+    first: date
+    last: date | None = None
+    risk_profile: ProfileName = "default"
+
+
+class CapitalRunRequest(_Request):
+    """``tyche capital``: each strategy alone at several account sizes. An option left
+    empty is left out, so the command's own default applies."""
+
+    command: Literal["capital"]
+    first: date
+    last: date | None = None
+    amounts: Annotated[list[Amount], Field(max_length=20)] = []
+    reference: Amount | None = None
+    tolerance: Points | None = None
+    positions: Annotated[int, Field(ge=1, le=50)] | None = None
+    risk_profile: ProfileName = "default"
+
+
+class CompareProfilesRequest(_Request):
+    """``tyche compare-profiles``: one backtest per risk profile; none named compares
+    every profile in ``config/risk/``."""
+
+    command: Literal["compare_profiles"]
+    first: date
+    last: date | None = None
+    risk_profiles: Annotated[list[ProfileName], Field(max_length=20)] = []
+
+
 AnyRunRequest = (
-    FetchRequest | BacktestRequest | ReportRequest | PaperRunRequest | KillRequest | ResumeRequest
+    FetchRequest
+    | BacktestRequest
+    | ReportRequest
+    | PaperRunRequest
+    | KillRequest
+    | ResumeRequest
+    | WalkForwardRequest
+    | SweepRequest
+    | CapitalRunRequest
+    | CompareProfilesRequest
 )
 
 RunRequest = Annotated[AnyRunRequest, Field(discriminator="command")]
 """Every command the page can run. Anything else is refused before a process starts."""
 
-CommandName = Literal["data_fetch", "backtest", "report", "paper_run", "kill", "resume"]
+CommandName = Literal[
+    "data_fetch",
+    "backtest",
+    "report",
+    "paper_run",
+    "kill",
+    "resume",
+    "walk_forward",
+    "sweep",
+    "capital",
+    "compare_profiles",
+]
 
 
 class RunLine(_Model):
@@ -368,3 +443,43 @@ class PaperView(_Model):
     reconciliations: list[ReconciliationView]
     alerts: list[AlertView]
     state_unreadable: str | None = None
+
+
+# --- Research (U4) ----------------------------------------------------------------------
+
+StudyKind = Literal["walk_forward", "sweep", "capital", "profiles"]
+
+
+class CapitalDefaults(_Model):
+    """``tyche capital``'s defaults, for the form to show."""
+
+    amounts: list[str]
+    reference: str
+    tolerance: str
+    positions: int
+
+
+class ResearchView(_Model):
+    """What the Research page's forms offer."""
+
+    sweeps: list[str]
+    capital: CapitalDefaults
+
+
+class StudySummary(_Model):
+    """One recorded study, from its record file.
+
+    ``headline`` is one line in words: the scheme and folds, the sweep and its trials,
+    each strategy's minimum viable capital, or the profiles compared. When the record
+    cannot be read, ``error`` says why.
+    """
+
+    kind: StudyKind
+    study_id: str
+    started_at: datetime | None = None
+    first: date | None = None
+    last: date | None = None
+    completed: bool | None = None
+    headline: str | None = None
+    has_report: bool = False
+    error: str | None = None

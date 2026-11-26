@@ -33,6 +33,8 @@ Plan the grid from reasons you can state (a holding period you believe in, a ran
 uv run tyche sweep trend_rotation --from 2005-01-03
 ```
 
+From the console: **Research**, **Sweep** ([the console](11-the-console.md)). It runs this same command.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `NAME` | (required) | The sweep's file name in `config/sweeps/`, without `.toml` |
